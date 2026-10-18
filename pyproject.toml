@@ -1,0 +1,48 @@
+[project]
+name = "badshahstore"
+version = "0.1.0"
+description = "Badshah Store — online provision shop (Indore)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "Django==5.2.18",
+    "psycopg[binary]>=3.2,<4",
+    "django-environ>=0.11,<2",
+    "celery[redis]>=5.4,<6",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9,<1",
+    "mypy>=1.14,<2",
+    "django-stubs>=5.2.0,<6",
+    "pytest>=9.0,<10",
+    "pytest-django>=4.13,<5",
+    "factory-boy>=3.3,<4",
+    "pre-commit>=4.0,<5",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/**/*.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_unused_configs = true
+plugins = ["mypy_django_plugin.main"]
+
+[tool.django-stubs]
+django_settings_module = "badshahstore.settings.dev"
+
+[tool.pytest.ini_options]
+addopts = "--ds=badshahstore.settings.test --strict-markers"
+testpaths = ["tests"]
