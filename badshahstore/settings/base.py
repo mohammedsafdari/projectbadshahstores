@@ -106,6 +106,21 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Slice 4 app shells (all except accounts).
+    "apps.core",
+    "apps.catalog",
+    "apps.inventory",
+    "apps.cart",
+    "apps.orders",
+    "apps.payments",
+    "apps.delivery",
+    "apps.notifications",
+    "apps.promotions",
+    "apps.storefront",
+    "apps.adminpanel",
+    # accounts is added in Slice 5 together with AUTH_USER_MODEL.
+    # Adding accounts earlier would make Django create the default User table,
+    # which we do not want because we will use a custom user model.
 ]
 
 MIDDLEWARE = [
@@ -214,3 +229,19 @@ AUTH_PASSWORD_VALIDATORS = [
 # Do not add it here, and do not add accounts to INSTALLED_APPS yet.
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# List of app labels that are installed app shells in Slice 4.
+# Used by tests to verify the new apps are installed without importing accounts.
+SLICE_4_INSTALLED_APP_LABELS = [
+    "core",
+    "catalog",
+    "inventory",
+    "cart",
+    "orders",
+    "payments",
+    "delivery",
+    "notifications",
+    "promotions",
+    "storefront",
+    "adminpanel",
+]
