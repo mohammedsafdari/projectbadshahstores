@@ -50,7 +50,12 @@ uv run python manage.py createsuperuser
 uv run python manage.py runserver
 ```
 
-Health endpoint: `http://127.0.0.1:8000/health/` returns `{"status": "ok"}` when the database is reachable.
+Health endpoint: `http://127.0.0.1:8000/health/`.
+
+- `GET /health/` and `HEAD /health/` return HTTP 200 with `{"status": "ok"}` when the database is reachable.
+- If the database check fails, the endpoint returns HTTP 503 with `{"status": "error"}`.
+- The response is never cached (`Cache-Control: no-store`) and includes `X-Content-Type-Options: nosniff`.
+- This endpoint is used by Docker healthchecks and CI readiness checks. It does not expose Django version, settings, environment details, or Redis status.
 
 ## Tooling
 
