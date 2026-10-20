@@ -5,8 +5,6 @@ together with AUTH_USER_MODEL. Adding it earlier would make Django create the
 default User table, which we do not want because we will use a custom user model.
 """
 
-import pytest
-
 from django.apps import apps
 from django.conf import settings
 
@@ -17,8 +15,7 @@ def test_slice_4_apps_are_installed():
 
     expected_labels = set(settings.SLICE_4_INSTALLED_APP_LABELS)
     assert expected_labels <= installed_labels, (
-        f"Expected Slice 4 apps to be installed, but missing: "
-        f"{expected_labels - installed_labels}"
+        f"Expected Slice 4 apps to be installed, but missing: {expected_labels - installed_labels}"
     )
 
 

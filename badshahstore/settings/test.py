@@ -8,8 +8,7 @@ pytest-django adds the test_ prefix to the database name automatically, so
 this module does not override the database name here.
 """
 
-from badshahstore.settings.base import *  # noqa: F401,F403
-
+from badshahstore.settings.base import *  # noqa: F403
 
 DEBUG = False
 

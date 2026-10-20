@@ -62,9 +62,7 @@ class UserManager(BaseUserManager):
         try:
             normalised = normalise_phone(phone)
         except ValueError:
-            raise self.model.DoesNotExist(
-                f"No active user found for phone {phone!r}"
-            )
+            raise self.model.DoesNotExist(f"No active user found for phone {phone!r}") from None
         return self.get(is_active=True, phone=normalised)
 
 
@@ -95,7 +93,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         max_length=16,
         help_text="India mobile number, E.164, e.g. +919876543210.",
     )
-    email = models.EmailField("email address", null=True, blank=True)
+    # null=True is intentional: the unique-when-set constraint needs NULL, not "".
+    email = models.EmailField("email address", null=True, blank=True)  # noqa: DJ001
     full_name = models.CharField("full name", max_length=255, blank=True)
     role = models.CharField(
         "role",

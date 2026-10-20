@@ -21,7 +21,6 @@ from typing import Any
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-
 PRODUCTION_SETTINGS_MODULE = "badshahstore.settings.prod"
 DEV_SETTINGS_MODULE = "badshahstore.settings.dev"
 TEST_SETTINGS_MODULE = "badshahstore.settings.test"
@@ -119,7 +118,9 @@ def _configure_env(monkeypatch: pytest.MonkeyPatch, **env_values: str | None) ->
             monkeypatch.setenv(key, value)
 
 
-def _import_settings_fresh(*, settings_module: str, monkeypatch: pytest.MonkeyPatch, **env_values: str | None) -> Any:
+def _import_settings_fresh(
+    *, settings_module: str, monkeypatch: pytest.MonkeyPatch, **env_values: str | None
+) -> Any:
     """Import a settings module fresh, with a fully controlled environment.
 
     This helper is used by the prod refusal tests and by the env-independence
@@ -215,7 +216,9 @@ def test_prod_refuses_when_secret_key_is_placeholder(monkeypatch: pytest.MonkeyP
         "comma with whitespace",
     ],
 )
-def test_prod_refuses_for_blank_variant_allowed_hosts(monkeypatch: pytest.MonkeyPatch, allowed_hosts_value: str) -> None:
+def test_prod_refuses_for_blank_variant_allowed_hosts(
+    monkeypatch: pytest.MonkeyPatch, allowed_hosts_value: str
+) -> None:
     """Each blank variant of ALLOWED_HOSTS (empty, whitespace-only,
     comma-only, comma-with-whitespace) yields an empty list after parsing
     and therefore causes prod.py to refuse to start.
@@ -229,7 +232,9 @@ def test_prod_refuses_for_blank_variant_allowed_hosts(monkeypatch: pytest.Monkey
         )
 
 
-def test_prod_refuses_when_allowed_hosts_variable_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prod_refuses_when_allowed_hosts_variable_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with pytest.raises(ImproperlyConfigured):
         _import_prod_after_env(
             monkeypatch,
@@ -256,7 +261,7 @@ def test_prod_refuses_for_literal_bracket_allowed_hosts(monkeypatch: pytest.Monk
     sys.modules.pop("badshahstore.settings.base", None)
     sys.modules.pop("django.conf", None)
 
-    import badshahstore.settings.base as base  # noqa: F811
+    import badshahstore.settings.base as base
 
     assert base.ALLOWED_HOSTS == [], (
         f"Expected empty list for ALLOWED_HOSTS='[]', got {base.ALLOWED_HOSTS!r}"
@@ -267,7 +272,9 @@ def test_prod_refuses_for_literal_bracket_allowed_hosts(monkeypatch: pytest.Monk
         importlib.import_module("badshahstore.settings.prod")
 
 
-def test_prod_normalizes_blank_variant_allowed_hosts_to_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prod_normalizes_blank_variant_allowed_hosts_to_empty_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Each blank variant of ALLOWED_HOSTS normalizes to an empty list, not
     a list containing blanks.
     """
@@ -281,7 +288,8 @@ def test_prod_normalizes_blank_variant_allowed_hosts_to_empty_list(monkeypatch: 
         )
 
         assert settings.ALLOWED_HOSTS == [], (
-            f"Expected empty list for ALLOWED_HOSTS={allowed_hosts_value!r}, got {settings.ALLOWED_HOSTS!r}"
+            f"Expected empty list for ALLOWED_HOSTS={allowed_hosts_value!r}, "
+            f"got {settings.ALLOWED_HOSTS!r}"
         )
 
 
@@ -362,7 +370,7 @@ def test_settings_are_independent_of_local_dot_env(monkeypatch: pytest.MonkeyPat
 
     # 4. The two successful imports must produce identical settings for the
     # fields we care about.
-    assert prod_without_env.DEBUG == prod_with_env.DEBUG == False
+    assert prod_without_env.DEBUG == prod_with_env.DEBUG is False
     assert prod_without_env.SECRET_KEY == prod_with_env.SECRET_KEY == "a-real-looking-secret-key"
     assert prod_without_env.ALLOWED_HOSTS == prod_with_env.ALLOWED_HOSTS == ["example.com"]
 
@@ -371,6 +379,6 @@ def test_settings_are_independent_of_local_dot_env(monkeypatch: pytest.MonkeyPat
     if existed_before_probe and not DOT_ENV_PATH.exists():
         DOT_ENV_PATH.touch()
 
-    assert (
-        DOT_ENV_PATH.exists() if existed_before_probe else True
-    ), "probe left repo .env missing when it existed before the probe"
+    assert DOT_ENV_PATH.exists() if existed_before_probe else True, (
+        "probe left repo .env missing when it existed before the probe"
+    )

@@ -5,7 +5,6 @@ All tests use PostgreSQL via pytest-django and the Django test client.
 
 import pytest
 from django.contrib import admin
-from django.contrib.auth import get_user_model
 from django.test import Client, RequestFactory
 
 from apps.accounts.admin import UserAdmin
@@ -34,7 +33,7 @@ def admin_with_user(user):
 
 class TestUserAdminPages:
     def test_superuser_can_open_add_page(self):
-        superuser = User.objects.create_superuser(
+        User.objects.create_superuser(
             phone="9876543210",
             password="ok",
         )
@@ -44,14 +43,14 @@ class TestUserAdminPages:
 
     def test_superuser_can_open_change_page(self):
         user = User.objects.create_user(phone="9876543211", password="ok")
-        superuser = User.objects.create_superuser(phone="9876543210", password="ok")
+        User.objects.create_superuser(phone="9876543210", password="ok")
         client = client_as("+919876543210")
         response = client.get(f"/admin/accounts/user/{user.pk}/change/")
         assert response.status_code == 200
 
     def test_change_page_does_not_render_password_input(self):
         user = User.objects.create_user(phone="9876543211", password="ok")
-        superuser = User.objects.create_superuser(phone="9876543210", password="ok")
+        User.objects.create_superuser(phone="9876543210", password="ok")
         client = client_as("+919876543210")
         response = client.get(f"/admin/accounts/user/{user.pk}/change/")
         html = response.content.decode("utf-8", "replace")
@@ -109,12 +108,10 @@ class TestAddUserFormCreatesUser:
             errors = response.context.get("errors")
             assert errors
             assert "phone" in errors
-        assert not User.objects.filter(phone="+919876543210").exclude(
-            pk=superuser.pk
-        ).exists()
+        assert not User.objects.filter(phone="+919876543210").exclude(pk=superuser.pk).exists()
 
     def test_invalid_phone_returns_form_error_and_no_user(self):
-        superuser = User.objects.create_superuser(phone="9876543210", password="ok")
+        User.objects.create_superuser(phone="9876543210", password="ok")
         before = set(User.objects.values_list("pk", flat=True))
         client = client_as("+919876543210")
         response = client.post(

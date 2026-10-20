@@ -11,10 +11,10 @@ The settings tests force the environment to skip reading .env so a
 developer's local .env can never change a test result.
 """
 
+import os
 from pathlib import Path
 
 import environ
-import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 

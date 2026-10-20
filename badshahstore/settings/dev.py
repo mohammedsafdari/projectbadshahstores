@@ -9,8 +9,7 @@ can run locally without real credentials. Do not use this module in any
 environment where real traffic or real secrets are involved.
 """
 
-from badshahstore.settings.base import *  # noqa: F401,F403
-
+from badshahstore.settings.base import *  # noqa: F403
 
 DEBUG = True
 

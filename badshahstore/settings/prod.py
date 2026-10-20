@@ -13,26 +13,20 @@ with HTTPS termination.
 
 from django.core.exceptions import ImproperlyConfigured
 
+from badshahstore.settings.base import *  # noqa: F403
 from badshahstore.settings.base import env
-from badshahstore.settings.base import *  # noqa: F401,F403
-
 
 if DEBUG:
     raise ImproperlyConfigured(
-        "Production settings must have DEBUG=False. "
-        "Set DEBUG=0 or remove it."
+        "Production settings must have DEBUG=False. Set DEBUG=0 or remove it."
     )
 
 if not ALLOWED_HOSTS:
-    raise ImproperlyConfigured(
-        "Production settings require non-empty ALLOWED_HOSTS."
-    )
+    raise ImproperlyConfigured("Production settings require non-empty ALLOWED_HOSTS.")
 
 # Be explicit about the empty-string edge case requested in the spec.
 if ALLOWED_HOSTS == []:
-    raise ImproperlyConfigured(
-        "Production settings require non-empty ALLOWED_HOSTS."
-    )
+    raise ImproperlyConfigured("Production settings require non-empty ALLOWED_HOSTS.")
 
 KNOWN_PLACEHOLDER_SECRET_KEYS = {
     "placeholder-change-in-prod",

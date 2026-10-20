@@ -2,7 +2,6 @@
 
 from django import forms
 from django.contrib import admin
-from django.contrib.admin import ModelAdmin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm as AuthUserChangeForm
@@ -42,9 +41,7 @@ class UserChangeForm(AuthUserChangeForm):
         if self.instance and self.instance.pk:
             query = query.exclude(pk=self.instance.pk)
         if query.exists():
-            raise forms.ValidationError(
-                "A user with this phone number already exists."
-            )
+            raise forms.ValidationError("A user with this phone number already exists.")
         return normalised
 
 
@@ -76,9 +73,7 @@ class UserAddForm(AuthUserCreationForm):
             return None
         User = get_user_model()
         if User.objects.filter(email=email, is_active=True).exists():
-            raise forms.ValidationError(
-                "A user with this email address already exists."
-            )
+            raise forms.ValidationError("A user with this email address already exists.")
         return email
 
     def _clean_phone(self, raw_phone):
@@ -88,9 +83,7 @@ class UserAddForm(AuthUserCreationForm):
             raise forms.ValidationError(str(exc)) from exc
         User = get_user_model()
         if User.objects.filter(phone=normalised, is_active=True).exists():
-            raise forms.ValidationError(
-                "A user with this phone number already exists."
-            )
+            raise forms.ValidationError("A user with this phone number already exists.")
         return normalised
 
 
@@ -148,11 +141,7 @@ class UserAdmin(BaseUserAdmin):
     def get_readonly_fields(self, request, obj=None):
         if request.user.is_superuser:
             return self.readonly_fields
-        return self.readonly_fields + (
-            "is_superuser",
-            "groups",
-            "user_permissions",
-        )
+        return (*self.readonly_fields, "is_superuser", "groups", "user_permissions")
 
     def get_fieldsets(self, request, obj=None):
         # On the add page, non-superusers must not be able to create a

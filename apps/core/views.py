@@ -3,7 +3,6 @@
 import logging
 
 from django.db import connection
-from django.db.utils import OperationalError
 from django.http import HttpResponse, HttpResponseNotAllowed
 
 logger = logging.getLogger(__name__)

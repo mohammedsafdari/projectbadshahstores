@@ -12,6 +12,7 @@ We accept:
 
 and return a string like "+91XXXXXXXXXX" (with the leading plus).
 """
+
 import re
 
 # Raw input may contain spaces, dashes, dots and brackets.

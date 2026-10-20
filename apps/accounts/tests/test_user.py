@@ -4,19 +4,13 @@ All tests use PostgreSQL via pytest-django because they exercise conditional
 unique constraints and IntegrityError behaviour.
 """
 
-import re
-from contextlib import nullcontext
-from decimal import Decimal
-from unittest.mock import patch
-
 import pytest
-from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.test import Client
 
 from apps.accounts.models import User
 from apps.core.phone import normalise_phone
-
 
 pytestmark = pytest.mark.django_db
 
@@ -24,6 +18,7 @@ pytestmark = pytest.mark.django_db
 # ---------------------------------------------------------------------------
 # Phone normalisation
 # ---------------------------------------------------------------------------
+
 
 class TestNormalisePhone:
     VALID_INPUTS = [
@@ -36,9 +31,7 @@ class TestNormalisePhone:
 
     def test_known_valid_phones_normalise_to_e164(self):
         for raw in self.VALID_INPUTS:
-            assert normalise_phone(raw) == "+919876543210", (
-                f"Expected +919876543210 for {raw!r}"
-            )
+            assert normalise_phone(raw) == "+919876543210", f"Expected +919876543210 for {raw!r}"
 
     def test_leading_plus_stripped_and_rebuilt(self):
         assert normalise_phone("+919876543210") == "+919876543210"
@@ -60,6 +53,7 @@ class TestNormalisePhone:
 # ---------------------------------------------------------------------------
 # User creation
 # ---------------------------------------------------------------------------
+
 
 class TestUserCreation:
     def test_create_user_normalises_phone(self):
@@ -122,12 +116,12 @@ class TestCreateSuperuser:
 # Unique constraints
 # ---------------------------------------------------------------------------
 
+
 class TestPhoneUniqueness:
     def test_two_active_users_with_same_phone_fail(self):
         User.objects.create_user(phone="9876543210", password="ignore")
-        with transaction.atomic():
-            with pytest.raises(IntegrityError):
-                User.objects.create_user(phone="9876543210", password="ignore")
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            User.objects.create_user(phone="9876543210", password="ignore")
 
     def test_inactive_duplicate_phone_allowed(self):
         active = User.objects.create_user(phone="9876543210", password="ignore")
@@ -173,18 +167,18 @@ class TestEmailUniqueness:
             password="ignore",
             email="dup@example.com",
         )
-        with transaction.atomic():
-            with pytest.raises(IntegrityError):
-                User.objects.create_user(
-                    phone="9876543211",
-                    password="ignore",
-                    email="DUP@example.com",
-                )
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            User.objects.create_user(
+                phone="9876543211",
+                password="ignore",
+                email="DUP@example.com",
+            )
 
 
 # ---------------------------------------------------------------------------
 # Manager natural key
 # ---------------------------------------------------------------------------
+
 
 class TestGetByNaturalKey:
     def test_finds_active_user_with_spaced_phone(self):
@@ -218,6 +212,7 @@ class TestGetByNaturalKey:
 # Model validation
 # ---------------------------------------------------------------------------
 
+
 class TestUserClean:
     def test_clean_invalid_phone_raises_validation_error(self):
         user = User(phone="12345")
@@ -239,6 +234,7 @@ class TestUserClean:
 # ---------------------------------------------------------------------------
 # Admin access: role is NOT the authority source
 # ---------------------------------------------------------------------------
+
 
 class TestAdminAccessDerivesFromStaffNotRole:
     def test_owner_without_staff_is_redirected_to_login(self):

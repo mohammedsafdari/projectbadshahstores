@@ -1,11 +1,10 @@
 """Tests for the core health endpoint."""
 
 import json
+from unittest.mock import patch
 
 import pytest
 from django.db.utils import OperationalError
-from django.test import Client
-from unittest.mock import patch
 
 pytestmark = pytest.mark.django_db
 
