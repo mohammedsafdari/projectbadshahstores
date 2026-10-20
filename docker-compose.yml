@@ -1,5 +1,25 @@
 name: badshahstore
 
+x-common-env: &common-env
+  # Required secrets — no weak fallbacks. The container stops with a clear
+  # message if any are missing.
+  POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+
+  # Django
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:?set DJANGO_SETTINGS_MODULE in .env}
+
+  # Chosen here so containers use the service names (db, redis) instead of
+  # 127.0.0.1. Host-run commands keep reading 127.0.0.1 from .env.
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+
+  # Celery tuning (read by Django settings base, used by the worker/beat)
+  CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-2}
+
 services:
   db:
     image: postgres:16
@@ -20,6 +40,110 @@ services:
       timeout: 3s
       retries: 10
       start_period: 3s
+
+  # Redis is used only by other containers (web/worker/beat) over the
+  # service name "redis", so it is not published to the host. This avoids a
+  # Windows port-binding failure on 127.0.0.1:6379 while still letting the
+  # stack reach Redis through the Docker network.
+  redis:
+    image: redis:7-alpine
+    container_name: badshahstore-redis
+    restart: unless-stopped
+    stop_grace_period: 5s
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    healthcheck:
+      # AUTH is mirrored by the client URL (redis://:password@redis:6379/0),
+      # so the healthcheck must authenticate the same way.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
+  web:
+    image: badshahstore-app
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        INSTALL_DEV_GROUP: "1"
+    container_name: badshahstore-web
+    restart: unless-stopped
+    stop_grace_period: 5s
+    # Django development server with hot reload on the bind-mounted source.
+    command: >
+      python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Bind-mount the project source for hot reload. The image already has
+      # /opt/venv built separately, so .venv is never bind-mounted.
+      - .:/app
+      # Keep the virtual environment and Python cache out of the bind mount.
+      - /opt/venv
+      - /app/__pycache__
+      - /app/media
+      - /app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+
+  worker:
+    image: badshahstore-app
+    container_name: badshahstore-worker
+    restart: unless-stopped
+    stop_grace_period: 5s
+    command: >
+      celery -A badshahstore worker
+      --loglevel=info
+      --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
+    volumes:
+      - .:/app
+      - /opt/venv
+      - /app/__pycache__
+      - /app/media
+      - /app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+
+  beat:
+    image: badshahstore-app
+    container_name: badshahstore-beat
+    restart: unless-stopped
+    stop_grace_period: 5s
+    command: >
+      celery -A badshahstore beat
+      --loglevel=info
+      --schedule=/tmp/celerybeat-schedule
+      --pidfile=/tmp/celerybeat.pid
+    volumes:
+      - .:/app
+      - /opt/venv
+      - /app/__pycache__
+      - /app/media
+      - /app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *common-env
 
 volumes:
   pgdata:

@@ -71,9 +71,58 @@ uv run pytest
 
 ## Docker
 
-`docker-compose.yml` runs: `web`, `postgres` (16), `redis`, `celery_worker`, `celery_beat`.
+`docker-compose.yml` runs: `web`, `db` (PostgreSQL 16), `redis`, `worker` (Celery worker), `beat` (Celery beat).
 
-Postgres and Redis are bound to `127.0.0.1` only and use passwords from `.env`.
+Postgres and Redis are bound to `127.0.0.1` only and use passwords from `.env`. Inside containers, `DATABASE_URL` and `REDIS_URL` are built from the same `.env` values but use the Docker service names (`db`, `redis`) so the stack can talk to itself without exposing the database to the host network.
+
+The image is built from `docker/Dockerfile` on `python:3.12-slim`, with a pinned `uv` version and dependencies installed into `/opt/venv` (outside the project folder) so the bind-mounted source never conflicts with a local `.venv`.
+
+### Windows commands (Command Prompt)
+
+```cmd
+REM Build the images (first time, and after Dockerfile or dependencies change)
+docker compose build
+
+REM Start the stack in the background
+docker compose up -d
+
+REM Watch containers come up and confirm their state
+docker compose ps
+
+REM Follow logs for a single service (useful right after starting)
+docker compose logs -f web
+docker compose logs -f worker
+docker compose logs -f beat
+
+REM Stop and remove containers (keeps the Postgres data volume)
+docker compose down
+
+REM Stop and also remove the named Postgres data volume (destroys local data)
+docker compose down --volumes
+```
+
+What to expect:
+
+- `docker compose build` — builds the `web`, `worker` and `beat` images from the same Dockerfile. First build downloads Python and `uv` and installs dependencies; later builds reuse the dependency layer unless `pyproject.toml` or `uv.lock` change.
+- `docker compose up -d` — starts all five services. `web`, `worker` and `beat` wait for `db` and `redis` to pass their healthchecks before starting.
+- `docker compose ps` — shows all services with `Up` (healthy where applicable). `web`, `worker` and `beat` should be `Up`; `db` and `redis` should be `Up (healthy)`.
+- `docker compose logs -f web` — Django dev server logs, including `Starting development server at http://0.0.0.0:8000/` once the database is reachable.
+- `docker compose logs -f worker` — Celery worker startup logs, ending with a ready line once it has connected to Redis.
+- `docker compose logs -f beat` — Celery beat startup logs, writing its schedule file under `/tmp` inside the container (nothing ends up in the project folder or Git).
+
+The web service is available at `http://127.0.0.1:8000/`. The health endpoint is `http://127.0.0.1:8000/health/`.
+
+Redis is not published to the host. Containers reach it through the Docker service name `redis`, and the healthcheck authenticates with `redis-cli` inside the container. If you need host-side `redis-cli` access, add a port mapping to the redis service, e.g. `ports: ["127.0.0.1:6380:6379"]` (use a different host port if 6379 is already in use).
+
+Host commands (migrations, createsuperuser, etc.) still run against `127.0.0.1` and must be run after `docker compose up -d` has started the database:
+
+```cmd
+REM Run migrations against the running Postgres
+uv run python manage.py migrate
+
+REM Create a superuser
+uv run python manage.py createsuperuser
+```
 
 ## Environment and secrets
 

@@ -48,3 +48,5 @@ htmlcov/
 coverage.xml
 
 .freebuff/
+celerybeat-schedule*
+celerybeat.pid
