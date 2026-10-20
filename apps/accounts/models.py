@@ -17,7 +17,7 @@ from django.utils import timezone
 from apps.core.phone import normalise_phone
 
 
-class UserManager(BaseUserManager):
+class UserManager(BaseUserManager["User"]):
     """Manager for the phone-based User model.
 
     create_user normalises phone and email; customers log in by OTP, so a
