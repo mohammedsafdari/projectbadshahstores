@@ -1,0 +1,59 @@
+{% load static %}
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Badshah Store{% endblock title %}</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    {# Phase 1 placeholder: Tailwind is loaded from the pinned CDN for development. A Tailwind build step is required before launch; the CDN must be removed then. Brand colours are defined in one place here so they can be changed later. #}
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: "#fef7ed",
+              100: "#fdebd0",
+              500: "#ea580c",
+              600: "#c2410c",
+              700: "#9a3412",
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="stylesheet" href="{% static "vendor/htmx/htmx-2.0.4.min.js" %}">
+  <script defer src="{% static "vendor/alpine/alpine-3.14.8.min.js" %}"></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <a class="sr-only focus:not-sr-only focus:fixed focus:z-50 focus:inline-block focus:p-4 focus:bg-brand-500 focus:text-white focus:rounded focus:outline-none" href="#content">Skip to content</a>
+
+  <header class="border-b border-gray-200 bg-white">
+    <div class="mx-auto max-w-screen-lg px-4 py-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between">
+        <div class="text-xl font-semibold text-gray-900 sm:text-2xl">Badshah Store</div>
+        <nav aria-label="Primary" class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
+          {# Placeholder links: real URLs are added in later slices. #}
+          <a href="#">Home</a>
+          <a href="#">Categories</a>
+          <a href="#">Cart</a>
+          <a href="#">Account</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main id="content" class="mx-auto max-w-screen-lg px-4 py-8 sm:px-6 lg:px-8">
+    {% block content %}{% endblock content %}
+  </main>
+
+  <footer class="border-t border-gray-200 bg-gray-50">
+    <div class="mx-auto max-w-screen-lg px-4 py-6 sm:px-6 lg:px-8">
+      <p class="text-sm text-gray-600">Badshah Store — Saifee Nagar, Indore</p>
+      {# Legal details (GSTIN, FSSAI, contact phone, etc.) are added later from ShopSettings. #}
+    </div>
+  </footer>
+</body>
+</html>
