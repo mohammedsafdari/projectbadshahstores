@@ -118,9 +118,7 @@ INSTALLED_APPS = [
     "apps.promotions",
     "apps.storefront",
     "apps.adminpanel",
-    # accounts is added in Slice 5 together with AUTH_USER_MODEL.
-    # Adding accounts earlier would make Django create the default User table,
-    # which we do not want because we will use a custom user model.
+    "apps.accounts",
 ]
 
 MIDDLEWARE = [
@@ -225,8 +223,14 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# NOTE: AUTH_USER_MODEL is set in Slice 5 once apps/accounts exists.
-# Do not add it here, and do not add accounts to INSTALLED_APPS yet.
+AUTH_USER_MODEL = "accounts.User"
+AUTHENTICATION_BACKENDS = ["apps.accounts.backends.ActiveUserModelBackend"]
+
+# auth.W004 warns when USERNAME_FIELD is not unique in the database. For this
+# project the phone username is unique only among active users (deactivated
+# accounts may be re-activated with their original phone), so the conditional
+# unique constraint is intentional and W004 is silenced here.
+SILENCED_SYSTEM_CHECKS = ["auth.W004"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

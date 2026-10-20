@@ -22,7 +22,7 @@ def test_slice_4_apps_are_installed():
     )
 
 
-def test_accounts_app_is_not_installed():
-    """accounts is deliberately left out until Slice 5 adds AUTH_USER_MODEL."""
+def test_accounts_app_is_installed():
+    """accounts is installed together with AUTH_USER_MODEL in Slice 5."""
     installed_labels = {app_config.label for app_config in apps.get_app_configs()}
-    assert "accounts" not in installed_labels
+    assert "accounts" in installed_labels

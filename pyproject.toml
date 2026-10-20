@@ -45,4 +45,4 @@ django_settings_module = "badshahstore.settings.dev"
 
 [tool.pytest.ini_options]
 addopts = "--ds=badshahstore.settings.test --strict-markers"
-testpaths = ["tests"]
+testpaths = ["tests", "apps"]
