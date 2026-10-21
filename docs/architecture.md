@@ -2,6 +2,8 @@
 
 Single modular monolith: one Django deployable app, Django apps under `apps/`, business logic in `services.py` per app, thin views. Money is `Decimal` INR with 2 decimals, never `float`. Timezone `Asia/Kolkata`, `USE_TZ = True`, locale `en-IN` are Django settings, not shop settings.
 
+**Status:** Phase 1 is the scaffold only: custom user model, health endpoint, settings split, Docker Compose stack, CI, pre-commit, and empty app shells. The data-model, integrity and India-specific sections below describe the target design; those models do not exist yet.
+
 ## 0. Initial configuration values
 
 Seed values stored in the database, not hardcoded in logic.
@@ -161,7 +163,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - Docker + docker-compose for local dev: web, postgres 16, redis, celery worker, celery beat.
 - Environment config via `django-environ`; secrets from environment only; `.env.example` with placeholders; `.env` in `.gitignore`.
 - Tooling: `uv` + `uv.lock`, pin all dependencies; `ruff` (lint + format); `mypy` with `django-stubs`; `pytest` + `pytest-django`; `factory_boy`; pre-commit hooks.
-- CI: GitHub Actions for lint, type check, tests, secret scan on every push.
+- CI: GitHub Actions workflow `.github/workflows/ci.yml`, run on push to `main` and on pull requests. One job, `checks`, on `ubuntu-24.04` with a Postgres 16 service container. Steps: `uv sync --locked`, `ruff check`, `ruff format --check`, `mypy`, `pytest`. Secret scanning (gitleaks) runs in pre-commit. Job env is defined in ci.yml.
 - Deployment target: single VPS or managed container service in India region (DigitalOcean Bangalore / AWS Mumbai / Azure Central India) with Gunicorn + Nginx, managed PostgreSQL with daily backups, HTTPS via Let's Encrypt, Sentry, uptime monitoring.
 - Security: OWASP Top 10 patterns, CSRF, XSS-safe templates, secure session cookies, HTTPS-only, HSTS, security headers, CSP. Parameterised queries via the ORM. Rate-limit login/OTP/checkout/search. Never log secrets, OTPs, or full payment data. Encrypt sensitive config; rotate keys. Validate uploads (type, size) and CSV imports.
 - Search: start with PostgreSQL full-text + trigram similarity behind an interface; semantic/embedding search later.
