@@ -141,4 +141,3 @@ Settings are selected with `DJANGO_SETTINGS_MODULE`:
 ## Phases
 
 See `docs/architecture.md` and `docs/decisions.md` for the overall design and decisions.
-
