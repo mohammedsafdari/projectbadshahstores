@@ -1,8 +1,10 @@
 """Test factories for catalog models (factory_boy)."""
 
+from decimal import Decimal
+
 import factory
 
-from apps.catalog.models import Brand, Category
+from apps.catalog.models import Brand, Category, Product, ProductVariant
 
 
 class BrandFactory(factory.django.DjangoModelFactory):
@@ -22,3 +24,29 @@ class CategoryFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Category {n}")
     slug = factory.Sequence(lambda n: f"category-{n}")
     parent = None
+
+
+class ProductFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Product
+
+    name_en = factory.Sequence(lambda n: f"Product {n}")
+    slug = factory.Sequence(lambda n: f"product-{n}")
+    # SubFactory creates a related Brand / Category automatically.
+    brand = factory.SubFactory(BrandFactory)
+    category = factory.SubFactory(CategoryFactory)
+
+
+class ProductVariantFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ProductVariant
+
+    product = factory.SubFactory(ProductFactory)
+    sku_code = factory.Sequence(lambda n: f"SKU-{n:05d}")
+    barcode = None
+    unit = ProductVariant.Unit.KG
+    pack_size = Decimal("1.000")
+    hsn_code = "1101"
+    gst_rate_percent = Decimal("5.00")
+    mrp = Decimal("100.00")
+    selling_price = Decimal("95.00")
