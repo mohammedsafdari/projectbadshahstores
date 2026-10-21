@@ -2,7 +2,7 @@
 
 Single modular monolith: one Django deployable app, Django apps under `apps/`, business logic in `services.py` per app, thin views. Money is `Decimal` INR with 2 decimals, never `float`. Timezone `Asia/Kolkata`, `USE_TZ = True`, locale `en-IN` are Django settings, not shop settings.
 
-**Status:** Phase 1 is the scaffold only: custom user model, health endpoint, settings split, Docker Compose stack, CI, pre-commit, and empty app shells. The data-model, integrity and India-specific sections below describe the target design; those models do not exist yet.
+**Status:** Phase 1 (scaffold) is done and Phase 2 (catalogue and inventory) is in progress. The data-model, integrity and India-specific sections below describe the target design. What is actually built right now, and what comes next, is tracked in `docs/STATUS.md`.
 
 ## 0. Initial configuration values
 
@@ -49,6 +49,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 
 ### Inventory
 
+- Open design points (how current stock is derived, batch and expiry tracking, supplier, low-stock threshold) are listed in `docs/STATUS.md` under "Decide before Slice 15" and become an ADR once decided.
 - Quantities are whole-number integers for now. No loose or weight-based items yet; revisit if you sell items by weight.
 - No guest checkout in the MVP: OTP login is required at checkout.
 - `InventoryMovement` (immutable ledger): types `PURCHASE_RECEIVED, IN_STORE_SALE, SALE, RETURN, DAMAGE, ADJUSTMENT`. No `TRANSFER`.
@@ -125,7 +126,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - Payments: Razorpay, test mode only until told otherwise.
 - OTP/SMS/WhatsApp: MSG91 behind abstraction; console backend in development; real integration later after DLT registration.
 - Email: Brevo, console backend in development until real credentials.
-- Shipping (Phase 2, own-brand pan-India): abstraction ready for Shiprocket or Delhivery; not built in MVP.
+- Shipping (later business phase, own-brand pan-India): abstraction ready for Shiprocket or Delhivery; not built in MVP.
 
 ## 4. Inventory and order integrity rules (REVIEW CAREFULLY)
 
@@ -140,7 +141,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 ## 5. India-specific handling
 
 - GST: HSN code and GST rate per variant, editable data, never hardcoded. Default own-brand packaged-food GST `5%` until confirmed by CA. Compute and display GST-inclusive prices (MRP is inclusive in India).
-- Invoicing: GSTIN and HSN on invoice; CGST/SGST split for intra-state Madhya Pradesh sales; IGST for inter-state (Phase 2). Support for inter-state is wired as a capability, not necessarily used in Phase 1.
+- Invoicing: GSTIN and HSN on invoice; CGST/SGST split for intra-state Madhya Pradesh sales; IGST for inter-state (later business phase, Phase 8 in the build plan). Support for inter-state is wired as a capability, not necessarily used in Phase 1.
 - Legal Metrology: own-brand variant fields (net quantity, MRP, manufacturer details, best before) shown on product pages.
 - FSSAI: licence number in footer and on own-brand product pages; expiry tracked.
 - Consumer Protection (E-Commerce) Rules, 2020: seller details, grievance officer contact, transparent pricing, refund/cancellation policy, no hidden charges.
