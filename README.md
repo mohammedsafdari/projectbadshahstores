@@ -70,9 +70,18 @@ Example commands:
 ```bash
 uv run ruff format .
 uv run ruff check .
-uv run mypy badshahstore
+uv run ruff format --check .
+uv run mypy .
 uv run pytest
 ```
+
+### Pre-commit
+
+```bash
+uv run pre-commit install
+```
+
+The hooks run ruff checks and formatting, mypy, gitleaks, and basic file hygiene checks (trailing whitespace, end-of-file fixer, YAML/TOML/merge-conflict checks, and large-file checks).
 
 ## Docker
 
