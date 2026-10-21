@@ -161,3 +161,35 @@ Short records of why each key decision was made. Where a decision overrides PROJ
 
 - **Decision:** Recommended, not built in Phase 1: add 2FA for staff/admin accounts before launch.
 - **Why:** Admin access controls stock, orders, refunds, and payments; stronger staff authentication reduces risk before go-live. Deferred to keep Phase 1 scoped, but flagged here so it is not forgotten.
+
+## D33. Ruff rule exceptions
+
+- **Decision:** Ruff is configured to ignore a small number of rules where the warning conflicts with Django conventions, settings layout, or intentional test data.
+- **Why:** We want ruff/mypy coverage without forcing fake annotations or changes that fight Django's normal idioms. The exceptions are narrow and documented so they do not quietly widen.
+
+### Global ignores
+
+- `RUF012` is ignored globally.
+- **Reason:** It flags mutable class attributes without `ClassVar`. That is normal Django usage for things like `Meta`, admin options, and migration class attributes, and annotating each one with `ClassVar` adds noise without real safety.
+
+### Per-file ignores
+
+- `S105` and `S106` are ignored in test code only (`tests/**/*.py` and `**/tests/*.py`).
+- **Reason:** Test code intentionally contains hard-coded passwords, tokens, and fake secret-like strings. Treating those as real secret detections would produce constant noise without security value.
+- `F405` is ignored in settings modules only (`badshahstore/settings/*.py`).
+- **Reason:** Settings modules use `from .base import *` by design, so names are brought in through the star import rather than being referenced as attributed imports.
+
+### Targeted suppression
+
+- `DJ001` is suppressed with `# noqa: DJ001` on `User.email` only.
+- **Reason:** The field is `models.EmailField("email address", null=True, blank=True)` with no `unique=True` and no `UniqueConstraint` that includes `email` in `User.Meta`. Email is optional because login uses phone (`USERNAME_FIELD = "phone"`), not email.
+
+## D34. Pre-commit runs ruff and mypy through `uv run`
+
+- **Decision:** `.pre-commit-config.yaml` uses `repo: local` hooks with `entry: uv run ruff check ...`, `uv run ruff format ...`, and `uv run mypy .` rather than installing duplicates of those tools into the pre-commit environment.
+- **Why:** This keeps pre-commit using the exact versions and dependencies locked in `uv.lock`, so local hook runs match the versions used by developers and CI. It also avoids maintaining a second pinned copy of ruff/mypy inside `.pre-commit-config.yaml`.
+
+## D35. Pre-commit passes `--force-exclude` to ruff
+
+- **Decision:** The ruff pre-commit hooks use `ruff check --fix --force-exclude` and `ruff format --force-exclude`.
+- **Why:** Pre-commit typically passes changed filenames explicitly, which can override ruff's normal exclude handling. `--force-exclude` makes ruff respect the excludes in `pyproject.toml` even when filenames are supplied directly, so generated code matching `apps/*/migrations` stays excluded in both pre-commit and direct `uv run` runs.
