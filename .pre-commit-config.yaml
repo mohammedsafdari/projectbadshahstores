@@ -1,3 +1,4 @@
+exclude: ^static/vendor/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -20,13 +21,13 @@ repos:
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: uv run ruff check --fix
+        entry: uv run ruff check --fix --force-exclude
         language: system
         types:
           - python
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format
+        entry: uv run ruff format --force-exclude
         language: system
         types:
           - python
