@@ -17,3 +17,27 @@ class Brand(TimeStampedModel, ArchivableModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+class Category(TimeStampedModel, ArchivableModel):
+    """A product category. Categories form a tree through ``parent``."""
+
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=140, unique=True, allow_unicode=True)
+    # "self" means this model points at its own table. A top-level category
+    # has no parent (null=True for the database, blank=True for forms).
+    # PROTECT: a category that still has children cannot be deleted.
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="children",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "categories"
+
+    def __str__(self) -> str:
+        return self.name
