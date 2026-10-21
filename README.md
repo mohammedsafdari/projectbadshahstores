@@ -8,7 +8,7 @@ This repository is a modular monolith. Business logic lives in per-app `services
 
 ## Repo status
 
-This branch is the Phase 1 scaffold only: settings split, empty app shells, custom user model, health endpoint, Docker, linting/typing/testing tooling, and CI. No business models beyond the custom user yet.
+Phase 1 (scaffold) is complete and Phase 2 (catalogue and inventory) is in progress. For what is built right now and what comes next, see `docs/STATUS.md`.
 
 ## Python version
 
@@ -153,6 +153,39 @@ Settings are selected with `DJANGO_SETTINGS_MODULE`:
 - prod: `badshahstore.settings.prod`
 - test: `badshahstore.settings.test`
 
-## Phases
+## Working in Docker
 
-See `docs/architecture.md` and `docs/decisions.md` for the overall design and decisions.
+The code runs inside the `web` container, so these are the everyday commands (Command Prompt):
+
+```cmd
+REM Apply migrations (docker compose up does NOT run them)
+docker compose exec web python manage.py migrate
+
+REM Create a migration after changing models
+docker compose exec web python manage.py makemigrations <app> --name <short_name>
+
+REM Run all tests, or one app's tests
+docker compose exec web python -m pytest -q
+docker compose exec web python -m pytest apps/catalog -q
+
+REM Django system check
+docker compose exec web python manage.py check
+```
+
+The Django admin is at `http://127.0.0.1:8000/admin/`. Log in with the phone number of your superuser.
+
+## Commits
+
+Every commit message starts with the slice id, for example `Slice 14a: Add ProductImage model`. Commit in small steps after `git status` and `git diff --stat`.
+
+## Documentation
+
+- `docs/STATUS.md`: what is built, what is next, known gaps. Start here.
+- `docs/architecture.md`: the target design.
+- `docs/decisions.md`: why each key decision was made.
+- `docs/open_questions.md`: business questions still waiting for an answer.
+- `PROJECT_INSTRUCTIONS.md`: the original brief and the build plan (Phases 0 to 8).
+
+## Troubleshooting
+
+- On Windows, `git push` failing with "Could not resolve host" or "Failed to connect": run `git config --global http.sslBackend schannel`.
