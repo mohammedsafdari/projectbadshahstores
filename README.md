@@ -138,6 +138,12 @@ REM Create a superuser
 uv run python manage.py createsuperuser
 ```
 
+### Using more than one clone of this repo
+
+The Compose file gives the containers fixed names (`badshahstore-db`, `badshahstore-redis`, `badshahstore-web`, `badshahstore-worker`, `badshahstore-beat`), and the Postgres data volume is shared between clones. A second clone therefore reuses the first clone's database, and two clones cannot run at the same time.
+
+Before testing a fresh clone, run `docker compose down` in the other clone's folder first. Add `--volumes` only if you want to delete the local database.
+
 ## Environment and secrets
 
 `.env` is in `.gitignore`. `.env.example` contains placeholders only. Never commit real secrets.
