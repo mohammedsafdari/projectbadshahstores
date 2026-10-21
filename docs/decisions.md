@@ -193,3 +193,8 @@ Short records of why each key decision was made. Where a decision overrides PROJ
 
 - **Decision:** The ruff pre-commit hooks use `ruff check --fix --force-exclude` and `ruff format --force-exclude`.
 - **Why:** Pre-commit typically passes changed filenames explicitly, which can override ruff's normal exclude handling. `--force-exclude` makes ruff respect the excludes in `pyproject.toml` even when filenames are supplied directly, so generated code matching `apps/*/migrations` stays excluded in both pre-commit and direct `uv run` runs.
+
+## D36. Proxy HTTPS trust is controlled only by SECURE_PROXY_SSL_HEADER
+
+- **Decision:** `SECURE_PROXY_SSL_HEADER` is the only setting that makes Django trust a proxy's HTTPS header, and the settings read it from the environment only when it is explicitly set. The `USE_X_FORWARDED_PROTO` variable was removed from `badshahstore/settings/base.py`, `badshahstore/settings/prod.py` and `.env.example`. `USE_X_FORWARDED_HOST` is unchanged.
+- **Why:** `USE_X_FORWARDED_PROTO` is not a Django setting, so it had no effect, but its name suggested protection that did not exist. A setting that looks like a security control and does nothing gives false assurance. `SECURE_PROXY_SSL_HEADER` should be set only behind a reverse proxy that terminates HTTPS and overwrites that header, because otherwise a client could fake it.
