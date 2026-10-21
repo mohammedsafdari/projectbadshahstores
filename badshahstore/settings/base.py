@@ -38,7 +38,6 @@ env = environ.Env(
     SESSION_COOKIE_SECURE=(bool, True),
     CSRF_COOKIE_SECURE=(bool, True),
     USE_X_FORWARDED_HOST=(bool, False),
-    USE_X_FORWARDED_PROTO=(bool, False),
     SECURE_PROXY_SSL_HEADER=(tuple, ()),
 )
 
@@ -189,7 +188,6 @@ CSRF_COOKIE_SECURE = env("CSRF_COOKIE_SECURE", default=True)
 if env("SECURE_PROXY_SSL_HEADER", default=()):
     SECURE_PROXY_SSL_HEADER = env("SECURE_PROXY_SSL_HEADER")
     USE_X_FORWARDED_HOST = env("USE_X_FORWARDED_HOST", default=True)
-    USE_X_FORWARDED_PROTO = env("USE_X_FORWARDED_PROTO", default=True)
 
 
 # ---------------------------------------------------------------------------
