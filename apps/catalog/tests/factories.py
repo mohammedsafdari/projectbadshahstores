@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import factory
 
-from apps.catalog.models import Brand, Category, Product, ProductVariant
+from apps.catalog.models import Brand, Category, Product, ProductImage, ProductVariant
 
 
 class BrandFactory(factory.django.DjangoModelFactory):
@@ -50,3 +50,14 @@ class ProductVariantFactory(factory.django.DjangoModelFactory):
     gst_rate_percent = Decimal("5.00")
     mrp = Decimal("100.00")
     selling_price = Decimal("95.00")
+
+
+class ProductImageFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ProductImage
+
+    product = factory.SubFactory(ProductFactory)
+    # factory.django.ImageField builds a tiny real image for tests.
+    image = factory.django.ImageField(height=20, width=20)
+    alt_text = ""
+    sort_order = 0

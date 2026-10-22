@@ -1,11 +1,30 @@
 """Catalog app models: brands, categories, products."""
 
+import uuid
 from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 
+from apps.catalog.validators import (
+    validate_image_content,
+    validate_image_extension,
+    validate_image_size,
+)
 from apps.core.models import ArchivableModel, TimeStampedModel
+
+
+def product_image_upload_path(instance, filename):
+    """Return products/<product_id>/<random>.<ext> for the uploaded image.
+
+    Using a random uuid avoids filename clashes and odd characters (such as
+    Hindi text or spaces) from the original filename, and removes any path
+    information an attacker might try to supply. The original name is not
+    kept because only the extension matters for serving the file correctly.
+    """
+    _, ext = filename.rsplit(".", 1)
+    ext = "." + ext.lower()
+    return f"products/{instance.product_id}/{uuid.uuid4().hex}{ext}"
 
 
 class Brand(TimeStampedModel, ArchivableModel):
@@ -169,3 +188,37 @@ class ProductVariant(TimeStampedModel, ArchivableModel):
 
     def __str__(self) -> str:
         return self.sku_code
+
+
+class ProductImage(TimeStampedModel):
+    """A photo of a product. One product can have several photos."""
+
+    product = models.ForeignKey(
+        "catalog.Product",
+        on_delete=models.CASCADE,
+        related_name="images",
+    )
+    # upload_to is a module-level function so migrations can refer to it.
+    image = models.ImageField(
+        max_length=255,
+        upload_to=product_image_upload_path,
+        validators=[validate_image_extension, validate_image_size, validate_image_content],
+        width_field="width",
+        height_field="height",
+    )
+    # Filled in automatically by Django when an ImageField is saved.
+    # They exist so the storefront can reserve space and avoid layout shift.
+    width = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    height = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    alt_text = models.CharField(max_length=200, blank=True)
+    # The lowest sort_order is the main image; ties are broken by id.
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product.name_en} photo {self.sort_order + 1}"
