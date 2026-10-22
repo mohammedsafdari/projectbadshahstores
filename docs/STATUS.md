@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 13i (documentation sync). Next slice: 14 (ProductImage and media storage).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 14 (ProductImage and media storage). Next slice: 15 (inventory models).
 
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
@@ -13,6 +13,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 - Accounts: custom user model, login by phone (Phase 1).
 - Core: abstract `TimeStampedModel` and `ArchivableModel` (Slice 12).
 - Catalog: `Brand`, `Category` (a tree through `parent`), `Product` and `ProductVariant`, with admin (variants editable on the product page), factories and tests (Slices 12 and 13). Pricing helpers in `apps/catalog/services.py` (Slice 13c).
+- Catalog images: `ProductImage` (several photos per product, validated uploads, local media storage in dev) and an admin inline with a thumbnail (Slice 14, D41).
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -25,10 +26,12 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 13 | `Product` and `ProductVariant` with database check constraints; admin with variant inline; pricing helpers; tests (D39, D40). |
 | 13d | `docs/open_questions.md` updated with Phase 2 items. |
 | 13e to 13i | Documentation sync: this file, ADRs D37 to D40, architecture, README, new open questions. |
+| 14a to 14d | Pillow dependency and dev media URL; upload validators; `ProductImage` model, factory and tests; admin inline with thumbnail; Dockerfile makes media and staticfiles writable (D41). |
+| 14e | Documentation sync: ADR D41, open questions, architecture, this file, agent brief. |
 
 ## Remaining Phase 2 slices
 
-14. ProductImage and media storage (local in dev; validate upload type and size).
+14. (done) ProductImage and media storage.
 15. Inventory models (InventoryMovement ledger, optional Supplier). See "Decide before Slice 15".
 16. Inventory services (receive_stock, adjust_stock, select_for_update, concurrency tests, integrity-check command). REVIEW CAREFULLY.
 17. AuditLog in core (price and stock changes). REVIEW CAREFULLY.
@@ -48,7 +51,7 @@ StockReservation stays in Phase 3.
 
 ## Decide before Slice 15
 
-Claude proposes, the owner confirms; record the outcome as ADR D41.
+Claude proposes, the owner confirms; record the outcome as ADR D42 (D41 is the Slice 14 images decision).
 
 1. Current stock: derive it as the sum of movements (what `docs/architecture.md` says) instead of a cached StockLevel table. Add a cache later only if it is slow.
 2. Batch and expiry: optional batch number and expiry date on received stock only; no first-expiry-first-out logic (the brief asks for expiry and batch tracking).
@@ -60,11 +63,13 @@ Claude proposes, the owner confirms; record the outcome as ADR D41.
 - Category tree cycles are not prevented (nothing stops A to B to A). Add validation before Slice 23.
 - `Invoice` and `Address` models are in the brief but not yet in the data model of `docs/architecture.md`; design them before Phase 3 (addresses) and Phase 5 (invoices).
 - Rounding rules and HSN format are defaults awaiting the CA (see `docs/open_questions.md`); they must be confirmed before invoices are issued (Phase 5).
+- Photo files are not deleted from disk when an image row or product is deleted; add a clean-up job before production (see `docs/open_questions.md`).
+- Only original photos are stored; resized and WebP versions come with the storefront slices (23 and 25) or Phase 6.
 
 ## How we work
 
 - The agent (Freebuff) never touches `.env` and never runs commands. Every prompt ends with a STOP line, and the agent shows the diff and stops.
-- A prompt may create up to 3 new files (full text given) or make exact-match edits to existing files. Each OLD text must appear exactly once, or the agent changes nothing.
+- Each prompt states a goal, the files to read first and the rules. The agent does the coding and starts by reading `docs/AGENT_BRIEF.md`. Existing files change by small exact-match edits (each OLD text must appear exactly once, or nothing changes); new files may be written in full. Keep each prompt small: one long multi-step prompt once stalled in a retry loop.
 - The agent edits settings or `pyproject.toml` only if the prompt names them. After any `pyproject.toml` edit, run the TOML check.
 - Check the real `git diff` and `--stat`, not the agent's pasted diff. Commit in small steps after `git status` and `git diff --stat`.
 - Every commit message starts with the slice id, for example `Slice 14a: Add ProductImage model`.
@@ -86,6 +91,11 @@ Everyday commands (they run inside the container):
 - Rewriting a long file in one prompt corrupted it once; use exact-match edits.
 - On this Windows PC `git push` needed `git config --global http.sslBackend schannel`.
 - Pre-commit may reformat files; run `git add -u` and commit again.
+- The agent sometimes reports edits that never reached disk. Check `git status` and `git diff` before anything else.
+- Django string model references are `"app_label.ModelName"`. Validators and `upload_to` take the function itself, not a quoted dotted path.
+- After adding a dependency: refresh the lock file (`docker compose run --rm --no-deps web uv lock`), rebuild, then recreate containers with `--renew-anon-volumes`, otherwise the old `/opt/venv` volume hides the new package.
+- Uploaded media lives in the `/app/media` Docker volume, not in the project's `media\` folder, and `--renew-anon-volumes` deletes it (dev data only). The Dockerfile creates `/app/media` and `/app/staticfiles` owned by the `app` user; without that, uploads failed with PermissionError.
+- Verify docs work as well: ADRs D37 to D40 were once listed here without being written to `docs/decisions.md`.
 
 ## Slice closeout checklist
 

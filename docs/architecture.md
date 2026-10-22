@@ -45,7 +45,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - `Category`: self-referential parent FK for hierarchy.
 - `Product`: `is_own_brand` flag only on Product; `name_en`, `name_hi`; veg/non-veg; search keywords; no per-product FSSAI fields.
 - `ProductVariant`: `sku_code` (internal, unique) separate from `barcode` (nullable); unit choices `KG / G / ML / L / PIECE / PACKET`; HSN code; editable `gst_rate_percent`; `mrp`; `selling_price`; `cost_price`; own-brand label fields on the variant: net quantity, best-before label, ingredients, allergens, shelf life, manufacturer details.
-- `ProductImage` on Product.
+- `ProductImage` on Product (not on variant): `image`, `alt_text`, `sort_order` (lowest is the main image), automatic `width` and `height`. Files are stored at `products/<product_id>/<random>.<ext>`; see D41.
 
 ### Inventory
 

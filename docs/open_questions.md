@@ -34,6 +34,11 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Product/variant seed data: categories, brands, own-brand products at launch — owner/phase-2 data entry
 - [ ] Own-brand products: which products are own-brand, and are they FSSAI-licensed — owner/CA
 - [ ] Per-variant HSN/GST rate values — entered at data entry; confirm mapping with CA — CA/owner
+- [ ] Can we use manufacturer or brand photos for third-party products, or must we shoot our own? — owner (brand permission, copyright); needed before Slice 22 (seed data) and launch; default in use: the owner uploads their own photos
+- [ ] Who takes the own-brand product photos, and should every product have a label photo (net quantity, MRP, FSSAI number) for Legal Metrology? — owner/CA; needed before launch; default in use: no label photo required
+- [ ] Is a 2 MB limit, 8000 px longest side and JPG/PNG/WebP enough for the staff's phone cameras, and how many photos per product? — owner; needed before Slice 22; default in use: those limits, constants in `apps/catalog/validators.py`
+- [ ] Photo files are not deleted from disk when an image row or a product is deleted — developer; a clean-up job is needed before production; default in use: files are left in place
+- [ ] When to add resized and WebP versions of photos — developer; planned for the storefront slices (23 and 25) or Phase 6; default in use: originals only
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

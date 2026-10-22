@@ -32,6 +32,10 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 - Django string model references are `"app_label.ModelName"` (for example `"catalog.Product"`), never `"apps.catalog.Product"`. If the class is defined earlier in the same file, pass the class itself.
 - Validators, `upload_to`, `default=` and similar arguments take the function/object itself, not a quoted dotted-path string. (Only migrations serialise them as paths; do not write that by hand.)
 - You cannot run Django, so re-read your own code for these mistakes before you finish: every name used is imported or defined, every import is used, string references are well formed, names match across files.
+- When a Python string contains double quotes, wrap it in single quotes, for example `format_html('<img src="{}">', url)`. Never leave a half-finished edit such as an `if` without a body: one SyntaxError stops all of Django.
+- Admin inlines are built as `MyInline(ParentModel, admin.site)`. Tests must not pass `model=`.
+- Do not unpack values you never use (ruff RUF059) and do not leave unused imports.
+- If an edit or write is rejected, re-read the file and change your approach. Never send the same rejected edit twice. After two failed attempts on one step, stop and report exactly what failed.
 
 ## How to finish (every prompt)
 1. Re-open every file you created or changed from disk and check it contains what you intended. Earlier reports from agents were wrong, so verify.
