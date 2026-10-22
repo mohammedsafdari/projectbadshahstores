@@ -8,6 +8,8 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "django-environ>=0.11,<2",
     "celery[redis]>=5.4,<6",
+    # Pillow is required by Django's ImageField (ProductImage, Slice 14).
+    "Pillow>=11.0,<13",
 ]
 
 [dependency-groups]
