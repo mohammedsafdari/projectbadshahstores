@@ -2,6 +2,7 @@
 
 import uuid
 from decimal import Decimal
+from pathlib import Path
 
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
@@ -14,16 +15,18 @@ from apps.catalog.validators import (
 from apps.core.models import ArchivableModel, TimeStampedModel
 
 
-def product_image_upload_path(instance, filename):
+def product_image_upload_path(instance: "ProductImage", filename: str) -> str:
     """Return products/<product_id>/<random>.<ext> for the uploaded image.
 
     Using a random uuid avoids filename clashes and odd characters (such as
     Hindi text or spaces) from the original filename, and removes any path
     information an attacker might try to supply. The original name is not
     kept because only the extension matters for serving the file correctly.
+
+    Path(...).suffix returns the extension including the leading dot, lowercased
+    here, and returns an empty string when the filename has no dot.
     """
-    _, ext = filename.rsplit(".", 1)
-    ext = "." + ext.lower()
+    ext = Path(filename).suffix.lower()
     return f"products/{instance.product_id}/{uuid.uuid4().hex}{ext}"
 
 
