@@ -54,7 +54,7 @@ RUN uv sync --frozen --no-install-project \
 # Non-root runtime
 # ---------------------------------------------------------------------------
 RUN useradd --system --create-home --home-dir /home/app app && \
-    mkdir -p /app && \
+    mkdir -p /app /app/media /app/staticfiles && \
     chown -R app:app /app
 
 USER app
