@@ -37,7 +37,20 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 - Do not unpack values you never use (ruff RUF059) and do not leave unused imports.
 - If an edit or write is rejected, re-read the file and change your approach. Never send the same rejected edit twice. After two failed attempts on one step, stop and report exactly what failed.
 
+## Test-writing and layout rules
+- `SomeFactory(...)` already creates and saves the row. Never call `.save()` on its result again. `SomeFactory.build(...)` makes an unsaved object, sub-objects included, so pass already-saved parents in; a `.save()` after `.build(...)` is a real insert.
+- One `pytest.raises(IntegrityError)` per test function: the database transaction is unusable after the first error.
+- Name the exact exception in `pytest.raises(...)`. Never use `pytest.raises(Exception)` (ruff B017). If you call something only for its side effect, do not assign the result to a variable (ruff F841).
+- Keep every line, including long `help_text` and test names, at 100 characters or fewer (ruff E501). Split long strings into adjacent string literals.
+- Compare values as their real types: dates as `datetime.date`, money and quantities as `Decimal`, never as strings.
+- Do not guess how Django, pytest or factory_boy behave. Known fact: `full_clean()` reports a violated CheckConstraint under the key `"__all__"`. If you are unsure, assert something you are sure of and list the doubt under "Assumptions I could not verify" in your final message.
+- If your change alters how an existing model behaves (a `save()` or `delete()` override, a new constraint, a custom manager), search the tests of every app for code that uses that model, list the affected tests in your final message, and fix the ones the change breaks if the prompt allows it. If the prompt does not allow it, say so under "anything you could not do".
+- Inside a model class the order is: fields, custom manager, `Meta`, `__str__`, `save`, then other methods (ruff DJ012).
+- When you override a Django or QuerySet method, copy the parent's exact argument types and return type from django-stubs (mypy rejects anything narrower).
+- Put helper classes such as managers and querysets at module level, above the model, not nested inside a model class, unless the prompt says otherwise.
+- Put each comment directly above the code it explains.
+
 ## How to finish (every prompt)
 1. Re-open every file you created or changed from disk and check it contains what you intended. Earlier reports from agents were wrong, so verify.
-2. Final message, in this order: (a) list of files created/changed with real line counts, (b) a `git diff`-style summary of the changes to existing files, (c) "Decisions I made" (bullets), (d) "Open questions" (bullets, may be empty), (e) anything you could not do.
+2. Final message, in this order: (a) list of files created/changed with real line counts, (b) a `git diff`-style summary of the changes to existing files, (c) "Decisions I made" (bullets), (d) "Open questions" (bullets, may be empty), (e) anything you could not do, (f) "Assumptions I could not verify" (bullets, may be empty): every Django, pytest or factory_boy behaviour you relied on without being sure of it.
 3. Then write `STOP` and do nothing else. Do not start the next slice.
