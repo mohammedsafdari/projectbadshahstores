@@ -22,7 +22,7 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 
 ## Hard rules
 - Never read, edit or print `.env`.
-- Never run commands (no shell, no `manage.py`, no `pytest`, no `git`). The owner runs them. Because of this you must NOT write migration files by hand; the owner generates them with `makemigrations`.
+- Never run commands, except the checks listed under "Checks you may run" below. Never run `git`, `manage.py`, `makemigrations`, `migrate`, or anything else. Never write migration files by hand; the owner generates them with `makemigrations`.
 - Edit `badshahstore/settings/*` or `pyproject.toml` only if the prompt names that file.
 - Touch only the files the prompt names or clearly needs. No drive-by refactors, no renames, no formatting-only changes to other files.
 - Do not invent business rules. If something is undecided, choose the simplest default, and list it under "Open questions" in your final message so Claude can add it to `docs/open_questions.md`.
@@ -30,8 +30,8 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 
 ## Common mistakes to avoid
 - Django string model references are `"app_label.ModelName"` (for example `"catalog.Product"`), never `"apps.catalog.Product"`. If the class is defined earlier in the same file, pass the class itself.
-- Validators, `upload_to`, `default=` and similar arguments take the function/object itself, not a quoted dotted-path string. (Only migrations serialise them as paths; do not write that by hand.)
-- You cannot run Django, so re-read your own code for these mistakes before you finish: every name used is imported or defined, every import is used, string references are well formed, names match across files.
+- Validators, `upload_to`, `default=` and similar arguments take the function/object itself, not a quoted dotted-path string. (Only migrations serialise them as paths; do not write that by hand.)- You cannot run Django yourself, so re-read your own code for these mistakes before you run the checks and before you finish:
+ every name used is imported or defined, every import is used, string references are well formed, names match across files.
 - When a Python string contains double quotes, wrap it in single quotes, for example `format_html('<img src="{}">', url)`. Never leave a half-finished edit such as an `if` without a body: one SyntaxError stops all of Django.
 - Admin inlines are built as `MyInline(ParentModel, admin.site)`. Tests must not pass `model=`.
 - Do not unpack values you never use (ruff RUF059) and do not leave unused imports.
@@ -50,7 +50,21 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 - Put helper classes such as managers and querysets at module level, above the model, not nested inside a model class, unless the prompt says otherwise.
 - Put each comment directly above the code it explains.
 
+## Checks you may run
+Run these only when the prompt does not say "no checks", only AFTER all edits are done and re-read, and only in this order:
+1. `uv run ruff check .` (read-only: never add `--fix`)
+2. `uv run ruff format --check .` (read-only: never run `ruff format` without `--check`)
+3. `uv run mypy .`
+4. `docker compose exec web python -m pytest -q` (only when the prompt changed tests or code that tests cover; the containers are already running, so never start, stop or rebuild them)
+Rules for the checks:
+- Each command at most twice in total. If a command is not found or cannot run, say so and continue without it.
+- Fix a failure only in the files the prompt named. If a failure points to any other file (a model, a migration, settings, or a test the prompt did not name), do not touch it: stop and report it.
+- After a failed check you may make ONE fix attempt and re-run that command once. If it still fails, stop and report. No retry loops.
+- Never run any other command, and never run commands after you have written your final message.
+- Do not edit `.env`, and do not change a check's configuration to make it pass.
+
 ## How to finish (every prompt)
 1. Re-open every file you created or changed from disk and check it contains what you intended. Earlier reports from agents were wrong, so verify.
 2. Final message, in this order: (a) list of files created/changed with real line counts, (b) a `git diff`-style summary of the changes to existing files, (c) "Decisions I made" (bullets), (d) "Open questions" (bullets, may be empty), (e) anything you could not do, (f) "Assumptions I could not verify" (bullets, may be empty): every Django, pytest or factory_boy behaviour you relied on without being sure of it.
+(g) "Checks run": for each command you ran, the command and its output pasted unedited (not summarised), or "not run".
 3. Then write `STOP` and do nothing else. Do not start the next slice.
