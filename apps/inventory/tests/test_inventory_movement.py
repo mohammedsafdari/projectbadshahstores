@@ -44,7 +44,6 @@ def test_valid_movement_pairs_save(
         reason="Reason for the adjustment",
     )
     movement.full_clean()
-    movement.save()
     movement.refresh_from_db()
     assert movement.quantity_change == quantity_change
 
@@ -101,7 +100,6 @@ def test_adjustment_with_reason_saves() -> None:
         quantity_change=Decimal("1"),
         reason="Reason for the adjustment",
     )
-    movement.save()
     movement.refresh_from_db()
     assert movement.quantity_change == Decimal("1")
 
@@ -143,7 +141,6 @@ def test_purchase_with_supplier_batch_and_expiry_saves() -> None:
         batch_number="Batch 1",
         expiry_date=datetime.date(2026, 12, 31),
     )
-    movement.save()
     movement.refresh_from_db()
     assert movement.supplier_id == supplier.id
     assert movement.batch_number == "Batch 1"
@@ -155,7 +152,6 @@ def test_loose_variant_movement_roundtrips() -> None:
         movement_type=InventoryMovement.MovementType.PURCHASE_RECEIVED,
         quantity_change=Decimal("0.350"),
     )
-    movement.save()
     movement.refresh_from_db()
     assert movement.quantity_change == Decimal("0.350")
 
@@ -180,7 +176,6 @@ def test_on_hand_is_the_sum() -> None:
         movement_type=InventoryMovement.MovementType.PURCHASE_RECEIVED,
         quantity_change=Decimal("25.000"),
     )
-    movement.save()
     movement2 = InventoryMovementFactory.build(
         variant=movement.variant,
         movement_type=InventoryMovement.MovementType.IN_STORE_SALE,
