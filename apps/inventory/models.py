@@ -31,6 +31,26 @@ class Supplier(TimeStampedModel, ArchivableModel):
         return self.name
 
 
+# QuerySet-level update/delete/bulk_update also skip save(), so they need
+# the same guard here.
+class InventoryMovementQuerySet(models.QuerySet["InventoryMovement"]):
+    def update(self, **kwargs: Any) -> int:
+        raise AppendOnlyError("Stock movements cannot be updated.")
+
+    def delete(self) -> tuple[int, dict[str, int]]:
+        raise AppendOnlyError("Stock movements cannot be deleted.")
+
+    # An override must keep the parent's exact argument and return
+    # types, or mypy rejects it.
+    def bulk_update(
+        self,
+        objs: Iterable["InventoryMovement"],
+        fields: Iterable[str],
+        batch_size: int | None = None,
+    ) -> int:
+        raise AppendOnlyError("Stock movements cannot be bulk-updated.")
+
+
 class InventoryMovement(models.Model):
     """One stock event. Rows are append-only; stock is the sum of them."""
 
@@ -77,30 +97,11 @@ class InventoryMovement(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    objects = InventoryMovementQuerySet.as_manager()
+
     # ``~Q(...)`` means NOT that expression. Inside ``Meta``, the nested
     # ``MovementType`` names are not visible, so the constraints below use the
     # plain stored strings instead.
-    # QuerySet-level update/delete/bulk_update also skip save(), so they need
-    # the same guard here.
-    class InventoryMovementQuerySet(models.QuerySet["InventoryMovement"]):
-        def update(self, **kwargs: Any) -> int:
-            raise AppendOnlyError("Stock movements cannot be updated.")
-
-        def delete(self) -> tuple[int, dict[str, int]]:
-            raise AppendOnlyError("Stock movements cannot be deleted.")
-
-        # An override must keep the parent's exact argument and return
-        # types, or mypy rejects it.
-        def bulk_update(
-            self,
-            objs: Iterable["InventoryMovement"],
-            fields: Iterable[str],
-            batch_size: int | None = None,
-        ) -> int:
-            raise AppendOnlyError("Stock movements cannot be bulk-updated.")
-
-    objects = InventoryMovementQuerySet.as_manager()
-
     class Meta:
         ordering = ["created_at", "id"]
         indexes = [
@@ -146,12 +147,12 @@ class InventoryMovement(models.Model):
             ),
         ]
 
-    # ``_state.adding`` is True until the row is first written to the
-    # database, so this only allows the initial create.
     def __str__(self) -> str:
         return f"{self.get_movement_type_display()} {self.quantity_change} {self.variant}"
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        # ``_state.adding`` is True until the row is first written to the
+        # database, so this only allows the initial create.
         if not self._state.adding:
             raise AppendOnlyError("Stock movements cannot be updated.")
         super().save(*args, **kwargs)
