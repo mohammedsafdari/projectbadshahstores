@@ -135,6 +135,26 @@ class ProductVariant(TimeStampedModel, ArchivableModel):
         decimal_places=3,
         validators=[MinValueValidator(Decimal("0.001"))],
     )
+    # Sold by weight or volume. With KG or L and pack_size 1, the selling
+    # price is per kg or per litre.
+    is_sold_loose = models.BooleanField(
+        default=False,
+        help_text=(
+            "Sold by weight or volume. Unit must be KG or L and pack size 1, "
+            "so the selling price is per kg or per litre."
+        ),
+    )
+    # Smallest amount a customer may add to the cart, in the variant's unit.
+    quantity_step = models.DecimalField(
+        max_digits=8,
+        decimal_places=3,
+        default=Decimal("1"),
+        validators=[MinValueValidator(Decimal("0.001"))],
+        help_text=(
+            "Smallest amount a customer may add to the cart, in the variant's "
+            "unit (for example 0.100 for 100 g). Packets keep 1."
+        ),
+    )
     # Verify the HSN format and codes with your CA.
     hsn_code = models.CharField(
         max_length=8,
@@ -166,6 +186,8 @@ class ProductVariant(TimeStampedModel, ArchivableModel):
     class Meta:
         ordering = ["sku_code"]
         # These rules are enforced by the database itself.
+        # ``Q(...)`` builds a single database expression. ``|`` means OR,
+        # ``&`` means AND, and ``__in`` matches any of the listed values.
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(mrp__gt=0),
@@ -186,6 +208,26 @@ class ProductVariant(TimeStampedModel, ArchivableModel):
             models.CheckConstraint(
                 condition=models.Q(gst_rate_percent__gte=0) & models.Q(gst_rate_percent__lte=100),
                 name="catalog_variant_gst_rate_0_to_100",
+            ),
+            # A step of zero would make ordering pointless.
+            models.CheckConstraint(
+                condition=models.Q(quantity_step__gt=0),
+                name="catalog_variant_quantity_step_positive",
+            ),
+            # Allowed step values: 1 for a packet, or anything for a loose item.
+            models.CheckConstraint(
+                condition=models.Q(is_sold_loose=True) | models.Q(quantity_step=1),
+                name="catalog_variant_packet_step_is_one",
+            ),
+            # Loose items must use KG or L (the litres/watt choice in the
+            # menu) and have a unit pack size of 1. Because ``ProductVariant``
+            # has not been fully defined when ``Meta`` is read, ``Unit.KG``
+            # and ``Unit.L`` are not available yet, so we use the stored
+            # string values "KG" and "L".
+            models.CheckConstraint(
+                condition=models.Q(is_sold_loose=False)
+                | (models.Q(unit__in=["KG", "L"]) & models.Q(pack_size=1)),
+                name="catalog_variant_loose_unit_and_pack_size",
             ),
         ]
 

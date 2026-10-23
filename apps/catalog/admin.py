@@ -61,6 +61,8 @@ class ProductVariantInline(admin.TabularInline):
         "barcode",
         "unit",
         "pack_size",
+        "is_sold_loose",
+        "quantity_step",
         "mrp",
         "selling_price",
         "hsn_code",
@@ -104,11 +106,12 @@ class ProductVariantAdmin(admin.ModelAdmin):
         "product",
         "unit",
         "pack_size",
+        "is_sold_loose",
         "mrp",
         "selling_price",
         "is_active",
     )
-    list_filter = ("is_active", "unit", "product__is_own_brand")
+    list_filter = ("is_active", "is_sold_loose", "unit", "product__is_own_brand")
     search_fields = ("sku_code", "barcode", "product__name_en", "product__name_hi")
     autocomplete_fields = ("product",)
     list_select_related = ("product",)
