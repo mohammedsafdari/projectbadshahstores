@@ -155,6 +155,20 @@ class ProductVariant(TimeStampedModel, ArchivableModel):
             "unit (for example 0.100 for 100 g). Packets keep 1."
         ),
     )
+    # Optional low-stock alert. null=True lets the database store "no value"
+    # (blank=True lets the admin form be left empty); the constraint keeps
+    # any set value non-negative.
+    low_stock_threshold = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text=(
+            "Alert when stock falls to this amount or below, in the variant's "
+            "unit. Leave blank for no alert."
+        ),
+    )
     # Verify the HSN format and codes with your CA.
     hsn_code = models.CharField(
         max_length=8,
@@ -219,15 +233,20 @@ class ProductVariant(TimeStampedModel, ArchivableModel):
                 condition=models.Q(is_sold_loose=True) | models.Q(quantity_step=1),
                 name="catalog_variant_packet_step_is_one",
             ),
-            # Loose items must use KG or L (the litres/watt choice in the
-            # menu) and have a unit pack size of 1. Because ``ProductVariant``
-            # has not been fully defined when ``Meta`` is read, ``Unit.KG``
-            # and ``Unit.L`` are not available yet, so we use the stored
-            # string values "KG" and "L".
+            # Loose items must use KG or L and have a pack size of 1. The
+            # ``Unit`` choices are not visible inside ``Meta`` (a nested class
+            # cannot see names from the class body around it), so this uses
+            # the stored values "KG" and "L".
             models.CheckConstraint(
                 condition=models.Q(is_sold_loose=False)
                 | (models.Q(unit__in=["KG", "L"]) & models.Q(pack_size=1)),
                 name="catalog_variant_loose_unit_and_pack_size",
+            ),
+            # A blank threshold means no alert; any set value must be >= 0.
+            models.CheckConstraint(
+                condition=models.Q(low_stock_threshold__isnull=True)
+                | models.Q(low_stock_threshold__gte=0),
+                name="catalog_variant_low_stock_threshold_non_negative",
             ),
         ]
 

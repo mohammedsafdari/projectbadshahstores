@@ -63,6 +63,7 @@ class ProductVariantInline(admin.TabularInline):
         "pack_size",
         "is_sold_loose",
         "quantity_step",
+        "low_stock_threshold",
         "mrp",
         "selling_price",
         "hsn_code",
