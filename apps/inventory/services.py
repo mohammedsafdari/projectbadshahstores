@@ -189,3 +189,114 @@ def receive_stock(
             expiry_date=expiry_date,
             created_by=created_by,
         )
+
+
+def adjust_stock(
+    *,
+    variant: ProductVariant,
+    quantity_change: object,
+    reason: str,
+    created_by: User | None = None,
+) -> InventoryMovement:
+    """Adjust on-hand by a signed amount, with reason (ADR D43, point 4)."""
+    with transaction.atomic():
+        locked = _lock_variant(variant)
+
+        change = _clean_quantity(quantity_change, variant=locked)
+        if change == 0:
+            raise InventoryError("An adjustment must change stock.")
+
+        reason = _clean_text(reason, name="Reason", max_length=REASON_MAX_LENGTH, required=True)
+
+        on_hand = _sum_on_hand(locked)
+        if on_hand + change < 0:
+            logger.warning(
+                "Adjusting variant pk=%s from %s to %s (below zero).",
+                locked.pk,
+                on_hand,
+                on_hand + change,
+            )
+
+        return _record_movement(
+            variant=locked,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+            quantity_change=change,
+            reason=reason,
+            supplier=None,
+            batch_number="",
+            expiry_date=None,
+            created_by=created_by,
+        )
+
+
+def record_damage(
+    *,
+    variant: ProductVariant,
+    quantity: object,
+    reason: str,
+    created_by: User | None = None,
+) -> InventoryMovement:
+    """Record damage as a negative movement (ADR D43, points 4 and 5)."""
+    with transaction.atomic():
+        locked = _lock_variant(variant)
+
+        qty = _clean_quantity(quantity, variant=locked)
+        if qty <= 0:
+            raise InventoryError("Damage must remove a positive amount of stock.")
+
+        reason = _clean_text(reason, name="Reason", max_length=REASON_MAX_LENGTH, required=True)
+
+        on_hand = _sum_on_hand(locked)
+        if qty > on_hand:
+            raise InsufficientStockError(f"Requested damage of {qty} exceeds on-hand {on_hand}.")
+        if on_hand < 0:
+            raise InsufficientStockError("Cannot record damage when on-hand is already negative.")
+
+        return _record_movement(
+            variant=locked,
+            movement_type=InventoryMovement.MovementType.DAMAGE,
+            quantity_change=-qty,
+            reason=reason,
+            supplier=None,
+            batch_number="",
+            expiry_date=None,
+            created_by=created_by,
+        )
+
+
+def count_stock(
+    *,
+    variant: ProductVariant,
+    counted_quantity: object,
+    reason: str,
+    created_by: User | None = None,
+) -> InventoryMovement | None:
+    """Count stock and adjust to the counted value when it differs (ADR D43, point 4)."""
+    with transaction.atomic():
+        locked = _lock_variant(variant)
+
+        counted = _clean_quantity(counted_quantity, variant=locked)
+        if counted < 0:
+            raise InventoryError("A counted quantity cannot be negative.")
+
+        reason = _clean_text(reason, name="Reason", max_length=REASON_MAX_LENGTH, required=True)
+
+        on_hand = _sum_on_hand(locked)
+        difference = counted - on_hand
+        if difference == 0:
+            return None
+
+        # Re-validate the difference so a fractional on-hand on a packet variant
+        # raises InvalidQuantityError instead of writing a bad movement.
+        difference = _clean_quantity(difference, variant=locked)
+
+        return _record_movement(
+            variant=locked,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+            quantity_change=difference,
+            reason=reason,
+            supplier=None,
+            batch_number="",
+            expiry_date=None,
+            created_by=created_by,
+        )
