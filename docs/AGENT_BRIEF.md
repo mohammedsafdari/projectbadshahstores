@@ -30,7 +30,7 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 
 ## Common mistakes to avoid
 - Django string model references are `"app_label.ModelName"` (for example `"catalog.Product"`), never `"apps.catalog.Product"`. If the class is defined earlier in the same file, pass the class itself.
-- Validators, `upload_to`, `default=` and similar arguments take the function/object itself, not a quoted dotted-path string.(Only migrations serialise them as paths; do not write that by hand.)
+- Validators, `upload_to`, `default=` and similar arguments take the function/object itself, not a quoted dotted-path string. (Only migrations serialise them as paths; do not write that by hand.)
 - You cannot run Django yourself, so re-read your own code for these mistakes before you run the checks and before you finish: every name used is imported or defined, every import is used, string references are well formed, names match across files.
 - When a Python string contains double quotes, wrap it in single quotes, for example `format_html('<img src="{}">', url)`. Never leave a half-finished edit such as an `if` without a body: one SyntaxError stops all of Django.
 - Admin inlines are built as `MyInline(ParentModel, admin.site)`. Tests must not pass `model=`.
@@ -48,6 +48,7 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 - Inside a model class the order is: fields, custom manager, `Meta`, `__str__`, `save`, then other methods (ruff DJ012).
 - When you override a Django or QuerySet method, copy the parent's exact argument types and return type from django-stubs (mypy rejects anything narrower).
 - Put helper classes such as managers and querysets at module level, above the model, not nested inside a model class, unless the prompt says otherwise.
+- Tests that start threads must use `@pytest.mark.django_db(transaction=True)` (threads get their own database connection and cannot see the test's open transaction), create their data before starting the threads, release the threads together with a `threading.Barrier`, call `django.db.connection.close()` in a `finally` inside every thread, and assert on invariants (counts, sums) instead of timing or order.
 - Put each comment directly above the code it explains.
 
 ## Checks you may run
