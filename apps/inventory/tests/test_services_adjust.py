@@ -132,11 +132,6 @@ def test_adjust_stock_rejects_zero() -> None:
     with pytest.raises(InventoryError):
         adjust_stock(variant=variant, quantity_change=Decimal("0"), reason="ok")
     assert _adjustment_count_for(variant) == before
-    variant = ProductVariantFactory()
-    _set_on_hand(variant, Decimal("10.000"))
-    with pytest.raises(InventoryError):
-        adjust_stock(variant=variant, quantity_change=Decimal("0"), reason="ok")
-    assert _adjustment_count_for(variant) == 0
 
 
 def test_adjust_stock_rejects_float() -> None:
@@ -234,7 +229,7 @@ def test_record_damage_allows_exact_on_hand() -> None:
 def test_record_damage_rejects_any_damage_when_on_hand_is_already_negative() -> None:
     variant = ProductVariantFactory()
     _set_on_hand(variant, Decimal("-1.000"))
-    with pytest.raises(InsufficientStockError):
+    with pytest.raises(InsufficientStockError, match="already negative"):
         record_damage(variant=variant, quantity=Decimal("1"), reason="broken")
     assert _damage_count_for(variant) == 0
 

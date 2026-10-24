@@ -247,10 +247,10 @@ def record_damage(
         reason = _clean_text(reason, name="Reason", max_length=REASON_MAX_LENGTH, required=True)
 
         on_hand = _sum_on_hand(locked)
-        if qty > on_hand:
-            raise InsufficientStockError(f"Requested damage of {qty} exceeds on-hand {on_hand}.")
         if on_hand < 0:
             raise InsufficientStockError("Cannot record damage when on-hand is already negative.")
+        if qty > on_hand:
+            raise InsufficientStockError(f"Requested damage of {qty} exceeds on-hand {on_hand}.")
 
         return _record_movement(
             variant=locked,
