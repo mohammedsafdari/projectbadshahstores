@@ -186,6 +186,7 @@ def test_receive_stock_accepts_a_past_expiry_date() -> None:
         "5",
         Decimal("NaN"),
         Decimal("Inf"),
+        None,
     ],
 )
 def test_invalid_quantity_types_are_rejected_and_write_nothing(
@@ -268,6 +269,28 @@ def test_receive_stock_rejects_a_datetime_expiry_date_and_writes_nothing() -> No
             expiry_date=datetime.datetime(2026, 12, 31),
         )
     assert _purchase_count_for(variant) == before
+
+
+def test_receive_stock_rejects_fractional_quantity_on_variant_switched_to_packet() -> None:
+    # A loose variant on disk, then switched to packet through a queryset
+    # update so the in-memory object is stale. The packet constraints require
+    # unit PACKET and pack_size 1; read the ProductVariant constraints first so
+    # the row stays valid when the update runs.
+    ProductVariantFactory(is_sold_loose=False)
+    loose = ProductVariantFactory(
+        is_sold_loose=True,
+        unit=ProductVariant.Unit.KG,
+        pack_size=Decimal("1"),
+    )
+    ProductVariant.objects.filter(pk=loose.pk).update(
+        is_sold_loose=False,
+        unit=ProductVariant.Unit.PACKET,
+        pack_size=Decimal("1"),
+    )
+    before = _purchase_count_for(loose)
+    with pytest.raises(InvalidQuantityError):
+        receive_stock(variant=loose, quantity=Decimal("1.5"))
+    assert _purchase_count_for(loose) == before
 
 
 def test_receive_stock_rejects_a_reason_longer_than_max_length() -> None:

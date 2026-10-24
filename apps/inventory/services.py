@@ -12,8 +12,9 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Sum
 
+from apps.accounts.models import User
 from apps.catalog.models import ProductVariant
-from apps.inventory.models import InventoryMovement
+from apps.inventory.models import InventoryMovement, Supplier
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +119,10 @@ def _record_movement(
     movement_type: str,
     quantity_change: Decimal,
     reason: str,
-    supplier: Any,
+    supplier: Supplier | None,
     batch_number: str,
     expiry_date: date | None,
-    created_by: Any,
+    created_by: User | None,
 ) -> InventoryMovement:
     """The ONLY place that creates ``InventoryMovement`` rows (ADR D43, point 1).
 
@@ -140,17 +141,15 @@ def _record_movement(
     )
 
 
-# ``created_by`` comes from Django's user model. Typed as ``User | None`` here;
-# the actual model is ``apps.accounts.models.User``.
 def receive_stock(
     *,
     variant: ProductVariant,
     quantity: object,
-    supplier: Any = None,
+    supplier: Supplier | None = None,
     batch_number: str = "",
     expiry_date: date | None = None,
     reason: str = "",
-    created_by: Any = None,
+    created_by: User | None = None,
 ) -> InventoryMovement:
     """Receive stock into a variant (ADR D43, point 4).
 

@@ -70,7 +70,7 @@ class InventoryMovement(models.Model):
     movement_type = models.CharField(max_length=20, choices=MovementType.choices)
     # Signed; positive adds stock, negative removes it. Counted in the
     # variant's own unit (D42). Packet variants must be whole numbers; the
-    # services in the next phase check that before writing.
+    # services in apps/inventory/services.py check that before writing (D43).
     quantity_change = models.DecimalField(
         max_digits=12,
         decimal_places=3,
