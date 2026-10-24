@@ -6,12 +6,11 @@ rows sitting inside the normal pytest-django test transaction.
 
 Every test below therefore:
 - uses @pytest.mark.django_db(transaction=True) on the test function (not a
-  module-level pytestmark), which lets the test itself use transactions but
-  allows threads to commit their own;
+  module-level pytestmark), so the data really is committed and visible to the
+  threads;
 - creates all of its data in the main thread BEFORE starting the threads, so
   every thread starts from the same committed base;
-- asserts on invariants (counts, sums, final on-hand) and never on timing or
-  order.
+- asserts on counts and sums, never on timing or order.
 """
 
 from __future__ import annotations
@@ -30,7 +29,6 @@ from apps.inventory.services import (
     InsufficientStockError,
     InventoryError,
     get_on_hand,
-    receive_stock,
     record_damage,
 )
 
@@ -38,20 +36,21 @@ from apps.inventory.services import (
 def _run_concurrently(worker, count):
     """Run `worker(index)` in `count` threads, all starting at the same moment.
 
-    `threading.Barrier(count)` lets us release all of the threads together: each
-    thread calls `barrier.wait()`, which blocks until `count` threads have called
-    it, then releases them at once. That is much more reproducible than sleeping.
+    `threading.Barrier(count)` releases all of the threads together: each thread
+    calls `barrier.wait()`, which blocks until `count` threads have called it,
+    then lets them all go at once. That is far more reliable than sleeping.
 
-    The tricky part for Django: a thread spawned outside the main test transaction
-    gets its own database connection, so it cannot see the uncommitted rows that
-    live in the main thread's transaction. That is why the data is created in the
-    main thread BEFORE the threads start, and why each thread commits its own work
-    (the services already run inside `transaction.atomic()`).
+    A thread gets its own database connection, so it cannot see uncommitted rows
+    of the main thread. That is why the data is created BEFORE the threads start.
+    Each service call commits its own transaction.
 
-    Finally, every thread MUST close its own connection in a `finally:` block.
-    Otherwise the connection stays open and Django's test teardown cannot drop the
-    test database. The `close()` call here only ends the thread's connection; it
-    does not affect the main thread.
+    Every thread MUST close its own connection in a `finally:` block. Otherwise
+    the connection stays open and Django cannot drop the test database at the
+    end. `close()` only ends this thread's connection.
+
+    Returns a list of ("ok", result) or ("error", exception) tuples. Only
+    InventoryError is turned into an outcome; any other exception propagates
+    and fails the test.
     """
     barrier = threading.Barrier(count)
 
@@ -110,18 +109,14 @@ def test_packet_damage_race_uses_up_stock_and_waits_rest() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Loose variant: mixed receive and damage, asserted on invariants only
+# Loose variant: damage race with decimal quantities
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db(transaction=True)
-def test_loose_variant_receive_and_damage_concurrently_keeps_invariants() -> None:
-    # 10 workers: 4 receive 0.500 each, 6 damage 0.400 each. We do not assert
-    # *which* threads succeed, only on the final totals.
-    #
-    # Because damage is rejected when on-hand would go below 0, the final on-hand
-    # is deterministic from the number of successful damage calls, which is what
-    # we derive from the outcomes.
+def test_loose_damage_race_allows_only_what_the_stock_covers() -> None:
+    # 6 x 0.400 = 2.400 is more than the 1.000 in stock, so without the lock
+    # more than 2 calls would get through.
     variant = ProductVariantFactory(
         is_sold_loose=True,
         unit=ProductVariant.Unit.KG,
@@ -134,42 +129,26 @@ def test_loose_variant_receive_and_damage_concurrently_keeps_invariants() -> Non
     )
 
     def worker(index):
-        if index < 4:
-            return receive_stock(variant=variant, quantity=Decimal("0.500"))
         return record_damage(variant=variant, quantity=Decimal("0.400"), reason="race")
 
-    outcomes = _run_concurrently(worker, count=10)
+    outcomes = _run_concurrently(worker, count=6)
 
-    successful_damages = sum(
-        1
-        for outcome in outcomes
-        if outcome[0] == "error" and not isinstance(outcome[1], InsufficientStockError)
-    ) + sum(
-        1
-        for outcome in outcomes
-        if outcome[0] == "ok" and not isinstance(outcome[1], InventoryMovement)
+    ok_outcomes = [outcome for outcome in outcomes if outcome[0] == "ok"]
+    error_outcomes = [outcome for outcome in outcomes if outcome[0] == "error"]
+
+    assert len(ok_outcomes) == 2
+    for _status, movement in ok_outcomes:
+        assert isinstance(movement, InventoryMovement)
+        assert movement.quantity_change == Decimal("-0.400")
+
+    assert len(error_outcomes) == 4
+    assert all(isinstance(outcome[1], InsufficientStockError) for outcome in error_outcomes)
+
+    assert get_on_hand(variant) == Decimal("0.200")
+    assert (
+        InventoryMovement.objects.filter(
+            variant=variant,
+            movement_type=InventoryMovement.MovementType.DAMAGE,
+        ).count()
+        == 2
     )
-    successful_damages = 0
-    for status, value in outcomes:
-        if status == "ok":
-            movement = value
-            assert isinstance(movement, InventoryMovement)
-            if movement.movement_type == InventoryMovement.MovementType.DAMAGE:
-                successful_damages += 1
-        else:
-            assert isinstance(value, InsufficientStockError)
-
-    expected_on_hand = (
-        Decimal("1.000")
-        + (Decimal("4") * Decimal("0.500"))
-        - (Decimal("0.400") * Decimal(str(successful_damages)))
-    )
-    assert expected_on_hand >= 0
-    assert get_on_hand(variant) == expected_on_hand
-
-    all_movements = InventoryMovement.objects.filter(variant=variant)
-    total_moved = sum(movement.quantity_change for movement in all_movements)
-    assert total_moved == get_on_hand(variant)
-
-    errors = [outcome for outcome in outcomes if outcome[0] == "error"]
-    assert all(isinstance(error[1], InsufficientStockError) for error in errors)
