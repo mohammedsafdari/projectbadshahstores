@@ -49,10 +49,12 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 
 ### Inventory
 
-- Open design points (how current stock is derived, batch and expiry tracking, supplier, low-stock threshold) are listed in `docs/STATUS.md` under "Decide before Slice 15" and become an ADR once decided.
-- Quantities are whole-number integers for now. No loose or weight-based items yet; revisit if you sell items by weight.
+- Decided in D42: stock is derived from the ledger, with no cached stock table; batch number and expiry date are optional and only on received stock; `Supplier` is a minimal optional record; the low-stock threshold is an optional number per variant.
+- Quantities are decimals with 3 places, counted in the variant's own unit. Packet variants stay whole-number (the services reject fractions). A variant sold loose by weight has `is_sold_loose`, unit `KG` or `L`, pack size 1 and a `quantity_step`, so its selling price is per kg or per litre. A product sold both loose and in packs is two variants with separate stock; repacking is two `ADJUSTMENT` movements with a reason (D42, narrows D23).
 - No guest checkout in the MVP: OTP login is required at checkout.
 - `InventoryMovement` (immutable ledger): types `PURCHASE_RECEIVED, IN_STORE_SALE, SALE, RETURN, DAMAGE, ADJUSTMENT`. No `TRANSFER`.
+- `InventoryMovement` fields: variant, type, signed quantity, reason, optional supplier, batch number and expiry date (purchases only), `created_by` (null for imports and system actions) and `created_at`. Database rules: the quantity is never 0; purchases and returns are positive; in-store sales, sales and damage are negative; adjustments may be either sign and need a reason. Rows are append-only: `AppendOnlyError` blocks updates and deletes.
+- `Supplier`: unique name, phone, notes; archivable. A supplier or variant with movements cannot be deleted.
 - `on_hand = sum(movements)`.
 - `StockReservation`: status `ACTIVE / CONSUMED / RELEASED`; `reservation_kind` `CHECKOUT_PENDING_PAYMENT` or `HELD_FOR_FULFILMENT`.
 - When an online payment is captured, or a COD order is placed, the reservation changes from `CHECKOUT_PENDING_PAYMENT` to `HELD_FOR_FULFILMENT` inside the same transaction as the order status change.

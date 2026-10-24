@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 14 (ProductImage and media storage). Next slice: 15 (inventory models).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 15 (inventory models). Next slice: 16 (inventory services).
 
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
@@ -14,6 +14,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 - Core: abstract `TimeStampedModel` and `ArchivableModel` (Slice 12).
 - Catalog: `Brand`, `Category` (a tree through `parent`), `Product` and `ProductVariant`, with admin (variants editable on the product page), factories and tests (Slices 12 and 13). Pricing helpers in `apps/catalog/services.py` (Slice 13c).
 - Catalog images: `ProductImage` (several photos per product, validated uploads, local media storage in dev) and an admin inline with a thumbnail (Slice 14, D41).
+- Loose-by-weight and low stock on variants: `is_sold_loose`, `quantity_step` and an optional `low_stock_threshold`, with database constraints (Slice 15b and 15c, D42).
+- Inventory: `Supplier` (name, phone, notes; archivable) and the append-only `InventoryMovement` ledger: decimal quantities, database sign rules per movement type, optional batch, expiry and supplier on purchases, and `AppendOnlyError` blocking updates and deletes through `save`, `delete`, queryset `update` and `delete`, and `bulk_update` (Slice 15d to 15f, D42). There are no services, admin or stock calculations yet.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -28,11 +30,17 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 13e to 13i | Documentation sync: this file, ADRs D37 to D40, architecture, README, new open questions. |
 | 14a to 14d | Pillow dependency and dev media URL; upload validators; `ProductImage` model, factory and tests; admin inline with thumbnail; Dockerfile makes media and staticfiles writable (D41). |
 | 14e | Documentation sync: ADR D41, open questions, architecture, this file, agent brief. |
+| 15a | ADR D42 (inventory decisions and loose-by-weight quantities); D23 narrowed. |
+| 15b to 15c | `ProductVariant`: `is_sold_loose`, `quantity_step`, `low_stock_threshold`, with constraints. |
+| 15d | `Supplier` model. |
+| 15e | `InventoryMovement` ledger model with check constraints. |
+| 15f | Append-only guard; tidy-up; test-writing rules and read-only checks added to `docs/AGENT_BRIEF.md`. |
+| 15g | Documentation sync: this file, architecture, open questions. |
 
 ## Remaining Phase 2 slices
 
 14. (done) ProductImage and media storage.
-15. Inventory models (InventoryMovement ledger, optional Supplier). See "Decide before Slice 15".
+15. (done) Inventory models: `InventoryMovement` ledger, `Supplier`, loose-by-weight and low-stock fields (D42).
 16. Inventory services (receive_stock, adjust_stock, select_for_update, concurrency tests, integrity-check command). REVIEW CAREFULLY.
 17. AuditLog in core (price and stock changes). REVIEW CAREFULLY.
 18. Inventory admin (receive and adjust actions, read-only movement history, low-stock and expiry views).
@@ -49,9 +57,9 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 
 StockReservation stays in Phase 3.
 
-## Decide before Slice 15
+## Decided in Slice 15 (kept for reference)
 
-Claude proposes, the owner confirms; record the outcome as ADR D42 (D41 is the Slice 14 images decision).
+All four were decided and recorded as ADR D42 in `docs/decisions.md`, together with the loose-by-weight rule. The list below is the original questions.
 
 1. Current stock: derive it as the sum of movements (what `docs/architecture.md` says) instead of a cached StockLevel table. Add a cache later only if it is slow.
 2. Batch and expiry: optional batch number and expiry date on received stock only; no first-expiry-first-out logic (the brief asks for expiry and batch tracking).
@@ -65,10 +73,13 @@ Claude proposes, the owner confirms; record the outcome as ADR D42 (D41 is the S
 - Rounding rules and HSN format are defaults awaiting the CA (see `docs/open_questions.md`); they must be confirmed before invoices are issued (Phase 5).
 - Photo files are not deleted from disk when an image row or product is deleted; add a clean-up job before production (see `docs/open_questions.md`).
 - Only original photos are stored; resized and WebP versions come with the storefront slices (23 and 25) or Phase 6.
+- The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
+- Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
+- Notes for Slice 16 (services): lock the `ProductVariant` row with `select_for_update()` before reading the sum; `Sum` returns `None` for a variant with no movements; strip whitespace from `reason` (the database only checks that it is not empty); reject fractional quantities for packet variants and any amount with more than 3 decimals.
 
 ## How we work
 
-- The agent (Freebuff) never touches `.env` and never runs commands. Every prompt ends with a STOP line, and the agent shows the diff and stops.
+- The agent (Freebuff) never touches `.env`. It may run only the read-only checks listed in `docs/AGENT_BRIEF.md` (ruff, mypy, pytest), once, at the end, and it pastes their raw output; it never runs any other command. This is a trial that started in Slice 15f: if it breaks the rule even once, we go back to no commands. Every prompt ends with a STOP line, and the agent shows the diff and stops.
 - Each prompt states a goal, the files to read first and the rules. The agent does the coding and starts by reading `docs/AGENT_BRIEF.md`. Existing files change by small exact-match edits (each OLD text must appear exactly once, or nothing changes); new files may be written in full. Keep each prompt small: one long multi-step prompt once stalled in a retry loop.
 - The agent edits settings or `pyproject.toml` only if the prompt names them. After any `pyproject.toml` edit, run the TOML check.
 - Check the real `git diff` and `--stat`, not the agent's pasted diff. Commit in small steps after `git status` and `git diff --stat`.
@@ -82,6 +93,7 @@ Everyday commands (they run inside the container):
 - `docker compose exec web python manage.py makemigrations <app> --name <short_name>`
 - `docker compose exec web python manage.py migrate`
 - `docker compose exec web python -m pytest -q`
+- `pre-commit run --all-files` (run all hooks once before the first commit attempt; it may reformat files, then run `git add -u`)
 
 ## Lessons
 
@@ -96,6 +108,9 @@ Everyday commands (they run inside the container):
 - After adding a dependency: refresh the lock file (`docker compose run --rm --no-deps web uv lock`), rebuild, then recreate containers with `--renew-anon-volumes`, otherwise the old `/opt/venv` volume hides the new package.
 - Uploaded media lives in the `/app/media` Docker volume, not in the project's `media\` folder, and `--renew-anon-volumes` deletes it (dev data only). The Dockerfile creates `/app/media` and `/app/staticfiles` owned by the `app` user; without that, uploads failed with PermissionError.
 - Verify docs work as well: ADRs D37 to D40 were once listed here without being written to `docs/decisions.md`.
+- Before committing code, run the whole gate once: pytest, `makemigrations --check --dry-run`, `pre-commit run --all-files`; then `git add -u` and `git add apps/<app>`, and check that new migration files appear in `git status`.
+- A change that alters how an existing model behaves (a `save` override, a constraint, a manager) can break old tests. Name them in the prompt and let the agent fix them.
+- Agent edits can merge or mangle neighbouring lines, even in docs (two bullets of `AGENT_BRIEF.md` were once joined). Review the real diff of every commit, including docs.
 
 ## Slice closeout checklist
 

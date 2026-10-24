@@ -29,7 +29,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Email provider credentials — recorded default Brevo, console backend in dev — owner when ready
 
 ## Catalog and inventory
-- [ ] Does the shop sell anything loose by weight (dal, rice, sugar)? — needed before Slice 15 (inventory models); default in use: whole-number stock only (D23); changing it later touches the inventory ledger — owner
+- [ ] Which products are sold loose by weight (dal, rice, sugar), in kg or litres, and in what smallest step (suggested 0.100)? — owner; needed before Slice 22 (seed data); default in use: nothing is loose until `is_sold_loose` is set per variant (D42)
 - [ ] POS export format for stock/price sync — unknown; planned as one-way CSV import with validation report, plus CSV stock-count adjustment flow — owner (from your billing software); a sample export of about 10 rows is needed by Slice 20 (CSV import); default in use: the website ledger is primary and the billing export is a one-way import
 - [ ] Product/variant seed data: categories, brands, own-brand products at launch — owner/phase-2 data entry
 - [ ] Own-brand products: which products are own-brand, and are they FSSAI-licensed — owner/CA
@@ -39,6 +39,9 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Is a 2 MB limit, 8000 px longest side and JPG/PNG/WebP enough for the staff's phone cameras, and how many photos per product? — owner; needed before Slice 22; default in use: those limits, constants in `apps/catalog/validators.py`
 - [ ] Photo files are not deleted from disk when an image row or a product is deleted — developer; a clean-up job is needed before production; default in use: files are left in place
 - [ ] When to add resized and WebP versions of photos — developer; planned for the storefront slices (23 and 25) or Phase 6; default in use: originals only
+- [ ] Production hardening of the stock ledger: a Postgres trigger or a restricted database role so movement rows cannot be changed with raw SQL — developer; before production; default in use: the Django-level guard only (D42)
+- [ ] Purchase cost per received lot, for stock valuation — owner/CA; needed by Phase 5 reports; default in use: `ProductVariant.cost_price`
+- [ ] Is repacking (a loose sack into packets) frequent enough to need a `REPACK` movement type? — owner; default in use: two `ADJUSTMENT` movements with a reason
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
@@ -73,3 +76,6 @@ Revisit these if the shop says otherwise.
 - A barcode is optional, but unique when set.
 - Savings percent is rounded down, so a discount is never overstated.
 - Unit price is shown per kg, per 100 g, per litre, per 100 ml, per piece or per packet.
+- Expiry tracking is per received lot only: the expiry view can say a lot is near expiry while the variant still has stock, but not how many units of that lot remain (D42).
+- A low-stock alert exists only when a variant has a `low_stock_threshold`; a blank threshold means no alert.
+- Cart, order and reservation quantities (Phase 3) will be decimals too, so loose items can be sold (D42).
