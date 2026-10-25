@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 15 (inventory models). Next slice: 16 (inventory services).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 16 (inventory services). Next slice: 17 (AuditLog).
 
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
@@ -15,7 +15,9 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 - Catalog: `Brand`, `Category` (a tree through `parent`), `Product` and `ProductVariant`, with admin (variants editable on the product page), factories and tests (Slices 12 and 13). Pricing helpers in `apps/catalog/services.py` (Slice 13c).
 - Catalog images: `ProductImage` (several photos per product, validated uploads, local media storage in dev) and an admin inline with a thumbnail (Slice 14, D41).
 - Loose-by-weight and low stock on variants: `is_sold_loose`, `quantity_step` and an optional `low_stock_threshold`, with database constraints (Slice 15b and 15c, D42).
-- Inventory: `Supplier` (name, phone, notes; archivable) and the append-only `InventoryMovement` ledger: decimal quantities, database sign rules per movement type, optional batch, expiry and supplier on purchases, and `AppendOnlyError` blocking updates and deletes through `save`, `delete`, queryset `update` and `delete`, and `bulk_update` (Slice 15d to 15f, D42). There are no services, admin or stock calculations yet.
+- Inventory: `Supplier` (name, phone, notes; archivable) and the append-only `InventoryMovement` ledger: decimal quantities, database sign rules per movement type, optional batch, expiry and supplier on purchases, and `AppendOnlyError` blocking updates and deletes through `save`, `delete`, queryset `update` and `delete`, and `bulk_update` (Slice 15d to 15f, D42). There is no inventory admin yet.
+- Inventory services (`apps/inventory/services.py`, Slice 16, D43): `get_on_hand`, `receive_stock`, `adjust_stock`, `record_damage` and `count_stock`. Every write runs in `transaction.atomic()`, locks the variant row with `select_for_update()` and goes through one private `_record_movement`. Quantities are `Decimal` or `int` with at most 3 decimals, whole numbers for packet variants. Errors: `InventoryError`, `InvalidQuantityError`, `InsufficientStockError`. Concurrency tests prove the lock: removing it makes them fail.
+- Integrity check: `find_integrity_problems()` in `apps/inventory/integrity.py` and the read-only command `check_inventory_integrity` (exit code 1 only on an ERROR). It is run by hand; nothing schedules it yet.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -36,13 +38,20 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 15e | `InventoryMovement` ledger model with check constraints. |
 | 15f | Append-only guard; tidy-up; test-writing rules and read-only checks added to `docs/AGENT_BRIEF.md`. |
 | 15g | Documentation sync: this file, architecture, open questions. |
+| 16a | ADR D43 (inventory services) and three open questions. |
+| 16b | `services.py` core (validation, lock, single write path), `get_on_hand`, `receive_stock`, with tests; types tightened. |
+| 16c | `adjust_stock`, `record_damage`, `count_stock`, with tests. |
+| 16d | Concurrency tests (threads, `transaction=True`); thread-test rule in `docs/AGENT_BRIEF.md`. |
+| 16e | `apps/inventory/integrity.py`: `find_integrity_problems`, with tests. |
+| 16f | `check_inventory_integrity` management command, with tests. |
+| 16g | Documentation sync: this file, ADR D43 corrections, README. |
 
 ## Remaining Phase 2 slices
 
 14. (done) ProductImage and media storage.
 15. (done) Inventory models: `InventoryMovement` ledger, `Supplier`, loose-by-weight and low-stock fields (D42).
-16. Inventory services (receive_stock, adjust_stock, select_for_update, concurrency tests, integrity-check command). REVIEW CAREFULLY.
-17. AuditLog in core (price and stock changes). REVIEW CAREFULLY.
+16. (done) Inventory services and integrity check (D43).
+17. AuditLog in core (price changes and other changes; stock movements are already audited by the ledger, D43, so decide first whether stock needs entries at all). REVIEW CAREFULLY.
 18. Inventory admin (receive and adjust actions, read-only movement history, low-stock and expiry views).
 19. CSV export (service plus admin action).
 20. CSV import with a validation report (dry run, then commit). REVIEW CAREFULLY.
