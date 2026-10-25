@@ -1,7 +1,13 @@
 """Django admin setup for the catalog app."""
 
+from typing import Any
+
 from django.contrib import admin
+from django.contrib.auth.base_user import AbstractBaseUser
+from django.http import HttpRequest
 from django.utils.html import format_html
+
+from apps.catalog.audit import record_variant_change, snapshot_variant_from_db
 
 from .models import Brand, Category, Product, ProductImage, ProductVariant
 
@@ -116,3 +122,18 @@ class ProductVariantAdmin(admin.ModelAdmin):
     search_fields = ("sku_code", "barcode", "product__name_en", "product__name_hi")
     autocomplete_fields = ("product",)
     list_select_related = ("product",)
+
+    # By the time save_model runs, the form has already put the new values on
+    # ``obj``, so the old values must be read from the database first. Django's
+    # admin wraps the whole save in one transaction, so the variant and its
+    # audit row are saved together or not at all.
+    def save_model(
+        self, request: HttpRequest, obj: ProductVariant, form: Any, change: bool
+    ) -> None:
+        old = snapshot_variant_from_db(obj.pk) if change else None
+        super().save_model(request, obj, form, change)
+        if old is not None:
+            # The admin only serves logged-in staff; isinstance narrows the type
+            # from "user or anonymous user" to a real user for the type checker.
+            actor = request.user if isinstance(request.user, AbstractBaseUser) else None
+            record_variant_change(actor=actor, variant=obj, old=old)
