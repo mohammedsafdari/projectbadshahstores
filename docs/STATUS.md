@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 16 (inventory services). Next slice: 17 (AuditLog).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 17 (AuditLog). Next slice: 18 (inventory admin).
 
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
@@ -18,6 +18,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 - Inventory: `Supplier` (name, phone, notes; archivable) and the append-only `InventoryMovement` ledger: decimal quantities, database sign rules per movement type, optional batch, expiry and supplier on purchases, and `AppendOnlyError` blocking updates and deletes through `save`, `delete`, queryset `update` and `delete`, and `bulk_update` (Slice 15d to 15f, D42). There is no inventory admin yet.
 - Inventory services (`apps/inventory/services.py`, Slice 16, D43): `get_on_hand`, `receive_stock`, `adjust_stock`, `record_damage` and `count_stock`. Every write runs in `transaction.atomic()`, locks the variant row with `select_for_update()` and goes through one private `_record_movement`. Quantities are `Decimal` or `int` with at most 3 decimals, whole numbers for packet variants. Errors: `InventoryError`, `InvalidQuantityError`, `InsufficientStockError`. Concurrency tests prove the lock: removing it makes them fail.
 - Integrity check: `find_integrity_problems()` in `apps/inventory/integrity.py` and the read-only command `check_inventory_integrity` (exit code 1 only on an ERROR). It is run by hand; nothing schedules it yet.
+- Audit log (Slice 17, D44): append-only `core.AuditLog` (actor, action, target_type, target_id, changes as JSON `{field: [old, new]}`, note). `AppendOnlyError` now lives in `apps/core/models.py` (inventory imports it). One write path: `record_change` and `snapshot` in `apps/core/audit.py` (Decimal values are stored as strings, floats are refused, nothing is written when no value changed; call it inside the same transaction as the change). Read-only admin `AuditLogAdmin` (no add, change or delete; reading needs the `core.view_auditlog` permission, superusers have it). Variant helpers in `apps/catalog/audit.py` (`AUDITED_VARIANT_FIELDS`, `snapshot_variant_from_db`, `record_variant_change`, the formset helpers, `audit_actor`): editing an existing variant on its own admin page (`save_model`) or inside the product page (`save_formset`) writes a `VARIANT_UPDATE` row. Stock is not audited here; the ledger covers it.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -45,17 +46,24 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 16e | `apps/inventory/integrity.py`: `find_integrity_problems`, with tests. |
 | 16f | `check_inventory_integrity` management command, with tests. |
 | 16g | Documentation sync: this file, ADR D43 corrections, README. |
+| 17a | ADR D44 (AuditLog) and open questions. |
+| 17b | `core.AuditLog` model, append-only guard, `AppendOnlyError` moved to `core`, factory and tests. |
+| 17c | `apps/core/audit.py`: `record_change` and `snapshot`, with tests. |
+| 17d | Read-only `AuditLogAdmin`, with tests (an unwanted `has_view_permission` override was removed). |
+| 17e | `apps/catalog/audit.py` and `ProductVariantAdmin.save_model` write variant audit rows. |
+| 17f | `ProductAdmin.save_formset` audits variants edited on the product page; tests post the real admin page. |
+| 17g | Documentation sync: this file, ADR D44 additions, open questions. |
 
 ## Remaining Phase 2 slices
 
 14. (done) ProductImage and media storage.
 15. (done) Inventory models: `InventoryMovement` ledger, `Supplier`, loose-by-weight and low-stock fields (D42).
 16. (done) Inventory services and integrity check (D43).
-17. AuditLog in core (price changes and other changes; stock movements are already audited by the ledger, D43, so decide first whether stock needs entries at all). REVIEW CAREFULLY.
+17. (done) AuditLog in core (D44): stock is not audited (the ledger covers it); variant edits in the admin are.
 18. Inventory admin (receive and adjust actions, read-only movement history, low-stock and expiry views).
 19. CSV export (service plus admin action).
 20. CSV import with a validation report (dry run, then commit). REVIEW CAREFULLY.
-21. Bulk price update admin action (uses the audit log).
+21. Bulk price update admin action (must write audit rows: `snapshot_variant_from_db` before, `record_variant_change` after; queryset `update()` skips any automatic hook, D44).
 22. Seed command (about 100 realistic SKUs loaded through the importer; idempotent).
 23. Storefront listing, category and brand pages.
 24. Filters (HTMX).
@@ -87,6 +95,9 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Operations that touch several variants (the Slice 20 import) must lock the variants in ascending `pk` order (D43); there is no helper for that yet.
 - `receive_stock` checks the supplier's `is_active` on the object passed in and does not lock the supplier, so a supplier archived at the same moment could be used once more.
 - `check_inventory_integrity` is run by hand; nothing schedules it (cron or a job) yet.
+- The variant audit covers edits of existing variants on the two admin pages only. Creating or deleting a variant, other models (product, brand, category), and changes made in the shell or with queryset `update()` write no audit row. Slices 20 and 21 must call the helpers in `apps/catalog/audit.py` (D44).
+- `cost_price` is not shown in the product-page variant inline, so it is audited only when edited on the variant's own admin page.
+- `AuditLog` is append-only in Django only; raw SQL can still change rows (same production hardening step as the ledger, D42 and D44). Retention of audit rows is an open question.
 
 ## How we work
 
@@ -129,6 +140,12 @@ Everyday commands (they run inside the container):
 - Exact-match edits at the end of a file or inside a long line failed silently or split lines. New files with verbatim content (`integrity.py`, the concurrency tests) worked.
 - mypy does not know reverse accessors such as `variant.movements`; query from the model that owns the foreign key (`InventoryMovement.objects.filter(variant_id=...)`).
 - Pasting text with a stray `>` into Command Prompt creates junk files; check `git status` before every commit.
+- When the agent loops on a rejected edit, stop it, throw its files away (`git restore`, delete the untracked files) and write the change another way. Its half-applied files (duplicated lines, an IndentationError, two tests with one name) were worse than none (17e).
+- "Change nothing else" was ignored once (unrelated inventory tests rewritten) and an unrequested `has_view_permission` returning True let every staff user read the audit log; only a test that a staff user without permissions gets 403 caught it. Name every permission method in the prompt and review test-file diffs too.
+- Run the whole suite yourself before committing; an agent report with a failing test inside it is not a pass (17c).
+- Django's admin escapes HTML, so `->` appears as `-&gt;` in page text; assert on the escaped form.
+- In an admin `save_model` or `save_formset` the form has already put the new values on the object; read the old values from the database before saving.
+- django-stubs generics such as `BaseFormSet[Any]` fail at run time unless the module starts with `from __future__ import annotations`.
 
 ## Slice closeout checklist
 

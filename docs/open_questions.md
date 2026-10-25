@@ -46,7 +46,9 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Should every damage or write-off entry need a reason (expired, broken, lost)? — owner; default in use: yes, the reason is required (D43)
 - [ ] Who records in-store sales in the ledger (`IN_STORE_SALE`): the billing-software import in Slice 20, or nothing yet? — owner; needed before Slice 20; default in use: nothing writes `IN_STORE_SALE` yet (D43)
 - [ ] Audit log retention: how long to keep rows. Default: forever. Owner: shop owner. Needed before production.
-- [ ] Slices 20 and 21 must call record_change for every price change they make. Default: yes (a reminder, not a business question).
+- [ ] Slices 20 and 21 must write an audit entry for every price change they make: `snapshot_variant_from_db` before and `record_variant_change` after (`apps/catalog/audit.py`, D44). Default: yes (a reminder, not a business question).
+- [ ] Should creating or deleting a variant, or changing a product, brand or category, also be audited? — owner/developer; default in use: no, only edits of existing variants (D44)
+- [ ] Which staff roles may read the audit log? — owner; needed when the staff roles exist; default in use: superusers only (D44)
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
