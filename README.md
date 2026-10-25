@@ -168,6 +168,9 @@ REM Run all tests, or one app's tests
 docker compose exec web python -m pytest -q
 docker compose exec web python -m pytest apps/catalog -q
 
+REM Check the stock ledger for broken rules (read-only, exit code 1 on an ERROR)
+docker compose exec web python manage.py check_inventory_integrity
+
 REM Django system check
 docker compose exec web python manage.py check
 ```
