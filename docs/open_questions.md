@@ -84,5 +84,3 @@ Revisit these if the shop says otherwise.
 - Expiry tracking is per received lot only: the expiry view can say a lot is near expiry while the variant still has stock, but not how many units of that lot remain (D42).
 - A low-stock alert exists only when a variant has a `low_stock_threshold`; a blank threshold means no alert.
 - Cart, order and reservation quantities (Phase 3) will be decimals too, so loose items can be sold (D42).
-- Audit log retention: how long to keep rows. Default: forever. Owner: shop owner. Needed before production.
-- Slices 20 and 21 must call record_change for every price change they make. Default: yes (a reminder, not a business question).
