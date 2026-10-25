@@ -45,6 +45,8 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Should a purchase with an expiry date in the past be refused or only warned about? — owner; needed before Slice 18 (inventory admin); default in use: allowed, no warning (D43)
 - [ ] Should every damage or write-off entry need a reason (expired, broken, lost)? — owner; default in use: yes, the reason is required (D43)
 - [ ] Who records in-store sales in the ledger (`IN_STORE_SALE`): the billing-software import in Slice 20, or nothing yet? — owner; needed before Slice 20; default in use: nothing writes `IN_STORE_SALE` yet (D43)
+- [ ] Audit log retention: how long to keep rows. Default: forever. Owner: shop owner. Needed before production.
+- [ ] Slices 20 and 21 must call record_change for every price change they make. Default: yes (a reminder, not a business question).
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
@@ -82,3 +84,5 @@ Revisit these if the shop says otherwise.
 - Expiry tracking is per received lot only: the expiry view can say a lot is near expiry while the variant still has stock, but not how many units of that lot remain (D42).
 - A low-stock alert exists only when a variant has a `low_stock_threshold`; a blank threshold means no alert.
 - Cart, order and reservation quantities (Phase 3) will be decimals too, so loose items can be sold (D42).
+- Audit log retention: how long to keep rows. Default: forever. Owner: shop owner. Needed before production.
+- Slices 20 and 21 must call record_change for every price change they make. Default: yes (a reminder, not a business question).
