@@ -84,7 +84,9 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Only original photos are stored; resized and WebP versions come with the storefront slices (23 and 25) or Phase 6.
 - The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
 - Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
-- Notes for Slice 16 (services): lock the `ProductVariant` row with `select_for_update()` before reading the sum; `Sum` returns `None` for a variant with no movements; strip whitespace from `reason` (the database only checks that it is not empty); reject fractional quantities for packet variants and any amount with more than 3 decimals.
+- Operations that touch several variants (the Slice 20 import) must lock the variants in ascending `pk` order (D43); there is no helper for that yet.
+- `receive_stock` checks the supplier's `is_active` on the object passed in and does not lock the supplier, so a supplier archived at the same moment could be used once more.
+- `check_inventory_integrity` is run by hand; nothing schedules it (cron or a job) yet.
 
 ## How we work
 
@@ -120,6 +122,13 @@ Everyday commands (they run inside the container):
 - Before committing code, run the whole gate once: pytest, `makemigrations --check --dry-run`, `pre-commit run --all-files`; then `git add -u` and `git add apps/<app>`, and check that new migration files appear in `git status`.
 - A change that alters how an existing model behaves (a `save` override, a constraint, a manager) can break old tests. Name them in the prompt and let the agent fix them.
 - Agent edits can merge or mangle neighbouring lines, even in docs (two bullets of `AGENT_BRIEF.md` were once joined). Review the real diff of every commit, including docs.
+- A race test must be able to fail: remove `select_for_update()` (keep `.objects`; a typo that crashes the code proves nothing), run the test a few times, expect assertion errors, then `git restore` the file.
+- Factories can hide rows: `InventoryMovementFactory` also creates a +10 purchase for its variant. In ledger tests build the variant with `ProductVariantFactory` and add movements by hand.
+- Two test functions with the same name silently replace each other (ruff F811). After the agent writes tests, list them with `findstr /n "def test_"`.
+- With checks allowed, the agent once wrote files nobody asked for (a note and an empty report file) and printed a wrong path in its report. Run `git status` for untracked files and say "create exactly these files and no others".
+- Exact-match edits at the end of a file or inside a long line failed silently or split lines. New files with verbatim content (`integrity.py`, the concurrency tests) worked.
+- mypy does not know reverse accessors such as `variant.movements`; query from the model that owns the foreign key (`InventoryMovement.objects.filter(variant_id=...)`).
+- Pasting text with a stray `>` into Command Prompt creates junk files; check `git status` before every commit.
 
 ## Slice closeout checklist
 
