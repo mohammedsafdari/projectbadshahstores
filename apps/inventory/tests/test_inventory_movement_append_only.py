@@ -4,7 +4,8 @@ from decimal import Decimal
 
 import pytest
 
-from apps.inventory.models import AppendOnlyError, InventoryMovement
+from apps.core.models import AppendOnlyError
+from apps.inventory.models import InventoryMovement
 
 from .factories import InventoryMovementFactory
 

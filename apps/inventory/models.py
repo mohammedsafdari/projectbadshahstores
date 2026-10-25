@@ -6,11 +6,7 @@ from typing import Any
 from django.conf import settings
 from django.db import models
 
-from apps.core.models import ArchivableModel, TimeStampedModel
-
-
-class AppendOnlyError(RuntimeError):
-    """Raised when code tries to change or delete a stock movement."""
+from apps.core.models import AppendOnlyError, ArchivableModel, TimeStampedModel
 
 
 class Supplier(TimeStampedModel, ArchivableModel):
