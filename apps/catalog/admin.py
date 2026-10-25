@@ -3,11 +3,16 @@
 from typing import Any
 
 from django.contrib import admin
-from django.contrib.auth.base_user import AbstractBaseUser
 from django.http import HttpRequest
 from django.utils.html import format_html
 
-from apps.catalog.audit import record_variant_change, snapshot_variant_from_db
+from apps.catalog.audit import (
+    audit_actor,
+    record_variant_change,
+    record_variant_formset_changes,
+    snapshot_variant_from_db,
+    snapshot_variants_before_formset_save,
+)
 
 from .models import Brand, Category, Product, ProductImage, ProductVariant
 
@@ -105,6 +110,21 @@ class ProductAdmin(admin.ModelAdmin):
     # ProductImageInline comes after ProductVariantInline so variants stay first.
     inlines = [ProductVariantInline, ProductImageInline]
 
+    # save_formset runs once for each inline (variants, then images). Only the
+    # variants formset is audited. The old values are read from the database
+    # before the save, because the forms have already changed their instances.
+    # Django's admin wraps the whole save in one transaction, so the variant
+    # edits and their audit rows are saved together or not at all.
+    def save_formset(self, request: HttpRequest, form: Any, formset: Any, change: bool) -> None:
+        if formset.model is not ProductVariant:
+            super().save_formset(request, form, formset, change)
+            return
+        old_by_pk = snapshot_variants_before_formset_save(formset)
+        super().save_formset(request, form, formset, change)
+        record_variant_formset_changes(
+            actor=audit_actor(request), formset=formset, old_by_pk=old_by_pk
+        )
+
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
@@ -133,7 +153,4 @@ class ProductVariantAdmin(admin.ModelAdmin):
         old = snapshot_variant_from_db(obj.pk) if change else None
         super().save_model(request, obj, form, change)
         if old is not None:
-            # The admin only serves logged-in staff; isinstance narrows the type
-            # from "user or anonymous user" to a real user for the type checker.
-            actor = request.user if isinstance(request.user, AbstractBaseUser) else None
-            record_variant_change(actor=actor, variant=obj, old=old)
+            record_variant_change(actor=audit_actor(request), variant=obj, old=old)
