@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import InventoryMovement
+from .models import InventoryMovement, Supplier
 
 
 @admin.register(InventoryMovement)
@@ -46,3 +46,11 @@ class InventoryMovementAdmin(admin.ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         return [f.name for f in self.model._meta.fields]
+
+
+@admin.register(Supplier)
+class SupplierAdmin(admin.ModelAdmin):
+    list_display = ("name", "phone", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("name", "phone", "notes")
+    ordering = ("name",)
