@@ -1,14 +1,33 @@
 """Inventory admin screens: movement history, suppliers and the Stock screen."""
 
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any, cast
 
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin.utils import unquote
+from django.core.exceptions import PermissionDenied
 from django.db.models import DecimalField, F, QuerySet, Sum, Value
 from django.db.models.functions import Coalesce
-from django.http import HttpRequest
+from django.forms import Form
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.template.response import TemplateResponse
+from django.urls import URLPattern, path, reverse
+from django.utils.html import format_html
 
+from apps.accounts.models import User
+
+from .forms import ReceiveStockForm
 from .models import InventoryMovement, StockItem, Supplier
+from .services import InventoryError, receive_stock
+
+# Who may use the stock action pages (ADR D45, point 5). Superusers pass.
+STOCK_WRITE_PERMISSION = "inventory.add_inventorymovement"
+
+
+def _plain(value: Decimal) -> str:
+    """A quantity without trailing zeros: Decimal("10.000") shows as 10."""
+    return format(value.normalize(), "f")
 
 
 @admin.register(InventoryMovement)
@@ -113,9 +132,7 @@ class StockItemAdmin(admin.ModelAdmin):
     @admin.display(description="On hand", ordering="on_hand")
     def on_hand_display(self, obj: StockItem) -> str:
         # mypy does not know about the ``on_hand`` annotation added above.
-        on_hand: Decimal = cast(Any, obj).on_hand
-        # ``normalize`` drops trailing zeros, so Decimal("10.000") shows as 10.
-        return format(on_hand.normalize(), "f")
+        return _plain(cast(Any, obj).on_hand)
 
     @admin.display(boolean=True, description="Low stock")
     def is_low_stock(self, obj: StockItem) -> bool:
@@ -133,3 +150,96 @@ class StockItemAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         return False
+
+    def get_list_display(self, request: HttpRequest) -> list[str | Callable[[Any], str | bool]]:
+        columns = list(super().get_list_display(request))
+        if request.user.has_perm(STOCK_WRITE_PERMISSION):
+            columns.append("stock_actions")
+        return columns
+
+    @admin.display(description="Actions")
+    def stock_actions(self, obj: StockItem) -> str:
+        return format_html(
+            '<a href="{}">Receive</a>',
+            reverse("admin:inventory_stockitem_receive", args=[obj.pk]),
+        )
+
+    def get_urls(self) -> list[URLPattern]:
+        # Custom pages must come first: Django's own ``<id>/`` pattern would
+        # otherwise swallow ``<id>/receive/``.
+        custom = [
+            path(
+                "<path:object_id>/receive/",
+                self.admin_site.admin_view(self.receive_view),
+                name="inventory_stockitem_receive",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def receive_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
+        return self._stock_form_view(
+            request,
+            object_id,
+            title="Receive stock",
+            form_class=ReceiveStockForm,
+            apply=_apply_receive,
+        )
+
+    def _stock_form_view(
+        self,
+        request: HttpRequest,
+        object_id: str,
+        *,
+        title: str,
+        form_class: type[Form],
+        apply: Callable[[StockItem, dict[str, Any], User], str],
+    ) -> HttpResponse:
+        """Shared page for the stock actions: show a form, call a service.
+
+        The page never writes stock itself. ``apply`` calls a function from
+        ``services.py`` and returns the success message (ADR D45, point 5).
+        """
+        user = request.user
+        if not isinstance(user, User):
+            raise PermissionDenied
+        if not (self.has_view_permission(request) and user.has_perm(STOCK_WRITE_PERMISSION)):
+            raise PermissionDenied
+
+        obj = self.get_object(request, unquote(object_id))
+        if obj is None:
+            raise Http404("Stock item not found.")
+
+        form = form_class(request.POST) if request.method == "POST" else form_class()
+        if request.method == "POST" and form.is_valid():
+            try:
+                message = apply(obj, form.cleaned_data, user)
+            except InventoryError as error:
+                # Nothing was written: the service rolls back its own transaction.
+                form.add_error(None, str(error))
+            else:
+                self.message_user(request, message, messages.SUCCESS)
+                return HttpResponseRedirect(reverse("admin:inventory_stockitem_changelist"))
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": title,
+            "submit_label": title,
+            "original": obj,
+            "on_hand": self.on_hand_display(obj),
+            "form": form,
+        }
+        return TemplateResponse(request, "admin/inventory/stockitem/stock_form.html", context)
+
+
+def _apply_receive(variant: StockItem, data: dict[str, Any], user: User) -> str:
+    movement = receive_stock(
+        variant=variant,
+        quantity=data["quantity"],
+        supplier=data["supplier"],
+        batch_number=data["batch_number"],
+        expiry_date=data["expiry_date"],
+        reason=data["reason"],
+        created_by=user,
+    )
+    return f"Received {_plain(movement.quantity_change)} of {variant.sku_code}."
