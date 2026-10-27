@@ -13,16 +13,19 @@ from django.forms import Form
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import URLPattern, path, reverse
-from django.utils.html import format_html
+from django.utils.html import format_html_join
 
 from apps.accounts.models import User
 
-from .forms import ReceiveStockForm
+from .forms import AdjustStockForm, ReceiveStockForm, RecordDamageForm
 from .models import InventoryMovement, StockItem, Supplier
-from .services import InventoryError, receive_stock
+from .services import InventoryError, adjust_stock, receive_stock, record_damage
 
 # Who may use the stock action pages (ADR D45, point 5). Superusers pass.
 STOCK_WRITE_PERMISSION = "inventory.add_inventorymovement"
+
+# (url name suffix, link text) for the Actions column on the Stock screen.
+STOCK_ACTIONS = (("receive", "Receive"), ("adjust", "Adjust"), ("damage", "Damage"))
 
 
 def _plain(value: Decimal) -> str:
@@ -159,9 +162,13 @@ class StockItemAdmin(admin.ModelAdmin):
 
     @admin.display(description="Actions")
     def stock_actions(self, obj: StockItem) -> str:
-        return format_html(
-            '<a href="{}">Receive</a>',
-            reverse("admin:inventory_stockitem_receive", args=[obj.pk]),
+        return format_html_join(
+            " | ",
+            '<a href="{}">{}</a>',
+            (
+                (reverse(f"admin:inventory_stockitem_{name}", args=[obj.pk]), label)
+                for name, label in STOCK_ACTIONS
+            ),
         )
 
     def get_urls(self) -> list[URLPattern]:
@@ -173,6 +180,16 @@ class StockItemAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.receive_view),
                 name="inventory_stockitem_receive",
             ),
+            path(
+                "<path:object_id>/adjust/",
+                self.admin_site.admin_view(self.adjust_view),
+                name="inventory_stockitem_adjust",
+            ),
+            path(
+                "<path:object_id>/damage/",
+                self.admin_site.admin_view(self.damage_view),
+                name="inventory_stockitem_damage",
+            ),
         ]
         return custom + super().get_urls()
 
@@ -183,6 +200,24 @@ class StockItemAdmin(admin.ModelAdmin):
             title="Receive stock",
             form_class=ReceiveStockForm,
             apply=_apply_receive,
+        )
+
+    def adjust_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
+        return self._stock_form_view(
+            request,
+            object_id,
+            title="Adjust stock",
+            form_class=AdjustStockForm,
+            apply=_apply_adjust,
+        )
+
+    def damage_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
+        return self._stock_form_view(
+            request,
+            object_id,
+            title="Record damage",
+            form_class=RecordDamageForm,
+            apply=_apply_damage,
         )
 
     def _stock_form_view(
@@ -243,3 +278,23 @@ def _apply_receive(variant: StockItem, data: dict[str, Any], user: User) -> str:
         created_by=user,
     )
     return f"Received {_plain(movement.quantity_change)} of {variant.sku_code}."
+
+
+def _apply_adjust(variant: StockItem, data: dict[str, Any], user: User) -> str:
+    movement = adjust_stock(
+        variant=variant,
+        quantity_change=data["quantity_change"],
+        reason=data["reason"],
+        created_by=user,
+    )
+    return f"Adjusted {variant.sku_code} by {_plain(movement.quantity_change)}."
+
+
+def _apply_damage(variant: StockItem, data: dict[str, Any], user: User) -> str:
+    movement = record_damage(
+        variant=variant,
+        quantity=data["quantity"],
+        reason=data["reason"],
+        created_by=user,
+    )
+    return f"Recorded damage of {_plain(-movement.quantity_change)} for {variant.sku_code}."

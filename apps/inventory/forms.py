@@ -31,3 +31,33 @@ class ReceiveStockForm(forms.Form):
         widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
     )
     reason = forms.CharField(max_length=REASON_MAX_LENGTH, required=False, label="Note")
+
+
+class AdjustStockForm(forms.Form):
+    quantity_change = forms.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        label="Change",
+        help_text=(
+            "Positive adds stock, negative removes it (for example -2). "
+            "Packets must be whole numbers."
+        ),
+    )
+    reason = forms.CharField(
+        max_length=REASON_MAX_LENGTH,
+        help_text="Required. This is kept in the movement history.",
+    )
+
+
+class RecordDamageForm(forms.Form):
+    quantity = forms.DecimalField(
+        min_value=Decimal("0.001"),
+        max_digits=12,
+        decimal_places=3,
+        label="Damaged quantity",
+        help_text="How much to remove, as a positive number. Packets: whole numbers.",
+    )
+    reason = forms.CharField(
+        max_length=REASON_MAX_LENGTH,
+        help_text="Required. For example: leaking, expired, torn pack.",
+    )
