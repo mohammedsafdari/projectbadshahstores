@@ -6,6 +6,7 @@ from typing import Any
 from django.conf import settings
 from django.db import models
 
+from apps.catalog.models import ProductVariant
 from apps.core.models import AppendOnlyError, ArchivableModel, TimeStampedModel
 
 
@@ -155,3 +156,21 @@ class InventoryMovement(models.Model):
 
     def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
         raise AppendOnlyError("Stock movements cannot be deleted.")
+
+
+class StockItem(ProductVariant):
+    """Proxy of ProductVariant: the "Stock" admin screen (D45). No table of its own."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "stock item"
+        verbose_name_plural = "stock"
+
+
+class ExpiringLot(InventoryMovement):
+    """Proxy of InventoryMovement: the "Expiring lots" admin screen (D45)."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "expiring lot"
+        verbose_name_plural = "expiring lots"
