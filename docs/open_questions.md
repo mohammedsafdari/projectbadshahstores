@@ -42,16 +42,18 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Production hardening of the stock ledger: a Postgres trigger or a restricted database role so movement rows cannot be changed with raw SQL — developer; before production; default in use: the Django-level guard only (D42)
 - [ ] Purchase cost per received lot, for stock valuation — owner/CA; needed by Phase 5 reports; default in use: `ProductVariant.cost_price`
 - [ ] Is repacking (a loose sack into packets) frequent enough to need a `REPACK` movement type? — owner; default in use: two `ADJUSTMENT` movements with a reason
-- [ ] Should a purchase with an expiry date in the past be refused or only warned about? — owner; needed before Slice 18 (inventory admin); default in use: allowed, no warning (D43)
+- [ ] Should a purchase with an expiry date in the past be refused or only warned about? — owner; default in use: allowed, no warning; the Receive page accepts a past date (D43, D45)
 - [ ] Should every damage or write-off entry need a reason (expired, broken, lost)? — owner; default in use: yes, the reason is required (D43)
 - [ ] Who records in-store sales in the ledger (`IN_STORE_SALE`): the billing-software import in Slice 20, or nothing yet? — owner; needed before Slice 20; default in use: nothing writes `IN_STORE_SALE` yet (D43)
 - [ ] Audit log retention: how long to keep rows. Default: forever. Owner: shop owner. Needed before production.
 - [ ] Slices 20 and 21 must write an audit entry for every price change they make: `snapshot_variant_from_db` before and `record_variant_change` after (`apps/catalog/audit.py`, D44). Default: yes (a reminder, not a business question).
 - [ ] Should creating or deleting a variant, or changing a product, brand or category, also be audited? — owner/developer; default in use: no, only edits of existing variants (D44)
 - [ ] Which staff roles may read the audit log? — owner; needed when the staff roles exist; default in use: superusers only (D44)
-- [ ] Which staff may receive, adjust, damage and count stock before the Phase 5 roles exist? — owner; default in use: users with the `inventory.add_inventorymovement` permission, and superusers (D45)
+- [ ] Which staff may receive, adjust, damage and count stock before the Phase 5 roles exist? — owner; default in use: users with the Stock view permission and `inventory.add_inventorymovement`, and superusers (D45)
 - [ ] How many days ahead should the expiry screen warn? — owner; default in use: filters for 7, 30 and 60 days plus "already expired" (D45)
 - [ ] Should low stock or near expiry also send a message (WhatsApp, SMS or email)? — owner; default in use: screens only, notifications wait for Phase 6 (D45)
+- [ ] Should the Adjust page refuse to take stock below zero? — owner/developer; default in use: no, `adjust_stock` allows it and logs a warning (D43); Damage cannot go below zero
+- [ ] Do you need to know how much of each received lot is left (batch-level stock)? — owner; default in use: no, the Expiring lots screen shows the variant's total (D42, D45)
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
