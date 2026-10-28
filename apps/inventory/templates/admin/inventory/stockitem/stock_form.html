@@ -14,6 +14,7 @@
   <p>
     <strong>{{ original.sku_code }}</strong> &mdash; {{ original.product }}
     ({{ original.get_unit_display }}). On hand: <strong>{{ on_hand }}</strong>
+    {% if history_url %}&middot; <a href="{{ history_url }}">View movement history</a>{% endif %}
   </p>
   <form method="post">
     {% csrf_token %}

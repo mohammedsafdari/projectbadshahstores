@@ -61,3 +61,20 @@ class RecordDamageForm(forms.Form):
         max_length=REASON_MAX_LENGTH,
         help_text="Required. For example: leaking, expired, torn pack.",
     )
+
+
+class CountStockForm(forms.Form):
+    counted_quantity = forms.DecimalField(
+        min_value=Decimal("0"),
+        max_digits=12,
+        decimal_places=3,
+        label="Counted quantity",
+        help_text=(
+            "What you actually counted on the shelf, in total (not the difference). "
+            "Packets must be whole numbers."
+        ),
+    )
+    reason = forms.CharField(
+        max_length=REASON_MAX_LENGTH,
+        help_text="Required. For example: monthly stock count.",
+    )

@@ -17,20 +17,54 @@ from django.utils.html import format_html_join
 
 from apps.accounts.models import User
 
-from .forms import AdjustStockForm, ReceiveStockForm, RecordDamageForm
+from .forms import AdjustStockForm, CountStockForm, ReceiveStockForm, RecordDamageForm
 from .models import InventoryMovement, StockItem, Supplier
-from .services import InventoryError, adjust_stock, receive_stock, record_damage
+from .services import (
+    InventoryError,
+    adjust_stock,
+    count_stock,
+    receive_stock,
+    record_damage,
+)
 
 # Who may use the stock action pages (ADR D45, point 5). Superusers pass.
 STOCK_WRITE_PERMISSION = "inventory.add_inventorymovement"
 
-# (url name suffix, link text) for the Actions column on the Stock screen.
-STOCK_ACTIONS = (("receive", "Receive"), ("adjust", "Adjust"), ("damage", "Damage"))
+# Reading the movement history needs its own permission (ADR D45, point 2).
+HISTORY_PERMISSION = "inventory.view_inventorymovement"
+
+# (url name suffix, link text, permission needed) for the Actions column on the
+# Stock screen. "history" is not a page of this admin: see ``_action_url``.
+STOCK_ACTIONS = (
+    ("receive", "Receive", STOCK_WRITE_PERMISSION),
+    ("adjust", "Adjust", STOCK_WRITE_PERMISSION),
+    ("count", "Count", STOCK_WRITE_PERMISSION),
+    ("damage", "Damage", STOCK_WRITE_PERMISSION),
+    ("history", "History", HISTORY_PERMISSION),
+)
+
+
+def _history_url(variant_pk: int) -> str:
+    """The movement history screen, filtered to one variant."""
+    base = reverse("admin:inventory_inventorymovement_changelist")
+    return f"{base}?variant__id__exact={variant_pk}"
+
+
+def _action_url(name: str, variant_pk: int) -> str:
+    if name == "history":
+        return _history_url(variant_pk)
+    return reverse(f"admin:inventory_stockitem_{name}", args=[variant_pk])
 
 
 def _plain(value: Decimal) -> str:
     """A quantity without trailing zeros: Decimal("10.000") shows as 10."""
     return format(value.normalize(), "f")
+
+
+def _signed(value: Decimal) -> str:
+    """Like ``_plain`` but with an explicit plus sign on positive values."""
+    text = _plain(value)
+    return text if value < 0 else f"+{text}"
 
 
 @admin.register(InventoryMovement)
@@ -156,20 +190,26 @@ class StockItemAdmin(admin.ModelAdmin):
 
     def get_list_display(self, request: HttpRequest) -> list[str | Callable[[Any], str | bool]]:
         columns = list(super().get_list_display(request))
-        if request.user.has_perm(STOCK_WRITE_PERMISSION):
-            columns.append("stock_actions")
+        # Each link is shown only to a user who may open the page behind it.
+        links = [
+            (name, label)
+            for name, label, permission in STOCK_ACTIONS
+            if request.user.has_perm(permission)
+        ]
+        if links:
+            columns.append(self._actions_column(links))
         return columns
 
-    @admin.display(description="Actions")
-    def stock_actions(self, obj: StockItem) -> str:
-        return format_html_join(
-            " | ",
-            '<a href="{}">{}</a>',
-            (
-                (reverse(f"admin:inventory_stockitem_{name}", args=[obj.pk]), label)
-                for name, label in STOCK_ACTIONS
-            ),
-        )
+    def _actions_column(self, links: list[tuple[str, str]]) -> Callable[[Any], str]:
+        @admin.display(description="Actions")
+        def stock_actions(obj: StockItem) -> str:
+            return format_html_join(
+                " | ",
+                '<a href="{}">{}</a>',
+                ((_action_url(name, obj.pk), label) for name, label in links),
+            )
+
+        return stock_actions
 
     def get_urls(self) -> list[URLPattern]:
         # Custom pages must come first: Django's own ``<id>/`` pattern would
@@ -184,6 +224,11 @@ class StockItemAdmin(admin.ModelAdmin):
                 "<path:object_id>/adjust/",
                 self.admin_site.admin_view(self.adjust_view),
                 name="inventory_stockitem_adjust",
+            ),
+            path(
+                "<path:object_id>/count/",
+                self.admin_site.admin_view(self.count_view),
+                name="inventory_stockitem_count",
             ),
             path(
                 "<path:object_id>/damage/",
@@ -209,6 +254,15 @@ class StockItemAdmin(admin.ModelAdmin):
             title="Adjust stock",
             form_class=AdjustStockForm,
             apply=_apply_adjust,
+        )
+
+    def count_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
+        return self._stock_form_view(
+            request,
+            object_id,
+            title="Count stock",
+            form_class=CountStockForm,
+            apply=_apply_count,
         )
 
     def damage_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
@@ -262,6 +316,7 @@ class StockItemAdmin(admin.ModelAdmin):
             "submit_label": title,
             "original": obj,
             "on_hand": self.on_hand_display(obj),
+            "history_url": _history_url(obj.pk) if user.has_perm(HISTORY_PERMISSION) else "",
             "form": form,
         }
         return TemplateResponse(request, "admin/inventory/stockitem/stock_form.html", context)
@@ -298,3 +353,17 @@ def _apply_damage(variant: StockItem, data: dict[str, Any], user: User) -> str:
         created_by=user,
     )
     return f"Recorded damage of {_plain(-movement.quantity_change)} for {variant.sku_code}."
+
+
+def _apply_count(variant: StockItem, data: dict[str, Any], user: User) -> str:
+    movement = count_stock(
+        variant=variant,
+        counted_quantity=data["counted_quantity"],
+        reason=data["reason"],
+        created_by=user,
+    )
+    if movement is None:
+        return f"Counted {variant.sku_code}: the count matches on-hand, nothing changed."
+    counted = _plain(data["counted_quantity"])
+    change = _signed(movement.quantity_change)
+    return f"Counted {variant.sku_code}: on-hand is now {counted} ({change})."
