@@ -1,24 +1,26 @@
 """Inventory admin screens: movement history, suppliers and the Stock screen."""
 
 from collections.abc import Callable
+from datetime import timedelta
 from decimal import Decimal
 from typing import Any, cast
 
 from django.contrib import admin, messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied
-from django.db.models import DecimalField, F, QuerySet, Sum, Value
+from django.db.models import DecimalField, F, OuterRef, QuerySet, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.forms import Form
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import URLPattern, path, reverse
+from django.utils import timezone
 from django.utils.html import format_html_join
 
 from apps.accounts.models import User
 
 from .forms import AdjustStockForm, CountStockForm, ReceiveStockForm, RecordDamageForm
-from .models import InventoryMovement, StockItem, Supplier
+from .models import ExpiringLot, InventoryMovement, StockItem, Supplier
 from .services import (
     InventoryError,
     adjust_stock,
@@ -367,3 +369,126 @@ def _apply_count(variant: StockItem, data: dict[str, Any], user: User) -> str:
     counted = _plain(data["counted_quantity"])
     change = _signed(movement.quantity_change)
     return f"Counted {variant.sku_code}: on-hand is now {counted} ({change})."
+
+
+class ExpiryWindowFilter(admin.SimpleListFilter):
+    """Lots that have already expired, or expire within 7, 30 or 60 days."""
+
+    title = "expiry"
+    parameter_name = "expiry"
+
+    def lookups(self, request: HttpRequest, model_admin: Any) -> list[tuple[str, str]]:
+        return [
+            ("expired", "Already expired"),
+            ("7", "Within 7 days"),
+            ("30", "Within 30 days"),
+            ("60", "Within 60 days"),
+        ]
+
+    def queryset(self, request: HttpRequest, queryset: QuerySet[Any]) -> QuerySet[Any]:
+        today = timezone.localdate()
+        value = self.value()
+        if value == "expired":
+            return queryset.filter(expiry_date__lt=today)
+        if value in ("7", "30", "60"):
+            last_day = today + timedelta(days=int(value))
+            return queryset.filter(expiry_date__gte=today, expiry_date__lte=last_day)
+        return queryset
+
+
+def _days_text(days: int) -> str:
+    unit = "day" if abs(days) == 1 else "days"
+    return f"{days} {unit}"
+
+
+@admin.register(ExpiringLot)
+class ExpiringLotAdmin(admin.ModelAdmin):
+    """Received lots with an expiry date whose variant still has stock.
+
+    The ledger records what was received, not how much of each lot is left
+    (ADR D42), so the "Variant on hand" column is the total for the variant
+    across all of its lots.
+    """
+
+    list_display = (
+        "expiry_date",
+        "days_left",
+        "variant",
+        "batch_number",
+        "received_quantity",
+        "supplier",
+        "variant_on_hand",
+    )
+    list_filter = (ExpiryWindowFilter, "supplier")
+    search_fields = (
+        "variant__sku_code",
+        "variant__product__name_en",
+        "variant__product__name_hi",
+        "batch_number",
+    )
+    list_select_related = ("variant", "variant__product", "supplier")
+    ordering = ("expiry_date", "id")
+    list_per_page = 50
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[ExpiringLot]:
+        # The total of all movements of the same variant, in one subquery.
+        variant_total = (
+            InventoryMovement.objects.filter(variant=OuterRef("variant"))
+            .order_by()
+            .values("variant")
+            .annotate(total=Sum("quantity_change"))
+            .values("total")
+        )
+        return (
+            super()
+            .get_queryset(request)
+            .filter(
+                movement_type=InventoryMovement.MovementType.PURCHASE_RECEIVED,
+                expiry_date__isnull=False,
+            )
+            .annotate(
+                variant_on_hand=Coalesce(
+                    Subquery(
+                        variant_total,
+                        output_field=DecimalField(max_digits=14, decimal_places=3),
+                    ),
+                    Value(Decimal("0")),
+                    output_field=DecimalField(max_digits=14, decimal_places=3),
+                )
+            )
+            .filter(variant_on_hand__gt=0)
+        )
+
+    @admin.display(description="Days left", ordering="expiry_date")
+    def days_left(self, obj: ExpiringLot) -> str:
+        if obj.expiry_date is None:
+            return ""
+        days = (obj.expiry_date - timezone.localdate()).days
+        if days < 0:
+            return f"expired {_days_text(-days)} ago"
+        if days == 0:
+            return "today"
+        return _days_text(days)
+
+    @admin.display(description="Received")
+    def received_quantity(self, obj: ExpiringLot) -> str:
+        return _plain(obj.quantity_change)
+
+    @admin.display(description="Variant on hand (all lots)")
+    def variant_on_hand(self, obj: ExpiringLot) -> str:
+        # mypy does not know about the ``variant_on_hand`` annotation above.
+        return _plain(cast(Any, obj).variant_on_hand)
+
+    # Read-only, like the movement history: no add, change or delete, and no
+    # ``has_view_permission`` override (Django's default decides who can read).
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+    def get_readonly_fields(self, request: HttpRequest, obj: Any = None) -> list[str]:
+        return [f.name for f in self.model._meta.fields]
