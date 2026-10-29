@@ -3,7 +3,9 @@
 from typing import Any
 
 from django.contrib import admin
-from django.http import HttpRequest
+from django.db.models import QuerySet
+from django.http import HttpRequest, HttpResponse
+from django.utils import timezone
 from django.utils.html import format_html
 
 from apps.catalog.audit import (
@@ -14,7 +16,33 @@ from apps.catalog.audit import (
     snapshot_variants_before_formset_save,
 )
 
+from .csv_export import variants_for_export, write_variants_csv
 from .models import Brand, Category, Product, ProductImage, ProductVariant
+
+
+def _csv_download(variants: QuerySet[ProductVariant]) -> HttpResponse:
+    """Build the CSV file download for the given variants (Slice 19)."""
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    filename = f"variants-{timezone.localdate():%Y-%m-%d}.csv"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    # The file holds cost prices, so browsers and proxies must not keep a copy.
+    response["Cache-Control"] = "no-store"
+    # An HttpResponse works like a file: write() adds text to the download.
+    write_variants_csv(variants_for_export(variants), response)
+    return response
+
+
+class VariantCsvExportPermissionMixin:
+    """Who may run the CSV export actions.
+
+    The file shows what the variant pages show (cost price included), so the
+    rule is the same: the user needs the view permission for variants. Django
+    finds this method by name: an action declared with ``permissions=["export"]``
+    is offered only when ``has_export_permission`` returns True.
+    """
+
+    def has_export_permission(self, request: HttpRequest) -> bool:
+        return request.user.has_perm("catalog.view_productvariant")
 
 
 class ProductImageInline(admin.TabularInline):
@@ -84,7 +112,7 @@ class ProductVariantInline(admin.TabularInline):
 
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
+class ProductAdmin(VariantCsvExportPermissionMixin, admin.ModelAdmin):
     list_display = (
         "name_en",
         "name_hi",
@@ -109,6 +137,17 @@ class ProductAdmin(admin.ModelAdmin):
     # Inlines appear on the product change page, below the product fields.
     # ProductImageInline comes after ProductVariantInline so variants stay first.
     inlines = [ProductVariantInline, ProductImageInline]
+    actions = ["export_variants_csv"]
+
+    @admin.action(
+        description="Export all variants of the selected products to CSV",
+        permissions=["export"],
+    )
+    def export_variants_csv(
+        self, request: HttpRequest, queryset: QuerySet[Product]
+    ) -> HttpResponse:
+        # The selected rows are products; the file has one row per variant.
+        return _csv_download(ProductVariant.objects.filter(product__in=queryset))
 
     # save_formset runs once for each inline (variants, then images). Only the
     # variants formset is audited. The old values are read from the database
@@ -127,7 +166,7 @@ class ProductAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductVariant)
-class ProductVariantAdmin(admin.ModelAdmin):
+class ProductVariantAdmin(VariantCsvExportPermissionMixin, admin.ModelAdmin):
     list_display = (
         "sku_code",
         "product",
@@ -142,6 +181,11 @@ class ProductVariantAdmin(admin.ModelAdmin):
     search_fields = ("sku_code", "barcode", "product__name_en", "product__name_hi")
     autocomplete_fields = ("product",)
     list_select_related = ("product",)
+    actions = ["export_csv"]
+
+    @admin.action(description="Export the selected variants to CSV", permissions=["export"])
+    def export_csv(self, request: HttpRequest, queryset: QuerySet[ProductVariant]) -> HttpResponse:
+        return _csv_download(queryset)
 
     # By the time save_model runs, the form has already put the new values on
     # ``obj``, so the old values must be read from the database first. Django's
