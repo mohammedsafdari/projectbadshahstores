@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 18 (inventory admin). Next slice: 19 (CSV export).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 19 (CSV export). Next slice: 20 (CSV import).
 
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
@@ -24,6 +24,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
   - The Stock screen: proxy model `StockItem` of `ProductVariant` (read-only) with on-hand from one annotated query, a low-stock marker and filter, and an Actions column: Receive, Adjust, Count, Damage and History. The four write pages are plain forms that call `receive_stock`, `adjust_stock`, `count_stock` and `record_damage`; they share one view, `_stock_form_view`. They need the Stock view permission and `inventory.add_inventorymovement` (superusers pass). History needs `inventory.view_inventorymovement` and opens the movement history for one variant (`?variant__id__exact=<id>`).
   - The Expiring lots screen: proxy model `ExpiringLot` of `InventoryMovement` (read-only), listing received lots with an expiry date whose variant still has stock, soonest first, with filters for already expired and 7, 30 and 60 days.
   - Migration `0003_stock_proxy_models` creates the two proxy models (no tables). `ProductVariantAdmin` is unchanged.
+- CSV export (Slice 19, D46): `apps/catalog/csv_export.py` (`CSV_COLUMNS`, `variants_for_export`, `variant_to_row`, `write_variants_csv`) writes one row per variant with its product, brand and category into any file-like object. UTF-8 with a BOM (read it with `utf-8-sig`), plain decimals, `TRUE`/`FALSE` flags, and a formula guard that puts a `'` in front of a text cell starting with `=`, `+`, `-`, `@`, tab or carriage return. Admin actions: `export_csv` on the variant list and `export_variants_csv` on the product list, offered only to users with `catalog.view_productvariant` (`VariantCsvExportPermissionMixin`). No stock column.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -68,6 +69,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 18h | Count stock page and the History links, with tests. |
 | 18i | The Expiring lots screen, with tests. |
 | 18j | Documentation sync: this file, ADR D45 additions, open questions. |
+| 19a | `apps/catalog/csv_export.py`, the two admin export actions, with tests. |
+| 19b | Documentation sync: this file, ADR D46, open questions. |
 
 ## Remaining Phase 2 slices
 
@@ -76,7 +79,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 16. (done) Inventory services and integrity check (D43).
 17. (done) AuditLog in core (D44): stock is not audited (the ledger covers it); variant edits in the admin are.
 18. (done) Inventory admin (D45): movement history, suppliers, Stock screen with receive, adjust, count and damage pages, low-stock filter and Expiring lots screen.
-19. CSV export (service plus admin action).
+19. (done) CSV export (D46): service plus an action on the variant list and on the product list.
 20. CSV import with a validation report (dry run, then commit). REVIEW CAREFULLY.
 21. Bulk price update admin action (must write audit rows: `snapshot_variant_from_db` before, `record_variant_change` after; queryset `update()` skips any automatic hook, D44).
 22. Seed command (about 100 realistic SKUs loaded through the importer; idempotent).
@@ -111,6 +114,8 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - `receive_stock` checks the supplier's `is_active` on the object passed in and does not lock the supplier, so a supplier archived at the same moment could be used once more.
 - `check_inventory_integrity` is run by hand; nothing schedules it (cron or a job) yet.
 - The variant audit covers edits of existing variants on the two admin pages only. Creating or deleting a variant, other models (product, brand, category), and changes made in the shell or with queryset `update()` write no audit row. Slices 20 and 21 must call the helpers in `apps/catalog/audit.py` (D44).
+- The CSV export contains `cost_price` and is open to anyone with `catalog.view_productvariant`; narrow it when the Phase 5 roles exist. Exports are not logged (D46).
+- Slice 20 must read the export format back exactly: open files with `utf-8-sig`, remove one leading `'` from a text cell when the next character is `=`, `+`, `-`, `@`, tab or carriage return, and validate barcodes (digits) and HSN codes (4 to 8 digits), because Excel turns `8901234567890` into `8.9E+12` and `0902` into `902` when a CSV is opened by double-click (D46).
 - `cost_price` is not shown in the product-page variant inline, so it is audited only when edited on the variant's own admin page.
 - Adjust can take stock below zero (the service allows it and logs a warning, D43); Damage cannot. The Count page can set stock to any number from zero up.
 - The Expiring lots screen cannot say how much of each lot is left, only the variant's total (D42, D45). Real batch-level stock would need first-expiry-first-out accounting.
@@ -171,6 +176,7 @@ Everyday commands (they run inside the container):
 - `git push` failing with "Could not resolve host" is a network or DNS problem on the PC, not a git problem; the commit is safe locally. Fix the connection, push again, and check `git log origin/main --oneline -3`.
 - Proxy models get their own permission codenames (`view_stockitem`, `view_expiringlot`); tests grant them by codename. Custom admin pages must be listed before Django's own `<id>/` URL in `get_urls`, wrapped in `admin_site.admin_view`, and must check permissions themselves.
 - An annotation added in `get_queryset` is unknown to mypy; use `cast(Any, obj).on_hand` (ruff B009 forbids `getattr` with a constant name). Always test that the annotated number equals the service (`get_on_hand`) and that the query count does not grow with the number of rows.
+- A custom admin action that the user may not run does not return an error code: Django shows the list page again (status 200, HTML), so test for "no CSV came back". The admin also adds its own `Cache-Control` words, so assert `"no-store" in header`, not equality (19a).
 - Test helpers that create a user must not reuse the same phone number inside one test (unique constraint), and a purchase of quantity zero violates a ledger constraint; both made 18e's first test run fail.
 
 ## Slice closeout checklist
