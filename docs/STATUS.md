@@ -72,6 +72,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 19a | `apps/catalog/csv_export.py`, the two admin export actions, with tests. |
 | 19b | Documentation sync: this file, ADR D46, open questions. |
 | 20a | ADR D47 (CSV import) and open questions with "ask again before" points. |
+| 20b | `apps/catalog/csv_import.py`: parser and cell checks, no database (99 tests). Slice 20 is now split 20c plan (database checks), 20d apply, 20e admin page, 20f round trip and docs. |
 
 ## Remaining Phase 2 slices
 
