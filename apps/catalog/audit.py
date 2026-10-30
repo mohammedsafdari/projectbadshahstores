@@ -25,6 +25,7 @@ AUDITED_VARIANT_FIELDS: tuple[str, ...] = (
 )
 
 VARIANT_UPDATE_ACTION = "VARIANT_UPDATE"
+VARIANT_CREATE_ACTION = "VARIANT_CREATE"
 
 
 def snapshot_variant_from_db(variant_pk: int) -> dict[str, Any]:
@@ -52,6 +53,28 @@ def record_variant_change(
         target=variant,
         old=old,
         new=new,
+        note=note,
+    )
+
+
+def record_variant_created(
+    *,
+    actor: AbstractBaseUser | None,
+    variant: ProductVariant,
+    note: str = "",
+) -> AuditLog | None:
+    """Write one AuditLog row for a variant the CSV import has just created.
+
+    Only the import calls this (D47 point 6); variants created on the admin pages
+    are still not audited (D44 point 7). The old values are all ``None``, so the
+    row reads "everything this variant has was set by the import".
+    """
+    return record_change(
+        actor=actor,
+        action=VARIANT_CREATE_ACTION,
+        target=variant,
+        old=dict.fromkeys(AUDITED_VARIANT_FIELDS),
+        new=snapshot(variant, AUDITED_VARIANT_FIELDS),
         note=note,
     )
 
