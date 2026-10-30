@@ -1,0 +1,112 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a> &rsaquo;
+  <a href="{% url 'admin:catalog_productvariant_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a> &rsaquo;
+  {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>
+    Upload a CSV file with the same columns as the export. The file must be UTF-8,
+    and the delimiter may be a comma, a semicolon or a tab. At most 2 MB and 5,000
+    data rows. Nothing is deleted by the import, and nothing is written until you
+    press Confirm.
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <fieldset class="module aligned">
+      <div class="form-row{% if form.csv_file.errors %} errors{% endif %}">
+        {{ form.csv_file.errors }}
+        <label for="id_csv_file">CSV file</label>
+        <input type="file" name="csv_file" id="id_csv_file" accept=".csv" required>
+      </div>
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" class="default" value="Read the file">
+    </div>
+  </form>
+
+  {% if report %}
+  <h2>What this file would do</h2>
+  <p>
+    <strong>{{ report.counts.CREATE|default:"0" }}</strong> to create &middot;
+    <strong>{{ report.counts.UPDATE|default:"0" }}</strong> to update &middot;
+    <strong>{{ report.counts.UNCHANGED|default:"0" }}</strong> unchanged &middot;
+    <strong>{{ report.issues|length }}</strong> problem(s){% if report.more_issues %}
+    (and {{ report.more_issues }} more){% endif %} &middot;
+    {{ report.row_count }} data row(s) read.
+  </p>
+
+  {% if report.issues %}
+  <h2>Problems</h2>
+  <table class="adminlist">
+    <thead>
+      <tr>
+        <th>Line</th>
+        <th>Column</th>
+        <th>Message</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for issue in report.issues %}
+      <tr>
+        <td>{{ issue.line }}</td>
+        <td>{{ issue.column|default:"-" }}</td>
+        <td>{{ issue.message }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if report.more_issues %}
+  <p>and {{ report.more_issues }} more problem(s).</p>
+  {% endif %}
+  {% else %}
+  <p>No problems found.</p>
+  {% endif %}
+
+  {% if report.rows %}
+  <h2>Planned rows</h2>
+  <table class="adminlist">
+    <thead>
+      <tr>
+        <th>Line</th>
+        <th>SKU</th>
+        <th>Action</th>
+        <th>Changed fields</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.rows %}
+      <tr>
+        <td>{{ row.line }}</td>
+        <td>{{ row.sku_code }}</td>
+        <td>{{ row.action }}</td>
+        <td>{{ row.changed_fields|join:", "|default:"-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if report.more_rows %}
+  <p>and {{ report.more_rows }} more row(s).</p>
+  {% endif %}
+  {% endif %}
+
+  {% if report.can_confirm %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="confirm" value="1">
+    <div class="submit-row">
+      <input type="submit" class="default" value="Confirm import">
+    </div>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

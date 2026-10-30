@@ -1,10 +1,17 @@
 """Django admin setup for the catalog app."""
 
+import base64
+import hashlib
+import os
 from typing import Any
 
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
-from django.http import HttpRequest, HttpResponse
+from django.forms import FileField, Form
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.template.response import TemplateResponse
+from django.urls import URLPattern, path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -15,6 +22,9 @@ from apps.catalog.audit import (
     snapshot_variant_from_db,
     snapshot_variants_before_formset_save,
 )
+from apps.catalog.csv_import import MAX_FILE_BYTES, Issue, parse_variants_csv
+from apps.catalog.csv_import_apply import ImportRejected, apply_import
+from apps.catalog.csv_import_plan import CREATE, UPDATE, RowPlan, build_plan
 
 from .csv_export import variants_for_export, write_variants_csv
 from .models import Brand, Category, Product, ProductImage, ProductVariant
@@ -30,6 +40,32 @@ def _csv_download(variants: QuerySet[ProductVariant]) -> HttpResponse:
     # An HttpResponse works like a file: write() adds text to the download.
     write_variants_csv(variants_for_export(variants), response)
     return response
+
+
+# Who may use the "Import CSV" page (ADR D47, point 7): the user must be able to do
+# the same work by hand, so all four add/change permissions are required. Superusers
+# hold every permission, so they pass without a special case.
+IMPORT_PERMISSIONS: tuple[str, ...] = (
+    "catalog.add_product",
+    "catalog.change_product",
+    "catalog.add_productvariant",
+    "catalog.change_productvariant",
+)
+
+# The preview shows this many problems and rows; anything beyond that is only counted.
+MAX_REPORTED_ISSUES = 200
+MAX_REPORTED_ROWS = 50
+
+# The uploaded file waits here between the preview and the click on Confirm.
+IMPORT_SESSION_KEY = "catalog_import"
+
+IMPORT_TEMPLATE = "admin/catalog/productvariant/import_csv.html"
+
+
+class ImportCsvForm(Form):
+    """The upload form: one file field. A plain Form is enough here."""
+
+    csv_file = FileField(label="CSV file")
 
 
 class VariantCsvExportPermissionMixin:
@@ -198,3 +234,154 @@ class ProductVariantAdmin(VariantCsvExportPermissionMixin, admin.ModelAdmin):
         super().save_model(request, obj, form, change)
         if old is not None:
             record_variant_change(actor=audit_actor(request), variant=obj, old=old)
+
+    # -- "Import CSV": upload, read the report, then confirm (D47 points 1 and 5) --
+    def get_urls(self) -> list[URLPattern]:
+        # Custom pages must come first: the default patterns include
+        # ``<path:object_id>/``, which would otherwise swallow this path.
+        custom = [
+            path(
+                "import-csv/",
+                self.admin_site.admin_view(self.import_csv_view),
+                name="catalog_productvariant_import_csv",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def import_csv_view(self, request: HttpRequest) -> HttpResponse:
+        """Upload a file and show what it would do, then write it on Confirm.
+
+        The preview writes nothing. The Confirm post calls ``apply_import``, which
+        locks, plans again and refuses when the data or the file changed since the
+        preview (D47 point 5).
+        """
+        self._require_import_permissions(request)
+        if request.method == "POST" and request.POST.get("confirm"):
+            return self._confirm_import(request)
+        if request.method == "POST":
+            return self._preview_import(request)
+        return self._render_import(request, form=ImportCsvForm())
+
+    def _require_import_permissions(self, request: HttpRequest) -> None:
+        # ``admin_view`` already checked that the user may reach the admin at all;
+        # this page decides for itself who may use it, like the stock pages do.
+        if not all(request.user.has_perm(perm) for perm in IMPORT_PERMISSIONS):
+            raise PermissionDenied
+
+    def _preview_import(self, request: HttpRequest) -> HttpResponse:
+        form = ImportCsvForm(request.POST, request.FILES)
+        if not form.is_valid():
+            return self._render_import(request, form=form)
+
+        upload = form.cleaned_data["csv_file"]
+        # Check the size before reading, so an oversized upload is refused without
+        # ever being loaded into memory.
+        if upload.size > MAX_FILE_BYTES:
+            megabytes = MAX_FILE_BYTES // (1024 * 1024)
+            form.add_error("csv_file", f"The file is larger than {megabytes} MB.")
+            return self._render_import(request, form=form)
+
+        raw = upload.read()  # bytes only: the contents are never printed or logged
+        plan = build_plan(parse_variants_csv(raw))
+        counts = plan.counts()
+        report = self._report(
+            ok=plan.ok,
+            counts=counts,
+            issues=plan.issues,
+            rows=plan.rows,
+            row_count=plan.row_count,
+        )
+
+        if plan.ok and counts[CREATE] + counts[UPDATE] > 0:
+            request.session[IMPORT_SESSION_KEY] = {
+                # basename() drops any folder part the browser sent with the name.
+                "name": os.path.basename(upload.name or "")[:100],
+                "b64": base64.b64encode(raw).decode("ascii"),
+                "sha256": plan.sha256,
+                "fingerprint": plan.fingerprint(),
+            }
+            report["can_confirm"] = True
+        else:
+            # Nothing to confirm, so an older file must not stay ready by mistake.
+            request.session.pop(IMPORT_SESSION_KEY, None)
+        return self._render_import(request, form=ImportCsvForm(), report=report)
+
+    def _confirm_import(self, request: HttpRequest) -> HttpResponse:
+        # pop() removes the entry whatever happens next: one upload, one try.
+        entry = request.session.pop(IMPORT_SESSION_KEY, None)
+        if not entry:
+            return self._upload_again(request)
+        try:
+            raw = base64.b64decode(entry["b64"])
+        except (KeyError, TypeError, ValueError):
+            return self._upload_again(request)
+        # The stored hash guards against a session entry that no longer matches
+        # the bytes it claims to hold.
+        if hashlib.sha256(raw).hexdigest() != entry.get("sha256"):
+            return self._upload_again(request)
+
+        try:
+            result = apply_import(
+                raw,
+                # ``request.user`` is typed as "user or anonymous"; the helper narrows
+                # it to a real user (None only if the request has none).
+                actor=audit_actor(request),
+                filename=entry.get("name", ""),
+                expected_fingerprint=entry.get("fingerprint"),
+            )
+        except ImportRejected as error:
+            # Nothing was written. Show the problems in the same shape as the preview.
+            report = self._report(ok=False, counts={}, issues=error.issues, rows=[], row_count=0)
+            return self._render_import(request, form=ImportCsvForm(), report=report)
+
+        self.message_user(
+            request,
+            f"Imported {result.created} new variant(s), {result.updated} updated, "
+            f"{result.unchanged} unchanged; {result.products_created} product(s) "
+            f"created, {result.products_updated} updated.",
+            messages.SUCCESS,
+        )
+        return HttpResponseRedirect(reverse("admin:catalog_productvariant_changelist"))
+
+    def _upload_again(self, request: HttpRequest) -> HttpResponse:
+        self.message_user(request, "Upload the file again.", messages.WARNING)
+        return HttpResponseRedirect(reverse("admin:catalog_productvariant_import_csv"))
+
+    def _report(
+        self,
+        *,
+        ok: bool,
+        counts: dict[str, int],
+        issues: list[Issue],
+        rows: list[RowPlan],
+        row_count: int,
+    ) -> dict[str, Any]:
+        """What the template shows, cut to the first N problems and rows.
+
+        Slicing a list (``items[:200]``) gives a new list with at most that many
+        entries, so a file with 4,000 problems cannot make the page enormous.
+        """
+        shown_issues = issues[:MAX_REPORTED_ISSUES]
+        shown_rows = rows[:MAX_REPORTED_ROWS]
+        return {
+            "ok": ok,
+            "counts": counts,
+            "issues": shown_issues,
+            "more_issues": len(issues) - len(shown_issues),
+            "rows": shown_rows,
+            "more_rows": len(rows) - len(shown_rows),
+            "row_count": row_count,
+        }
+
+    def _render_import(
+        self, request: HttpRequest, *, form: ImportCsvForm, report: dict[str, Any] | None = None
+    ) -> HttpResponse:
+        context = {
+            # each_context adds the admin's own variables (site header, user links, ...).
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Import variants from CSV",
+            "form": form,
+            "report": report,
+        }
+        return TemplateResponse(request, IMPORT_TEMPLATE, context)
