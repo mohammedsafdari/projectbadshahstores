@@ -138,5 +138,7 @@ Product attributes must support: **flag for own-brand vs third-party**, food-spe
 6. When you're unsure about an Indian regulatory or tax detail, say so and tell me to verify with my CA/legal advisor instead of guessing.
 7. Keep a living `README.md`, `docs/architecture.md`, and `docs/decisions.md` (short ADRs for each key decision) up to date.
 8. Because I'm learning Python, after each phase give me a 5-line "Python/Django concepts used in this phase" recap.
+9. Before every slice, list the open questions in `docs/open_questions.md` that are due (their 'ask again before' point is that slice or earlier) and ask them first, with the default in use. Low-priority items are asked only at their point.
+10. Let Freebuff do context-heavy coding. Every prompt names its slice (for example 'Slice 21b'), tells the agent to read `docs/AGENT_BRIEF.md` first, covers one file and ends with STOP. Give a kickoff block at the start of each slice so a new Freebuff chat can begin.
 
 **Definition of done for the MVP**: A customer in Indore can browse the catalogue on a phone, log in with OTP, add products to the cart, choose an address inside the delivery zone and a delivery slot, pay via UPI/card or choose COD, receive a confirmation, and track the order. The shop staff can see the order in the admin, print a pick list, mark it packed and out for delivery, record delivery and COD collection, and issue a GST invoice and refund, with stock updating correctly and no data loss or double-charging under duplicate requests or concurrent orders.

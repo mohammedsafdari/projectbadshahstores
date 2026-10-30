@@ -6,6 +6,7 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 1. `docs/STATUS.md` (where we are, how we work, lessons).
 2. The files the prompt tells you to read. Match their style; do not invent new patterns.
 3. `docs/decisions.md` only if the prompt mentions an ADR.
+4. Every prompt starts with its slice number and letter (for example 'Slice 21b'). Repeat that slice id at the top of your final message. If a prompt has no slice id, ask for it and STOP.
 
 ## Stack and layout
 - Python 3.12, Django 5.2, PostgreSQL, pytest + pytest-django + factory_boy, ruff, mypy, pre-commit.

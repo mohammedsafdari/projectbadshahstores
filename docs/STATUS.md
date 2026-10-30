@@ -6,6 +6,8 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 20 (CSV import). Next slice: 21 (bulk price update).
 
+Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
+
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
 ## What is built
@@ -78,6 +80,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 20d | `apps/catalog/csv_import_apply.py`: lock, re-plan, write inside one transaction; `record_variant_created`; with tests including a lock test. |
 | 20e | The "Import CSV" admin page (upload, report, Confirm) and the changelist button, with tests. |
 | 20f | Round-trip tests (export then import unchanged, one price edit) and documentation. |
+| 20g | Follow-ups: updated_at tests, docs rules. |
 
 ## Remaining Phase 2 slices
 
@@ -135,6 +138,7 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Slice 18 changed the routine: 18b to 18d were prompts run in Freebuff; when Freebuff stalled in a loop on 18e, Claude wrote 18e to 18i directly and tested them in a sandbox with PostgreSQL (ruff, format, mypy, the whole pytest suite, `makemigrations --check`). Each slice was delivered as a patch: copy it into the repo folder, run `git apply --check <file>`, then `git apply <file>`, delete the patch file, run the gate yourself, and commit. The sandbox could not run the pre-commit hooks (no network), so your own `pre-commit run --all-files` is the real check. The rules below still apply to any agent run.
 - The agent (Freebuff) never touches `.env`. It may run only the read-only checks listed in `docs/AGENT_BRIEF.md` (ruff, mypy, pytest), once, at the end, and it pastes their raw output; it never runs any other command. This is a trial that started in Slice 15f: if it breaks the rule even once, we go back to no commands. Every prompt ends with a STOP line, and the agent shows the diff and stops.
 - Each prompt states a goal, the files to read first and the rules. The agent does the coding and starts by reading `docs/AGENT_BRIEF.md`. Existing files change by small exact-match edits (each OLD text must appear exactly once, or nothing changes); new files may be written in full. Keep each prompt small: one long multi-step prompt once stalled in a retry loop.
+- Every Freebuff prompt starts with the slice number and letter (for example "Slice 21b"), tells the agent to read `docs/AGENT_BRIEF.md` first, covers ONE file, and ends with "Show the diff and STOP". At the start of each slice Claude gives a kickoff block that can open a new Freebuff chat. The owner runs the checks (ruff format, ruff check, mypy, pytest) himself.
 - The agent edits settings or `pyproject.toml` only if the prompt names them. After any `pyproject.toml` edit, run the TOML check.
 - Check the real `git diff` and `--stat`, not the agent's pasted diff. Commit in small steps after `git status` and `git diff --stat`.
 - Every commit message starts with the slice id, for example `Slice 14a: Add ProductImage model`.
@@ -188,6 +192,7 @@ Everyday commands (they run inside the container):
 - `save(update_fields=[...])` writes only the named columns, so `updated_at` must be listed too; without it the row changes while its timestamp does not, and the import fingerprint would not notice (20d).
 - Catch `ValidationError` and `IntegrityError` OUTSIDE the `transaction.atomic()` block: caught inside, the transaction is already marked broken and every later query fails. The `try` must wrap the `with`, not sit inside it (20d).
 - Lock in a fixed order: products first, then variants, each with `order_by("pk")`, so two imports of overlapping files queue instead of deadlocking each other (D43, D47).
+- A test must fail when the line it guards is removed. Slice 20 had no test for `updated_at` in `save(update_fields=...)`; found by deleting the line and running the suite (20g-1).
 
 ## Slice closeout checklist
 

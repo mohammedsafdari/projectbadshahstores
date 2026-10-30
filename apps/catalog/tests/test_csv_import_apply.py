@@ -121,6 +121,41 @@ def test_product_name_change_is_saved_without_an_audit_row(catalog) -> None:
 
 
 # ---------------------------------------------------------------------------
+# updated_at: save(update_fields=...) writes only the columns it is given
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_a_variant_update_moves_updated_at(catalog) -> None:
+    actor = UserFactory()
+    variant = stored_catalog(catalog)
+    variant.refresh_from_db()  # read the timestamp the database really stores
+    before = variant.updated_at
+
+    apply_import(make_csv({"selling_price": "250.00"}), actor=actor, filename="file.csv")
+
+    variant.refresh_from_db()
+    # If the apply step dropped "updated_at" from update_fields, the stored
+    # timestamp would still be ``before`` and this assertion would fail.
+    assert variant.updated_at > before
+
+
+@pytest.mark.django_db
+def test_a_product_update_moves_the_product_updated_at(catalog) -> None:
+    actor = UserFactory()
+    product = stored_catalog(catalog).product
+    product.refresh_from_db()
+    before = product.updated_at
+
+    apply_import(
+        make_csv({"product_name_en": "Chakki Atta Premium"}),
+        actor=actor,
+        filename="file.csv",
+    )
+
+    product.refresh_from_db()
+    assert product.updated_at > before
+
+
+# ---------------------------------------------------------------------------
 # Refusals
 # ---------------------------------------------------------------------------
 @pytest.mark.django_db
