@@ -3,12 +3,13 @@
 import base64
 import hashlib
 import os
+from decimal import Decimal
 from typing import Any
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
-from django.forms import FileField, Form
+from django.forms import ChoiceField, DecimalField, FileField, Form
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import URLPattern, path, reverse
@@ -25,6 +26,18 @@ from apps.catalog.audit import (
 from apps.catalog.csv_import import MAX_FILE_BYTES, Issue, parse_variants_csv
 from apps.catalog.csv_import_apply import ImportRejected, apply_import
 from apps.catalog.csv_import_plan import CREATE, UPDATE, RowPlan, build_plan
+from apps.catalog.price_update import (
+    AMOUNT,
+    MAX_VARIANTS,
+    PERCENT,
+    SET,
+    PricePlan,
+    PriceSpec,
+    PriceUpdateRejected,
+    Problem,
+    apply_price_update,
+    plan_price_update,
+)
 
 from .csv_export import variants_for_export, write_variants_csv
 from .models import Brand, Category, Product, ProductImage, ProductVariant
@@ -61,11 +74,64 @@ IMPORT_SESSION_KEY = "catalog_import"
 
 IMPORT_TEMPLATE = "admin/catalog/productvariant/import_csv.html"
 
+CHANGE_PRICES_TEMPLATE = "admin/catalog/productvariant/change_prices.html"
+
 
 class ImportCsvForm(Form):
     """The upload form: one file field. A plain Form is enough here."""
 
     csv_file = FileField(label="CSV file")
+
+
+class PriceChangeForm(Form):
+    """The choices of one bulk price run: field, method, value and rounding step.
+
+    A plain ``Form`` is enough: nothing is saved here, and the values only become a
+    ``PriceSpec`` (the service's own input) once the form is valid.
+    """
+
+    field = ChoiceField(
+        label="Field",
+        choices=[
+            ("selling_price", "Selling price"),
+            ("mrp", "MRP"),
+            ("cost_price", "Cost price"),
+        ],
+        help_text="The one price field this run changes.",
+    )
+    method = ChoiceField(
+        label="Method",
+        choices=[
+            (PERCENT, "Percent change"),
+            (AMOUNT, "Amount change (rupees)"),
+            (SET, "Set exact price"),
+        ],
+    )
+    value = DecimalField(
+        label="Value",
+        max_digits=10,
+        decimal_places=2,
+        help_text=(
+            "The percent, the rupees to add or subtract, or the exact price, "
+            "depending on the method."
+        ),
+    )
+    step = ChoiceField(
+        label="Round to",
+        choices=[("1", "1"), ("0.50", "0.50"), ("0.01", "0.01")],
+        initial="1",
+        help_text="A price set exactly is not rounded.",
+    )
+
+    def to_spec(self) -> PriceSpec:
+        """Build the service's ``PriceSpec`` from the cleaned values."""
+        return PriceSpec(
+            field=self.cleaned_data["field"],
+            method=self.cleaned_data["method"],
+            value=self.cleaned_data["value"],
+            # The step arrives as text from the choice field; the service wants a Decimal.
+            step=Decimal(self.cleaned_data["step"]),
+        )
 
 
 class VariantCsvExportPermissionMixin:
@@ -217,11 +283,108 @@ class ProductVariantAdmin(VariantCsvExportPermissionMixin, admin.ModelAdmin):
     search_fields = ("sku_code", "barcode", "product__name_en", "product__name_hi")
     autocomplete_fields = ("product",)
     list_select_related = ("product",)
-    actions = ["export_csv"]
+    actions = ["export_csv", "change_prices"]
 
     @admin.action(description="Export the selected variants to CSV", permissions=["export"])
     def export_csv(self, request: HttpRequest, queryset: QuerySet[ProductVariant]) -> HttpResponse:
         return _csv_download(queryset)
+
+    # -- "Change prices of selected variants": ask, preview, then confirm ----------
+    @admin.action(description="Change prices of selected variants", permissions=["change"])
+    def change_prices(
+        self, request: HttpRequest, queryset: QuerySet[ProductVariant]
+    ) -> HttpResponse:
+        """The standard admin intermediate page: a form, a preview, then Confirm.
+
+        The preview and Confirm buttons post back to the changelist with a hidden
+        ``action``, the selected ids as ``_selected_action`` and the spec fields, so
+        Django runs this action again on those exactly selected rows. No session is
+        used: the Confirm post repeats the ids, the spec and the preview fingerprint.
+        """
+        # The action is hidden from users without this permission, but a post can be
+        # forged and this page writes prices, so the check is repeated here.
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        # Count first: the ids are only loaded when the run is small enough. The
+        # service refuses the same way, but counting here means a huge selection is
+        # never read into memory.
+        if queryset.count() > MAX_VARIANTS:
+            self.message_user(
+                request,
+                f"Select at most {MAX_VARIANTS} variants per run.",
+                messages.ERROR,
+            )
+            return HttpResponseRedirect(reverse("admin:catalog_productvariant_changelist"))
+
+        selected_pks = list(queryset.values_list("pk", flat=True))
+
+        if "confirm" in request.POST:
+            return self._confirm_price_change(request, selected_pks)
+        if "preview" in request.POST:
+            return self._preview_price_change(request, selected_pks)
+        return self._render_price_change(request, form=PriceChangeForm(), selected_pks=selected_pks)
+
+    def _preview_price_change(self, request: HttpRequest, selected_pks: list[int]) -> HttpResponse:
+        form = PriceChangeForm(request.POST)
+        if not form.is_valid():
+            return self._render_price_change(request, form=form, selected_pks=selected_pks)
+        # The plan reads only: the preview writes nothing (Slice 21 point 3).
+        plan = plan_price_update(selected_pks, form.to_spec())
+        return self._render_price_change(request, form=form, selected_pks=selected_pks, plan=plan)
+
+    def _confirm_price_change(self, request: HttpRequest, selected_pks: list[int]) -> HttpResponse:
+        form = PriceChangeForm(request.POST)
+        if not form.is_valid():
+            # The posted numbers are not a spec, so there is nothing to confirm.
+            return self._render_price_change(request, form=form, selected_pks=selected_pks)
+        spec = form.to_spec()
+        try:
+            changed = apply_price_update(
+                selected_pks,
+                spec,
+                actor=audit_actor(request),
+                # The fingerprint the preview showed. A forged or missing one fails the
+                # comparison inside the service and nothing is written.
+                expected_fingerprint=request.POST.get("fingerprint", ""),
+            )
+        except PriceUpdateRejected as error:
+            # Nothing was written. Show the problems the service reported.
+            return self._render_price_change(
+                request, form=form, selected_pks=selected_pks, problems=error.problems
+            )
+
+        self.message_user(
+            request,
+            f"Changed the price of {changed} variant(s): {spec.describe()}.",
+            messages.SUCCESS,
+        )
+        return HttpResponseRedirect(reverse("admin:catalog_productvariant_changelist"))
+
+    def _render_price_change(
+        self,
+        request: HttpRequest,
+        *,
+        form: PriceChangeForm,
+        selected_pks: list[int],
+        plan: PricePlan | None = None,
+        problems: list[Problem] | None = None,
+    ) -> HttpResponse:
+        # Confirm is offered only when the plan can be written as a whole: no
+        # problems and at least one row to change.
+        can_confirm = plan is not None and plan.ok and bool(plan.rows)
+        context = {
+            # each_context adds the admin's own variables (site header, user links, ...).
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Change prices of selected variants",
+            "form": form,
+            "selected_pks": selected_pks,
+            "plan": plan,
+            "problems": problems or [],
+            "can_confirm": can_confirm,
+        }
+        return TemplateResponse(request, CHANGE_PRICES_TEMPLATE, context)
 
     # By the time save_model runs, the form has already put the new values on
     # ``obj``, so the old values must be read from the database first. Django's
