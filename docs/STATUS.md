@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 20 (CSV import). Next slice: 21 (bulk price update).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 21 (bulk price update). Next slice: 22 (seed command).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -81,6 +81,12 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 20e | The "Import CSV" admin page (upload, report, Confirm) and the changelist button, with tests. |
 | 20f | Round-trip tests (export then import unchanged, one price edit) and documentation. |
 | 20g | Follow-ups: updated_at tests, docs rules. |
+| 21a | `apps/catalog/price_update.py`: spec and plan, half-up rounding, and the all-or-nothing apply with audit rows. |
+| 21b | Tests for the maths, row rules, fingerprint, audit rows and the lock. |
+| 21c | The "Change prices of selected variants" action: price form, preview/Confirm flow and permission check. |
+| 21d | `change_prices.html`: spec form, preview report and the Confirm form. |
+| 21e | End-to-end admin tests; two fixed for Django's empty-changelist action bar and `DATA_UPLOAD_MAX_NUMBER_FIELDS`. |
+| 21f | Documentation sync: this file, ADR D48. |
 
 ## Remaining Phase 2 slices
 
