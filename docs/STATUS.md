@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 19 (CSV export). Next slice: 20 (CSV import).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 20 (CSV import). Next slice: 21 (bulk price update).
 
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
@@ -25,6 +25,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
   - The Expiring lots screen: proxy model `ExpiringLot` of `InventoryMovement` (read-only), listing received lots with an expiry date whose variant still has stock, soonest first, with filters for already expired and 7, 30 and 60 days.
   - Migration `0003_stock_proxy_models` creates the two proxy models (no tables). `ProductVariantAdmin` is unchanged.
 - CSV export (Slice 19, D46): `apps/catalog/csv_export.py` (`CSV_COLUMNS`, `variants_for_export`, `variant_to_row`, `write_variants_csv`) writes one row per variant with its product, brand and category into any file-like object. UTF-8 with a BOM (read it with `utf-8-sig`), plain decimals, `TRUE`/`FALSE` flags, and a formula guard that puts a `'` in front of a text cell starting with `=`, `+`, `-`, `@`, tab or carriage return. Admin actions: `export_csv` on the variant list and `export_variants_csv` on the product list, offered only to users with `catalog.view_productvariant` (`VariantCsvExportPermissionMixin`). No stock column.
+- CSV import (Slice 20, D47): `apps/catalog/csv_import.py` reads the export format back and checks every cell without touching the database; `csv_import_plan.py` compares the clean rows with the database (CREATE / UPDATE / UNCHANGED per row, a CREATE for a missing product, and issues for an unknown brand or category slug, a SKU letter-case clash, a SKU moving to another product and a barcode another SKU already holds) and writes nothing; `csv_import_apply.py` locks products then variants in ascending `pk` order, plans again under the lock, and writes products then variants in one transaction with `full_clean()` and one audit row per created or changed variant (products are not audited). The admin page behind the "Import CSV" button on the variant list (`templates/admin/catalog/productvariant/`) uploads, shows the report, keeps the file in the session and writes only on Confirm, refusing when the fingerprint changed. A round-trip test proves an exported file comes back unchanged.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -73,6 +74,10 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 19b | Documentation sync: this file, ADR D46, open questions. |
 | 20a | ADR D47 (CSV import) and open questions with "ask again before" points. |
 | 20b | `apps/catalog/csv_import.py`: parser and cell checks, no database (99 tests). Slice 20 is now split 20c plan (database checks), 20d apply, 20e admin page, 20f round trip and docs. |
+| 20c | `apps/catalog/csv_import_plan.py`: plan step (database checks, five queries, fingerprint), with tests. |
+| 20d | `apps/catalog/csv_import_apply.py`: lock, re-plan, write inside one transaction; `record_variant_created`; with tests including a lock test. |
+| 20e | The "Import CSV" admin page (upload, report, Confirm) and the changelist button, with tests. |
+| 20f | Round-trip tests (export then import unchanged, one price edit) and documentation. |
 
 ## Remaining Phase 2 slices
 
@@ -82,7 +87,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 17. (done) AuditLog in core (D44): stock is not audited (the ledger covers it); variant edits in the admin are.
 18. (done) Inventory admin (D45): movement history, suppliers, Stock screen with receive, adjust, count and damage pages, low-stock filter and Expiring lots screen.
 19. (done) CSV export (D46): service plus an action on the variant list and on the product list.
-20. CSV import with a validation report (dry run, then commit). REVIEW CAREFULLY.
+20. (done) CSV import with a validation report (dry run, then commit) (D47).
 21. Bulk price update admin action (must write audit rows: `snapshot_variant_from_db` before, `record_variant_change` after; queryset `update()` skips any automatic hook, D44).
 22. Seed command (about 100 realistic SKUs loaded through the importer; idempotent).
 23. Storefront listing, category and brand pages.
@@ -112,12 +117,12 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Only original photos are stored; resized and WebP versions come with the storefront slices (23 and 25) or Phase 6.
 - The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
 - Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
-- Operations that touch several variants (the Slice 20 import) must lock the variants in ascending `pk` order (D43); there is no helper for that yet.
+- Operations that touch several rows (the Slice 20 import) lock products first, then variants, each in ascending `pk` order (D43, D47). Slice 21 must keep that order; there is no shared helper for it yet.
 - `receive_stock` checks the supplier's `is_active` on the object passed in and does not lock the supplier, so a supplier archived at the same moment could be used once more.
 - `check_inventory_integrity` is run by hand; nothing schedules it (cron or a job) yet.
-- The variant audit covers edits of existing variants on the two admin pages only. Creating or deleting a variant, other models (product, brand, category), and changes made in the shell or with queryset `update()` write no audit row. Slices 20 and 21 must call the helpers in `apps/catalog/audit.py` (D44).
+- The variant audit covers edits of existing variants on the two admin pages, and variants the CSV import creates or changes (Slice 20). Creating or deleting a variant on the admin pages, other models (product, brand, category), and changes made in the shell or with queryset `update()` write no audit row. Slice 21 must call the helpers in `apps/catalog/audit.py` (D44).
 - The CSV export contains `cost_price` and is open to anyone with `catalog.view_productvariant`; narrow it when the Phase 5 roles exist. Exports are not logged (D46).
-- Slice 20 must read the export format back exactly: open files with `utf-8-sig`, remove one leading `'` from a text cell when the next character is `=`, `+`, `-`, `@`, tab or carriage return, and validate barcodes (digits) and HSN codes (4 to 8 digits), because Excel turns `8901234567890` into `8.9E+12` and `0902` into `902` when a CSV is opened by double-click (D46).
+- The CSV import reads the export format back exactly (a round-trip test proves it): files are opened as UTF-8 with an optional BOM, one leading `'` is removed from a text cell when the next character is `=`, `+`, `-`, `@`, tab or carriage return, and barcodes (digits) and HSN codes (4 to 8 digits) are validated, because Excel turns `8901234567890` into `8.9E+12` and `0902` into `902` when a CSV is opened by double-click (D46, D47).
 - `cost_price` is not shown in the product-page variant inline, so it is audited only when edited on the variant's own admin page.
 - Adjust can take stock below zero (the service allows it and logs a warning, D43); Damage cannot. The Count page can set stock to any number from zero up.
 - The Expiring lots screen cannot say how much of each lot is left, only the variant's total (D42, D45). Real batch-level stock would need first-expiry-first-out accounting.
@@ -180,6 +185,9 @@ Everyday commands (they run inside the container):
 - An annotation added in `get_queryset` is unknown to mypy; use `cast(Any, obj).on_hand` (ruff B009 forbids `getattr` with a constant name). Always test that the annotated number equals the service (`get_on_hand`) and that the query count does not grow with the number of rows.
 - A custom admin action that the user may not run does not return an error code: Django shows the list page again (status 200, HTML), so test for "no CSV came back". The admin also adds its own `Cache-Control` words, so assert `"no-store" in header`, not equality (19a).
 - Test helpers that create a user must not reuse the same phone number inside one test (unique constraint), and a purchase of quantity zero violates a ledger constraint; both made 18e's first test run fail.
+- `save(update_fields=[...])` writes only the named columns, so `updated_at` must be listed too; without it the row changes while its timestamp does not, and the import fingerprint would not notice (20d).
+- Catch `ValidationError` and `IntegrityError` OUTSIDE the `transaction.atomic()` block: caught inside, the transaction is already marked broken and every later query fails. The `try` must wrap the `with`, not sit inside it (20d).
+- Lock in a fixed order: products first, then variants, each with `order_by("pk")`, so two imports of overlapping files queue instead of deadlocking each other (D43, D47).
 
 ## Slice closeout checklist
 

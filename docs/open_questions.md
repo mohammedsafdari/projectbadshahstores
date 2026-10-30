@@ -46,7 +46,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Should every damage or write-off entry need a reason (expired, broken, lost)? — owner; default in use: yes, the reason is required (D43)
 - [ ] Who records in-store sales in the ledger (`IN_STORE_SALE`): the billing-software import in Slice 20, or nothing yet? — owner; needed before Slice 20; default in use: nothing writes `IN_STORE_SALE` yet (D43)
 - [ ] Audit log retention: how long to keep rows. Default: forever. Owner: shop owner. Needed before production.
-- [ ] Slices 20 and 21 must write an audit entry for every price change they make: `snapshot_variant_from_db` before and `record_variant_change` after (`apps/catalog/audit.py`, D44). Default: yes (a reminder, not a business question).
+- [ ] Slice 21 must write an audit entry for every price change it makes: `snapshot_variant_from_db` before and `record_variant_change` after (`apps/catalog/audit.py`, D44); Slice 20 does this for the import. Default: yes (a reminder, not a business question).
 - [ ] Should creating or deleting a variant, or changing a product, brand or category, also be audited? — owner/developer; default in use: no, only edits of existing variants (D44)
 - [ ] Which staff roles may read the audit log? — owner; needed when the staff roles exist; default in use: superusers only (D44)
 - [ ] Which staff may receive, adjust, damage and count stock before the Phase 5 roles exist? — owner; default in use: users with the Stock view permission and `inventory.add_inventorymovement`, and superusers (D45)
@@ -74,6 +74,9 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Check the GST rates and HSN codes of the first 100 items before they are loaded (the sample invoice shows 0%, 5% and 18%; for example Magic Scrubber 0%, Makhana 0%, Jira 5%) — CA/owner; ask again before Slice 22; default in use: rates come from the file, no rate is built into the code
 - [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before Phase 5 (extends the rounding item above); default in use: our half-up rule (Slice 13c)
 - [ ] The sample invoice bills Rawa and Maida at 250 g for 15.00 each, which looks like shop-packed portions. Is repacking frequent? — owner; low priority; ask again before Phase 3 (extends the repacking item above); default in use: two `ADJUSTMENT` movements with a reason
+
+### Added in Slice 20f (CSV import follow-ups)
+- [ ] Should the importer refuse a product whose brand or category is archived (`is_active` false)? — owner; low priority; ask again before Slice 22; default in use: accepted, an archived brand or category still matches by slug (D47)
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

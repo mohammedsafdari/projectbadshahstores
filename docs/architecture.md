@@ -124,6 +124,10 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - Integrations are behind interfaces: SMS/OTP/WhatsApp provider, email provider, payment gateway, search, shipping (future).
 - Console backend used in development for notifications and (until real credentials) for OTP/SMS/WhatsApp and email.
 
+### CSV import flow (Slice 20, D47)
+
+The "Import CSV" page on the variant list uploads a file, parses it (`csv_import.py`) and plans it against the database (`csv_import_plan.py`) without writing anything: each row becomes CREATE, UPDATE or UNCHANGED, with issues for bad cells and for clashes only the database can see (an unknown brand or category slug, a SKU that differs only in letter case, a SKU under another product, a barcode another SKU holds). Confirm keeps the uploaded bytes in the session together with their SHA-256 and the plan's fingerprint. `apply_import` (`csv_import_apply.py`) locks products and then variants in ascending `pk` order inside one `transaction.atomic()`, plans again under the lock, refuses when the fingerprint has moved, and then writes products and variants row by row with `full_clean()`, one audit row per created or changed variant (`VARIANT_CREATE`, `VARIANT_UPDATE`). Any problem rolls the whole file back, so a file is applied completely or not at all; `bulk_create()` and queryset `update()` are never used because they skip validation and the audit call.
+
 ### Provider defaults (locked)
 - Payments: Razorpay, test mode only until told otherwise.
 - OTP/SMS/WhatsApp: MSG91 behind abstraction; console backend in development; real integration later after DLT registration.
