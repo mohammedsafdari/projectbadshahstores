@@ -59,6 +59,22 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Would an `.xlsx` export be better than CSV for the staff (Excel mangles barcodes and HSN codes in CSV)? — owner; default in use: CSV only, import will validate barcodes and HSN codes (D46)
 - [ ] Do you want a separate stock-level export (on-hand per SKU) for the billing software or stock counts? — owner; needed by Slice 20; default in use: no stock column in the catalogue export (D46)
 
+### Added in Slice 20a (CSV import and the billing-software sample)
+Each item says when to ask again. At the start of every slice, Claude lists the items whose "ask again before" point is that slice (or earlier) and asks them first.
+- [ ] Item master export from the billing software, one row per item (code, name, barcode, HSN, GST rate, MRP, selling rate, unit), 30 to 50 rows, customer data removed — owner; ask again before Slice 20b, and at the latest before Slice 22; default in use: the importer reads only our own export format
+- [ ] SKU scheme: should `sku_code` equal the billing software's item code, or be our own scheme? — owner; ask again before Slice 22; default in use: whatever is in the file is the SKU; the importer matches on it exactly
+- [ ] Who is the stock master while the shop sells in store and online (billing software, website, or a manual count)? This also decides how opening stock enters the ledger (the import has no stock column) — owner; ask again before Slice 22 and again before Phase 3; default in use: the website ledger starts from received stock and counts (D43)
+- [ ] Category tree: the top-level categories and their children. Slugs become storefront URLs, so changing them later breaks links — owner; ask again before Slice 22; default in use: none, the importer refuses unknown category slugs (D47)
+- [ ] How are pack sizes grouped into one product (for example Sugar 1 kg and Sugar 5 kg)? The billing invoice has only free-text names — owner; ask again before Slice 22; default in use: one product per product slug in the file
+- [ ] Should the importer create missing brands and categories? — developer/owner; low priority; ask again before Slice 22; default in use: no, an unknown slug is a row error (D47)
+- [ ] Do we need partial files (for example only sku_code and prices)? — owner; low priority; ask again at Slice 21; default in use: every column of the export must be present (D47)
+- [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before Phase 5; default in use: yes, refused, to catch a dropped zero (D47)
+- [ ] Does the shop sell on credit to regular customers (the invoice says "Credit Tax Invoice")? Does the online store need a credit or khata option? — owner; low priority; ask again before Phase 3 (payments) and Phase 5 (invoices); default in use: no credit sales online
+- [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before Phase 5; default in use: own prefix `INV/...` (see the invoice prefix item above)
+- [ ] Check the GST rates and HSN codes of the first 100 items before they are loaded (the sample invoice shows 0%, 5% and 18%; for example Magic Scrubber 0%, Makhana 0%, Jira 5%) — CA/owner; ask again before Slice 22; default in use: rates come from the file, no rate is built into the code
+- [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before Phase 5 (extends the rounding item above); default in use: our half-up rule (Slice 13c)
+- [ ] The sample invoice bills Rawa and Maida at 250 g for 15.00 each, which looks like shop-packed portions. Is repacking frequent? — owner; low priority; ask again before Phase 3 (extends the repacking item above); default in use: two `ADJUSTMENT` movements with a reason
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1
@@ -81,6 +97,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 ## How to use this file
 - Items with `[TO BE FILLED: ...]` are placeholders in the docs, not guesses.
 - New items: name the owner, when it is needed (slice or phase) and the default in use meanwhile.
+- Every item that is not answered now also gets an "ask again before <slice or phase>" point. At the start of each slice, Claude scans this list and asks the owner the items that have become due (a few at a time, most costly to change first) before writing code. Items marked "low priority" are asked only at their point, never earlier.
 - Do not invent pin codes, GSTIN, FSSAI, HSN codes, GST rates, or invoice prefix rules here.
 - When an item is filled, update the relevant doc and remove it from this list.
 

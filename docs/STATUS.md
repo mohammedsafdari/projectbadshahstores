@@ -71,6 +71,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 18j | Documentation sync: this file, ADR D45 additions, open questions. |
 | 19a | `apps/catalog/csv_export.py`, the two admin export actions, with tests. |
 | 19b | Documentation sync: this file, ADR D46, open questions. |
+| 20a | ADR D47 (CSV import) and open questions with "ask again before" points. |
 
 ## Remaining Phase 2 slices
 
@@ -132,7 +133,7 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Check the real `git diff` and `--stat`, not the agent's pasted diff. Commit in small steps after `git status` and `git diff --stat`.
 - Every commit message starts with the slice id, for example `Slice 14a: Add ProductImage model`.
 - Windows 11, Command Prompt. Python and Django idioms are explained as we go, because the owner is new to Python.
-- Business questions nobody can answer yet go into `docs/open_questions.md` with the default in use; work continues unless the answer cannot be changed later.
+- Business questions nobody can answer yet go into `docs/open_questions.md` with the default in use and an "ask again before <slice or phase>" point; work continues unless the answer cannot be changed later. At the start of every slice, Claude lists the open questions that have become due and asks them before any code is written.
 
 Everyday commands (they run inside the container):
 
@@ -186,7 +187,7 @@ Everyday commands (they run inside the container):
 3. Update this file: last finished slice, what is built, the slice log, remaining slices, known gaps.
 4. Add an ADR to `docs/decisions.md` for every new decision (next free number), noting where it narrows the brief.
 5. Update `docs/architecture.md` only if the target design changed.
-6. Update `docs/open_questions.md`: new doubts, and answers received.
+6. Update `docs/open_questions.md`: new doubts (each with an "ask again before" point), and answers received.
 7. Update `README.md` only if setup or commands changed.
 8. Commit the docs as `Slice <n>: Update docs`.
 9. Start a new chat: attach `PROJECT_INSTRUCTIONS.md` and `docs/STATUS.md`, add other docs only when the next slice touches them, and say "Continue at Slice <next>".
