@@ -29,14 +29,14 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Email provider credentials — recorded default Brevo, console backend in dev — owner when ready
 
 ## Catalog and inventory
-- [ ] Which products are sold loose by weight (dal, rice, sugar), in kg or litres, and in what smallest step (suggested 0.100)? — owner; needed before Slice 22 (seed data); default in use: nothing is loose until `is_sold_loose` is set per variant (D42)
+- [ ] Which products are sold loose by weight (dal, rice, sugar), in kg or litres, and in what smallest step (suggested 0.100)? — owner; needed before Slice 23 (seed data); default in use: nothing is loose until `is_sold_loose` is set per variant (D42)
 - [ ] POS export format for stock/price sync — unknown; planned as one-way CSV import with validation report, plus CSV stock-count adjustment flow — owner (from your billing software); a sample export of about 10 rows is needed by Slice 20 (CSV import); default in use: the website ledger is primary and the billing export is a one-way import
 - [ ] Product/variant seed data: categories, brands, own-brand products at launch — owner/phase-2 data entry
 - [ ] Own-brand products: which products are own-brand, and are they FSSAI-licensed — owner/CA
 - [ ] Per-variant HSN/GST rate values — entered at data entry; confirm mapping with CA — CA/owner
-- [ ] Can we use manufacturer or brand photos for third-party products, or must we shoot our own? — owner (brand permission, copyright); needed before Slice 22 (seed data) and launch; default in use: the owner uploads their own photos
+- [ ] Can we use manufacturer or brand photos for third-party products, or must we shoot our own? — owner (brand permission, copyright); needed before Slice 23 (seed data) and launch; default in use: the owner uploads their own photos
 - [ ] Who takes the own-brand product photos, and should every product have a label photo (net quantity, MRP, FSSAI number) for Legal Metrology? — owner/CA; needed before launch; default in use: no label photo required
-- [ ] Is a 2 MB limit, 8000 px longest side and JPG/PNG/WebP enough for the staff's phone cameras, and how many photos per product? — owner; needed before Slice 22; default in use: those limits, constants in `apps/catalog/validators.py`
+- [ ] Is a 2 MB limit, 8000 px longest side and JPG/PNG/WebP enough for the staff's phone cameras, and how many photos per product? — owner; needed before Slice 23; default in use: those limits, constants in `apps/catalog/validators.py`
 - [ ] Photo files are not deleted from disk when an image row or a product is deleted — developer; a clean-up job is needed before production; default in use: files are left in place
 - [ ] When to add resized and WebP versions of photos — developer; planned for the storefront slices (23 and 25) or Phase 6; default in use: originals only
 - [ ] Production hardening of the stock ledger: a Postgres trigger or a restricted database role so movement rows cannot be changed with raw SQL — developer; before production; default in use: the Django-level guard only (D42)
@@ -61,22 +61,25 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 
 ### Added in Slice 20a (CSV import and the billing-software sample)
 Each item says when to ask again. At the start of every slice, Claude lists the items whose "ask again before" point is that slice (or earlier) and asks them first.
-- [ ] Item master export from the billing software, one row per item (code, name, barcode, HSN, GST rate, MRP, selling rate, unit), 30 to 50 rows, customer data removed — owner; ask again before Slice 20b, and at the latest before Slice 22; default in use: the importer reads only our own export format
-- [ ] SKU scheme: should `sku_code` equal the billing software's item code, or be our own scheme? — owner; ask again before Slice 22; default in use: whatever is in the file is the SKU; the importer matches on it exactly
 - [ ] Who is the stock master while the shop sells in store and online (billing software, website, or a manual count)? This also decides how opening stock enters the ledger (the import has no stock column) — owner; ask again before Slice 22 and again before Phase 3; default in use: the website ledger starts from received stock and counts (D43)
-- [ ] Category tree: the top-level categories and their children. Slugs become storefront URLs, so changing them later breaks links — owner; ask again before Slice 22; default in use: none, the importer refuses unknown category slugs (D47)
-- [ ] How are pack sizes grouped into one product (for example Sugar 1 kg and Sugar 5 kg)? The billing invoice has only free-text names — owner; ask again before Slice 22; default in use: one product per product slug in the file
-- [ ] Should the importer create missing brands and categories? — developer/owner; low priority; ask again before Slice 22; default in use: no, an unknown slug is a row error (D47)
 - [ ] Do we need partial files (for example only sku_code and prices)? — owner; low priority; ask again at Slice 21; default in use: every column of the export must be present (D47)
 - [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before Phase 5; default in use: yes, refused, to catch a dropped zero (D47)
 - [ ] Does the shop sell on credit to regular customers (the invoice says "Credit Tax Invoice")? Does the online store need a credit or khata option? — owner; low priority; ask again before Phase 3 (payments) and Phase 5 (invoices); default in use: no credit sales online
 - [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before Phase 5; default in use: own prefix `INV/...` (see the invoice prefix item above)
-- [ ] Check the GST rates and HSN codes of the first 100 items before they are loaded (the sample invoice shows 0%, 5% and 18%; for example Magic Scrubber 0%, Makhana 0%, Jira 5%) — CA/owner; ask again before Slice 22; default in use: rates come from the file, no rate is built into the code
 - [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before Phase 5 (extends the rounding item above); default in use: our half-up rule (Slice 13c)
 - [ ] The sample invoice bills Rawa and Maida at 250 g for 15.00 each, which looks like shop-packed portions. Is repacking frequent? — owner; low priority; ask again before Phase 3 (extends the repacking item above); default in use: two `ADJUSTMENT` movements with a reason
 
-### Added in Slice 20f (CSV import follow-ups)
-- [ ] Should the importer refuse a product whose brand or category is archived (`is_active` false)? — owner; low priority; ask again before Slice 22; default in use: accepted, an archived brand or category still matches by slug (D47)
+### Added in Slice 22 (seed catalogue, D49)
+- [ ] GST conflict in the billing item master: the tax columns say 5% on every row, the HSN text carries 5, 12 or 18. The seed uses 5% and marks it unconfirmed — CA/owner; ask again before Phase 5; default in use: 5% from the tax columns, no rate built into the code
+- [ ] 15 billing rows are not loaded (2 with MRP 0, 12 with selling rate above MRP, 1 with a 5-digit HSN); they are listed in `apps/catalog/seed_data/nestle_review.csv`. Please read the real MRP and HSN from the packs — owner; ask again before Slice 28; default in use: not loaded
+- [ ] Export of the rest of the shop (staples, spices, tea, own-brand, about 45 items) in the same billing format — owner; ask again before Slice 28; default in use: `demo.csv` with `DEMO-` SKUs and provisional HSN/GST, loaded only with `--demo`
+- [ ] The rest of the category tree beyond the five starter categories (chocolates-confectionery, noodles-soups, milk-dairy, tea-coffee, spices-masalas); slugs become URLs — owner; ask again before Slice 23; default in use: the five starter categories
+- [ ] Pack weights in grams for KitKat, Munch and Milkybar rows (the billing names carry price points such as "10/"), so unit prices and grouping work — owner; low priority; ask again before Slice 25; default in use: unit PACKET, pack size 1
+- [ ] Are the two 1 kg Everyday milk powder rows (03302 at 600 and 03304 at 500) the same pack? — owner; low priority; ask again before Slice 28; default in use: 03302 is not loaded (MRP problem and bad HSN)
+- [ ] How to enter real purchase rates (cost price) without committing them to the public repository (a private CSV import) — owner/developer; ask again before Phase 5 reports; default in use: cost_price blank in every committed seed file
+- [ ] Billing stock is unusable (45 of 55 rows negative, none positive). A physical count is needed before launch to start the ledger — owner; ask again before Phase 3; default in use: the website ledger starts from received stock and counts (D43)
+- [ ] Check diet type (veg mark) on the packs of all 33 real products — owner; low priority; ask again before Slice 25; default in use: VEG on every real row
+- [ ] Product names with price points ("KitKat ₹10 pack") go stale when an MRP changes; decide on a naming rule once pack weights are known — owner; low priority; ask again before Slice 25; default in use: price point in the name
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

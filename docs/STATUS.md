@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 21 (bulk price update). Next slice: 22 (seed command).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 22 (seed command). Next slice: 23 (storefront listing, category and brand pages).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -30,6 +30,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
   - Migration `0003_stock_proxy_models` creates the two proxy models (no tables). `ProductVariantAdmin` is unchanged.
 - CSV export (Slice 19, D46): `apps/catalog/csv_export.py` (`CSV_COLUMNS`, `variants_for_export`, `variant_to_row`, `write_variants_csv`) writes one row per variant with its product, brand and category into any file-like object. UTF-8 with a BOM (read it with `utf-8-sig`), plain decimals, `TRUE`/`FALSE` flags, and a formula guard that puts a `'` in front of a text cell starting with `=`, `+`, `-`, `@`, tab or carriage return. Admin actions: `export_csv` on the variant list and `export_variants_csv` on the product list, offered only to users with `catalog.view_productvariant` (`VariantCsvExportPermissionMixin`). No stock column.
 - CSV import (Slice 20, D47): `apps/catalog/csv_import.py` reads the export format back and checks every cell without touching the database; `csv_import_plan.py` compares the clean rows with the database (CREATE / UPDATE / UNCHANGED per row, a CREATE for a missing product, and issues for an unknown brand or category slug, a SKU letter-case clash, a SKU moving to another product and a barcode another SKU already holds) and writes nothing; `csv_import_apply.py` locks products then variants in ascending `pk` order, plans again under the lock, and writes products then variants in one transaction with `full_clean()` and one audit row per created or changed variant (products are not audited). The admin page behind the "Import CSV" button on the variant list (`templates/admin/catalog/productvariant/`) uploads, shows the report, keeps the file in the session and writes only on Confirm, refusing when the fingerprint changed. A round-trip test proves an exported file comes back unchanged.
+- Seed command (Slice 22, D49): `apps/catalog/seed.py` and `apps/catalog/management/commands/seed_catalog.py` load `nestle.csv` (and `demo.csv` with `--demo`) through the importer; brands and categories are created from the CSV slug/name pairs; `--demo-stock` receives demo stock once. Tests in `apps/catalog/tests/test_seed_catalog.py`.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -90,6 +91,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 21e | End-to-end admin tests; two fixed for Django's empty-changelist action bar and `DATA_UPLOAD_MAX_NUMBER_FIELDS`. |
 | 21f | Documentation sync: this file, ADR D48. |
 | 21 review | Claude pulled the repo, ran 754 tests on PostgreSQL, ruff and mypy; five deliberate breakages (locks, `updated_at`, fingerprint check, half-up rounding, audit call) were each caught. |
+| 22 | `seed_catalog` management command loads seed data through the CSV importer; `apps/catalog/seed.py` (brands/categories from CSV, demo stock); tests; docs. |
 
 ## Remaining Phase 2 slices
 
@@ -101,7 +103,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 19. (done) CSV export (D46): service plus an action on the variant list and on the product list.
 20. (done) CSV import with a validation report (dry run, then commit) (D47).
 21. Bulk price update admin action (must write audit rows: `snapshot_variant_from_db` before, `record_variant_change` after; queryset `update()` skips any automatic hook, D44).
-22. Seed command (about 100 realistic SKUs loaded through the importer; idempotent).
+22. (done) Seed command (about 40 real rows plus demo rows loaded through the importer; idempotent).
 23. Storefront listing, category and brand pages.
 24. Filters (HTMX).
 25. Product detail page (variants, savings, FSSAI info, JSON-LD).

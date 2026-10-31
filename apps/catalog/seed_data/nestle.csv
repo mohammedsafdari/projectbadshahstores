@@ -1,0 +1,41 @@
+sku_code,barcode,product_slug,product_name_en,product_name_hi,brand_slug,brand_name,category_slug,category_name,is_own_brand,diet_type,description,search_keywords,unit,pack_size,is_sold_loose,quantity_step,low_stock_threshold,hsn_code,gst_rate_percent,mrp,selling_price,cost_price,net_quantity_label,best_before_label,shelf_life,ingredients,allergens,manufacturer_details,product_is_active,variant_is_active
+02706,,kitkat-10-rupee-pack,KitKat ₹10 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,10.00,10.00,,,,,,,,TRUE,TRUE
+02707,,kitkat-20-rupee-pack,KitKat ₹20 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,20.00,20.00,,,,,,,,TRUE,TRUE
+02708,,kitkat-4-finger-25-rupee-pack,KitKat 4 Finger ₹25 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,30.00,25.00,,,,,,,,TRUE,TRUE
+02709,,kitkat-5-rupee-pack,KitKat ₹5 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,5.00,5.00,,,,,,,,TRUE,TRUE
+02713,,kitkat-family-pack-60-rupee,KitKat Family Pack ₹60,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,60.00,60.00,,,,,,,,TRUE,TRUE
+03083,,maggi-magic-masala,Maggi Magic Masala,,nestle,Nestlé,spices-masalas,Spices & Masalas,FALSE,VEG,,,PACKET,1,FALSE,1,,2103,5.00,5.00,5.00,,,,,,,,TRUE,TRUE
+03303,,nestle-everyday-milk-powder,Nestlé Everyday Milk Powder,,nestle,Nestlé,milk-dairy,Milk & Dairy,FALSE,VEG,,,PACKET,1,FALSE,1,,0402,5.00,10.00,10.00,,,,,,,,TRUE,TRUE
+03304,,nestle-everyday-milk-powder,Nestlé Everyday Milk Powder,,nestle,Nestlé,milk-dairy,Milk & Dairy,FALSE,VEG,,,KG,1,FALSE,1,,0402,5.00,515.00,500.00,,1 kg,,,,,,TRUE,TRUE
+03306,,nestle-everyday-milk-powder,Nestlé Everyday Milk Powder,,nestle,Nestlé,milk-dairy,Milk & Dairy,FALSE,VEG,,,G,400,FALSE,1,,0402,5.00,255.00,250.00,,400 g,,,,,,TRUE,TRUE
+03332,,milkybar-moosha-10-rupee-pack,Milkybar Moosha ₹10 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1704,5.00,10.00,10.00,,,,,,,,TRUE,TRUE
+03333,,milkybar-moosha-20-rupee-pack,Milkybar Moosha ₹20 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1704,5.00,20.00,20.00,,,,,,,,TRUE,TRUE
+03334,,milkybar-choc-10-rupee-pack,Milkybar Choc ₹10 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1704,5.00,10.00,10.00,,,,,,,,TRUE,TRUE
+03335,,milkybar-choc-20-rupee-pack,Milkybar Choc ₹20 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1704,5.00,20.00,20.00,,,,,,,,TRUE,TRUE
+03336,,milkybar-choc-strawberry,Milkybar Choc Strawberry,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1704,5.00,5.00,5.00,,,,,,,,TRUE,TRUE
+03337,,milkybar-mould,Milkybar Mould,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,G,11,FALSE,1,,1704,5.00,10.00,10.00,,11 g,,,,,,TRUE,TRUE
+03338,,milkybar-mould,Milkybar Mould,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,G,6.5,FALSE,1,,1704,5.00,5.00,5.00,,6.5 g,,,,,,TRUE,TRUE
+03339,,milkybar-mould,Milkybar Mould,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,G,26,FALSE,1,,1704,5.00,20.00,20.00,,26 g,,,,,,TRUE,TRUE
+03469,,munch-10-rupee-pack,Munch ₹10 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,10.00,10.00,,,,,,,,TRUE,TRUE
+03470,,munch-5-rupee-pack,Munch ₹5 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,5.00,5.00,,,,,,,,TRUE,TRUE
+03471,,munch-chotu-box,Munch Chotu Box,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,120.00,120.00,,,,,,,,TRUE,TRUE
+03472,,munch-maha-trio,Munch Maha Trio,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,10.00,10.00,,,,,,,,TRUE,TRUE
+03685,,maggi-noodles,Maggi Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,PACKET,4,FALSE,1,,1902,5.00,60.00,58.00,,4 packs,,,,,,TRUE,TRUE
+03687,,maggi-noodles,Maggi Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,PACKET,6,FALSE,1,,1902,5.00,90.00,84.00,,6 packs,,,,,,TRUE,TRUE
+03688,,maggi-noodles,Maggi Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,PACKET,8,FALSE,1,,1902,5.00,120.00,120.00,,8 packs,,,,,,TRUE,TRUE
+03690,,maggi-atta-noodles,Maggi Atta Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,PACKET,1,FALSE,1,,1902,5.00,20.00,20.00,,,,,,,,TRUE,TRUE
+03691,,maggi-atta-noodles,Maggi Atta Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,PACKET,4,FALSE,1,,1902,5.00,108.00,108.00,,4 packs,,,,,,TRUE,TRUE
+06348,,kitkat-55-rupee-pack,KitKat ₹55 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,55.00,50.00,,,,,,,,TRUE,TRUE
+06809,,milkybar-moosha-45g,Milkybar Moosha 45 g,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,G,45,FALSE,1,,1806,5.00,45.00,45.00,,45 g,,,,,,TRUE,TRUE
+08243,,maggi-capsica-noodles,Maggi Capsica Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,G,60,FALSE,1,,1902,5.00,15.00,15.00,,60 g,,,,,,TRUE,TRUE
+08244,,maggi-tomato-noodles,Maggi Tomato Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,G,60,FALSE,1,,1902,5.00,15.00,15.00,,60 g,,,,,,TRUE,TRUE
+08433,,maggi-desi-cheesy-noodles,Maggi Desi Cheesy Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,G,60,FALSE,1,,1902,5.00,25.00,25.00,,60 g,,,,,,TRUE,TRUE
+09026,,nestle-barone,Nestlé Barone,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1704,5.00,5.00,5.00,,,,,,,,TRUE,TRUE
+09607,,munch-pouch-100-rupee,Munch Pouch ₹100,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,100.00,100.00,,,,,,,,TRUE,TRUE
+09608,,kitkat-mixed-fruit-30-rupee-pack,KitKat Mixed Fruit ₹30 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,30.00,30.00,,,,,,,,TRUE,TRUE
+09609,,kitkat-mango-30-rupee-pack,KitKat Mango ₹30 pack,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,30.00,30.00,,,,,,,,TRUE,TRUE
+09625,,maggi-noodles-special-3-plus-1,Maggi Noodles Special 3+1,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,PACKET,1,FALSE,1,,1902,5.00,54.00,54.00,,,,,,,,TRUE,TRUE
+EV469,,maggi-spicy-pepper-noodles,Maggi Spicy Pepper Noodles,,nestle,Nestlé,noodles-soups,Noodles & Soups,FALSE,VEG,,,PACKET,1,FALSE,1,,1902,5.00,25.00,25.00,,,,,,,,TRUE,TRUE
+EV67,,nescafe-hazelnut,Nescafé Hazelnut,,nestle,Nestlé,tea-coffee,Tea & Coffee,FALSE,VEG,,,ML,180,FALSE,1,,2202,5.00,45.00,45.00,,180 ml,,,,,,TRUE,TRUE
+N263,,kitkat-2-finger,KitKat 2 Finger,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,20.00,20.00,,,,,,,,TRUE,TRUE
+N264,,kitkat-4-finger,KitKat 4 Finger,,nestle,Nestlé,chocolates-confectionery,Chocolates & Confectionery,FALSE,VEG,,,PACKET,1,FALSE,1,,1905,5.00,30.00,30.00,,,,,,,,TRUE,TRUE
