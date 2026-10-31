@@ -5,12 +5,14 @@ from __future__ import annotations
 import csv
 from decimal import Decimal
 from io import StringIO
+from pathlib import Path
 
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import override_settings
 
+import apps.catalog.management.commands.seed_catalog as seed_command
 from apps.catalog.csv_import import parse_variants_csv
 from apps.catalog.models import Brand, Category, Product, ProductVariant
 from apps.catalog.seed import SEED_DIR
@@ -133,24 +135,28 @@ def test_demo_stock_adds_stock_once() -> None:
 
 
 @pytest.mark.django_db
-def test_rejected_seed_file_exits_with_error(monkeypatch, tmp_path) -> None:
-    import apps.catalog.management.commands.seed_catalog as cmd_module
-
+def test_rejected_seed_file_exits_with_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Build a seed file from the first real row, with one bad cell (mrp = "abc").
+    with NESTLE.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = list(reader.fieldnames or [])
+        row = next(reader)
+    row["mrp"] = "abc"
     bad_dir = tmp_path / "seed_data"
     bad_dir.mkdir()
-    header = (SEED_DIR / "nestle.csv").read_text(encoding="utf-8-sig").splitlines()[0]
-    (bad_dir / "nestle.csv").write_text(
-        header
-        + "\nBADSKU,,p,Name,,nestle,Nestle,c,Category,FALSE,VEG,,,,PACKET,1,FALSE,1,,"
-        + "1905,5.00,abc,abc,,,,,,,,TRUE,TRUE\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(cmd_module, "SEED_DIR", bad_dir)
+    with (bad_dir / "nestle.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        writer.writerow(row)
+    monkeypatch.setattr(seed_command, "SEED_DIR", bad_dir)
 
     out = StringIO()
     with pytest.raises(CommandError):
         call_command("seed_catalog", stdout=out)
     assert "nestle.csv" in out.getvalue()
+    assert "mrp" in out.getvalue()
     assert ProductVariant.objects.count() == 0
 
 
