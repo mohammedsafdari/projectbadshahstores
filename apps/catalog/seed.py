@@ -9,15 +9,15 @@ same door as a real billing export.
 from __future__ import annotations
 
 import csv
+import io
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 from django.db import IntegrityError
 from django.db.models import QuerySet
 
-from apps.catalog.csv_import_apply import apply_import
-from apps.catalog.models import ProductVariant
+from apps.catalog.csv_import_apply import ApplyResult, apply_import
+from apps.catalog.models import Brand, Category, ProductVariant
 from apps.inventory.models import InventoryMovement
 from apps.inventory.services import receive_stock
 
@@ -42,7 +42,9 @@ def ensure_brands_and_categories(raw: bytes) -> tuple[int, int]:
     """
     # "utf-8-sig" also strips the byte order mark Excel adds.
     text = raw.decode("utf-8-sig")
-    reader = csv.DictReader(text.splitlines())
+    # io.StringIO keeps quoted cells with line breaks intact; splitlines() would
+    # cut such a cell in two.
+    reader = csv.DictReader(io.StringIO(text, newline=""))
     brand_pairs: set[tuple[str, str]] = set()
     category_pairs: set[tuple[str, str]] = set()
     for row in reader:
@@ -54,8 +56,6 @@ def ensure_brands_and_categories(raw: bytes) -> tuple[int, int]:
             brand_pairs.add((brand_slug, brand_name))
         if category_slug:
             category_pairs.add((category_slug, category_name))
-
-    from apps.catalog.models import Brand, Category
 
     brands_created = 0
     categories_created = 0
@@ -73,7 +73,7 @@ def ensure_brands_and_categories(raw: bytes) -> tuple[int, int]:
     return brands_created, categories_created
 
 
-def seed_file(path: Path | str) -> Any:
+def seed_file(path: Path | str) -> ApplyResult:
     """Seed one CSV file through the importer and return its ``ApplyResult``.
 
     Brands and categories are created first (idempotent). The file then goes

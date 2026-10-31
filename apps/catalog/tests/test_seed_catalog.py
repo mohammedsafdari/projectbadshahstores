@@ -28,7 +28,7 @@ def test_seed_files_parse_with_zero_issues() -> None:
         assert result.ok, (path.name, result.issues)
 
 
-def test_every_sku_prefix_rule() -> None:
+def test_demo_skus_have_demo_prefix_real_ones_do_not() -> None:
     with NESTLE.open(newline="", encoding="utf-8-sig") as handle:
         rows = list(csv.DictReader(handle))
     with DEMO.open(newline="", encoding="utf-8-sig") as handle:
@@ -95,6 +95,9 @@ def test_idempotent_second_run() -> None:
 def test_demo_refused_when_debug_false() -> None:
     with pytest.raises(CommandError):
         call_command("seed_catalog", "--demo")
+    assert ProductVariant.objects.count() == 0
+    assert Brand.objects.count() == 0
+    assert Category.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -102,22 +105,53 @@ def test_demo_refused_when_debug_false() -> None:
 def test_demo_stock_refused_when_debug_false() -> None:
     with pytest.raises(CommandError):
         call_command("seed_catalog", "--demo", "--demo-stock")
+    assert ProductVariant.objects.count() == 0
+    assert Brand.objects.count() == 0
+    assert Category.objects.count() == 0
 
 
 @pytest.mark.django_db
 def test_demo_stock_without_demo_refused() -> None:
     with pytest.raises(CommandError):
         call_command("seed_catalog", "--demo-stock")
+    assert ProductVariant.objects.count() == 0
+    assert Brand.objects.count() == 0
+    assert Category.objects.count() == 0
 
 
 @pytest.mark.django_db
 @override_settings(DEBUG=True)
 def test_demo_stock_adds_stock_once() -> None:
     call_command("seed_catalog", "--demo", "--demo-stock")
-    first = InventoryMovement.objects.count()
-    assert first > 0
+    assert InventoryMovement.objects.count() == 48
+    assert all(
+        movement.variant.sku_code.startswith("DEMO-")
+        for movement in InventoryMovement.objects.select_related("variant")
+    )
     call_command("seed_catalog", "--demo", "--demo-stock")
-    assert InventoryMovement.objects.count() == first
+    assert InventoryMovement.objects.count() == 48
+
+
+@pytest.mark.django_db
+def test_rejected_seed_file_exits_with_error(monkeypatch, tmp_path) -> None:
+    import apps.catalog.management.commands.seed_catalog as cmd_module
+
+    bad_dir = tmp_path / "seed_data"
+    bad_dir.mkdir()
+    header = (SEED_DIR / "nestle.csv").read_text(encoding="utf-8-sig").splitlines()[0]
+    (bad_dir / "nestle.csv").write_text(
+        header
+        + "\nBADSKU,,p,Name,,nestle,Nestle,c,Category,FALSE,VEG,,,,PACKET,1,FALSE,1,,"
+        + "1905,5.00,abc,abc,,,,,,,,TRUE,TRUE\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cmd_module, "SEED_DIR", bad_dir)
+
+    out = StringIO()
+    with pytest.raises(CommandError):
+        call_command("seed_catalog", stdout=out)
+    assert "nestle.csv" in out.getvalue()
+    assert ProductVariant.objects.count() == 0
 
 
 @pytest.mark.django_db
