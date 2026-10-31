@@ -8,6 +8,8 @@ Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. La
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
+Questions due at the start of Slice 22 (seed command), all in `docs/open_questions.md`: the item master export from the billing software (30 to 50 rows, one row per item), the SKU scheme (billing item code or our own), who is the stock master (billing software, website or manual count), the category tree (top-level categories and children; slugs become URLs), how pack sizes group into one product, and the GST rate and HSN check of the first 100 items. Defaults in use if unanswered: the file decides the SKU, the website ledger starts from received stock and counts, one product per product slug. The seed should load through the Slice 20 importer so it is repeatable.
+
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
 
 ## What is built
@@ -87,6 +89,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 21d | `change_prices.html`: spec form, preview report and the Confirm form. |
 | 21e | End-to-end admin tests; two fixed for Django's empty-changelist action bar and `DATA_UPLOAD_MAX_NUMBER_FIELDS`. |
 | 21f | Documentation sync: this file, ADR D48. |
+| 21 review | Claude pulled the repo, ran 754 tests on PostgreSQL, ruff and mypy; five deliberate breakages (locks, `updated_at`, fingerprint check, half-up rounding, audit call) were each caught. |
 
 ## Remaining Phase 2 slices
 
@@ -145,6 +148,9 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - The agent (Freebuff) never touches `.env`. It may run only the read-only checks listed in `docs/AGENT_BRIEF.md` (ruff, mypy, pytest), once, at the end, and it pastes their raw output; it never runs any other command. This is a trial that started in Slice 15f: if it breaks the rule even once, we go back to no commands. Every prompt ends with a STOP line, and the agent shows the diff and stops.
 - Each prompt states a goal, the files to read first and the rules. The agent does the coding and starts by reading `docs/AGENT_BRIEF.md`. Existing files change by small exact-match edits (each OLD text must appear exactly once, or nothing changes); new files may be written in full. Keep each prompt small: one long multi-step prompt once stalled in a retry loop.
 - Every Freebuff prompt starts with the slice number and letter (for example "Slice 21b"), tells the agent to read `docs/AGENT_BRIEF.md` first, covers ONE file, and ends with "Show the diff and STOP". At the start of each slice Claude gives a kickoff block that can open a new Freebuff chat. The owner runs the checks (ruff format, ruff check, mypy, pytest) himself.
+- After every prompt the owner runs this block from the repo folder: `uv run ruff format .`, `uv run ruff check .`, `uv run mypy apps`, `docker compose exec web python -m pytest -q`. For a slice that changes models, also `docker compose exec web python manage.py check` and `docker compose exec web python manage.py makemigrations --check --dry-run`. The Docker pytest run is the official one; `uv run pytest` on Windows uses whatever database `.env` points at and can pass or fail for reasons unrelated to the code.
+- Roles: Freebuff (now on DeepSeek V4.1 Flash) does the context-heavy coding. Claude designs, writes the prompts and kickoff blocks, and reviews pushed slices, which keeps Claude's free-tier use low. Claude clones the public repo (github.com/mohammedsafdari/projectbadshahstores) and does not need files pasted.
+- Claude's review of a pushed slice: pull the repo, run the full suite against PostgreSQL in the sandbox (`pip install pgserver` in a separate venv; start it with `pgserver.get_server(path, cleanup_mode=None)` at the start of every command because it stops between commands; set `PGHOST` to the data folder and `DATABASE_URL=postgres://postgres@/postgres`), run ruff and mypy, then break each guarded line on purpose (locks, `updated_at`, fingerprint check, audit call, rounding) and confirm a test fails. Slice 20 and Slice 21 passed this check (719 and 754 tests).
 - The agent edits settings or `pyproject.toml` only if the prompt names them. After any `pyproject.toml` edit, run the TOML check.
 - Check the real `git diff` and `--stat`, not the agent's pasted diff. Commit in small steps after `git status` and `git diff --stat`.
 - Every commit message starts with the slice id, for example `Slice 14a: Add ProductImage model`.
@@ -199,6 +205,8 @@ Everyday commands (they run inside the container):
 - Catch `ValidationError` and `IntegrityError` OUTSIDE the `transaction.atomic()` block: caught inside, the transaction is already marked broken and every later query fails. The `try` must wrap the `with`, not sit inside it (20d).
 - Lock in a fixed order: products first, then variants, each with `order_by("pk")`, so two imports of overlapping files queue instead of deadlocking each other (D43, D47).
 - A test must fail when the line it guards is removed. Slice 20 had no test for `updated_at` in `save(update_fields=...)`; found by deleting the line and running the suite (20g-1).
+- Check results come from the Docker pytest run, not from `uv run pytest` on the PC (see "How we work"). I once gave `uv run pytest` in a command block; the project rule is Docker for pytest and `uv run` for ruff and mypy.
+- A sample sales invoice from the billing software (28/10/2026) showed: loose items billed per kg (Gur, Makhana), GST-inclusive line amounts at 0%, 5% and 18%, no item codes, barcodes, HSN or categories, free-text pack sizes in item names, and the words "Credit Tax Invoice". It cannot decide the SKU scheme or product grouping; an item master export can.
 
 ## Slice closeout checklist
 
