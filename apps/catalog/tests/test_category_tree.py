@@ -56,9 +56,12 @@ def test_corrupted_cycle_does_not_hang() -> None:
     a.refresh_from_db()
     b.refresh_from_db()
     tree = CategoryTree()
-    assert tree.ancestors(a) is not None
-    assert tree.visible_ids() is not None
-    assert tree.descendant_ids(a) is not None
+    ancestors = tree.ancestors(a)
+    assert isinstance(ancestors, list)
+    assert len(ancestors) <= 2
+    assert a.pk in tree.descendant_ids(a)
+    assert a.pk not in tree.visible_ids()
+    assert b.pk not in tree.visible_ids()
 
 
 @pytest.mark.django_db
