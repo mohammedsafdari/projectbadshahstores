@@ -12,6 +12,7 @@ from django.db.models.functions import Coalesce, Lower
 
 from apps.catalog.models import Brand, Category, Product, ProductImage, ProductVariant
 from apps.catalog.services import savings_percent
+from apps.storefront.filters import ListingFilters, apply_filters
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ def visible_products(
     category: Category | None = None,
     brand: Brand | None = None,
     sort: str = "name",
+    filters: ListingFilters | None = None,
 ) -> models.QuerySet[Product]:
     allowed_sorts = {"name", "price_asc", "price_desc", "newest"}
     if sort not in allowed_sorts:
@@ -115,6 +117,8 @@ def visible_products(
 
     qs = qs.annotate(lead_price=Min("variants__selling_price", filter=Q(variants__is_active=True)))
     qs = qs.filter(lead_price__isnull=False)
+    if filters is not None:
+        qs = apply_filters(qs, filters)
 
     if sort == "name":
         qs = qs.order_by(Lower("name_en"), "pk")
