@@ -331,7 +331,13 @@ class ProductImage(TimeStampedModel):
         if self.image and image_changed:
             from apps.catalog import images
 
-            thumb = images.create_thumbnail(self.image)
+            thumb = None
+            try:
+                thumb = images.create_thumbnail(self.image)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).warning("Could not create a thumbnail.", exc_info=True)
             if thumb is not None:
                 self.thumbnail.save(
                     os.path.basename(product_image_thumbnail_upload_path(self, "")),

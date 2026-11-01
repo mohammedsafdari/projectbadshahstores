@@ -1,4 +1,4 @@
-"""Storefront app views (Slice 23d)."""
+"""Storefront app views (Slice 23d, refactored in 23f)."""
 
 from __future__ import annotations
 
@@ -9,12 +9,11 @@ from django.urls import reverse
 from django.views.generic import TemplateView
 
 from apps.catalog.models import Brand, Category
-from apps.storefront.services import category_ancestors, listing_products
-
-
-class HomeView(TemplateView):
-    template_name = "storefront/home.html"
-
+from apps.storefront.services import (
+    CategoryTree,
+    build_cards,
+    visible_products,
+)
 
 SORT_OPTIONS = [
     ("name", "Name"),
@@ -39,36 +38,58 @@ def _normalise_sort(request: HttpRequest) -> str:
     return sort
 
 
-def product_list(request: HttpRequest) -> HttpResponse:
+def _render_listing(
+    request: HttpRequest,
+    *,
+    tree: CategoryTree,
+    category: Category | None = None,
+    brand: Brand | None = None,
+    page_title: str,
+    breadcrumbs: list[dict[str, str | None]],
+    child_categories: list[Category],
+) -> HttpResponse:
     sort = _normalise_sort(request)
-    cards = listing_products(sort=sort)
-    paginator = Paginator(cards, PRODUCTS_PER_PAGE)
+    qs = visible_products(tree=tree, category=category, brand=brand, sort=sort)
+    paginator = Paginator(qs, PRODUCTS_PER_PAGE)
     page_obj = paginator.get_page(request.GET.get("page"))
+    cards = build_cards(page_obj.object_list)
     context = {
         "page_obj": page_obj,
-        "cards": page_obj.object_list,
+        "cards": cards,
         "current_sort": sort,
         "sort_options": SORT_OPTIONS,
         "querystring": _querystring_without_page(request),
-        "breadcrumbs": [{"label": "Home", "url": reverse("home")}],
-        "child_categories": [],
-        "page_title": "All products",
+        "breadcrumbs": breadcrumbs,
+        "child_categories": child_categories,
+        "page_title": page_title,
     }
     return render(request, "storefront/product_list.html", context)
 
 
+class HomeView(TemplateView):
+    template_name = "storefront/home.html"
+
+
+def product_list(request: HttpRequest) -> HttpResponse:
+    tree = CategoryTree()
+    return _render_listing(
+        request,
+        tree=tree,
+        page_title="All products",
+        breadcrumbs=[{"label": "Home", "url": reverse("home")}],
+        child_categories=[],
+    )
+
+
 def category_detail(request: HttpRequest, slug: str) -> HttpResponse:
+    tree = CategoryTree()
     category = get_object_or_404(Category, slug=slug, is_active=True)
-    for ancestor in category_ancestors(category):
+    for ancestor in tree.ancestors(category):
         if not ancestor.is_active:
             raise Http404
-    sort = _normalise_sort(request)
-    cards = listing_products(category=category, sort=sort)
-    paginator = Paginator(cards, PRODUCTS_PER_PAGE)
-    page_obj = paginator.get_page(request.GET.get("page"))
     child_categories = list(Category.objects.filter(parent=category, is_active=True))
     breadcrumbs: list[dict[str, str | None]] = [{"label": "Home", "url": reverse("home")}]
-    for ancestor in category_ancestors(category):
+    for ancestor in tree.ancestors(category):
         breadcrumbs.append(
             {
                 "label": ancestor.name,
@@ -76,37 +97,28 @@ def category_detail(request: HttpRequest, slug: str) -> HttpResponse:
             }
         )
     breadcrumbs.append({"label": category.name, "url": None})
-    context = {
-        "page_obj": page_obj,
-        "cards": page_obj.object_list,
-        "current_sort": sort,
-        "sort_options": SORT_OPTIONS,
-        "querystring": _querystring_without_page(request),
-        "breadcrumbs": breadcrumbs,
-        "child_categories": child_categories,
-        "page_title": category.name,
-    }
-    return render(request, "storefront/product_list.html", context)
+    return _render_listing(
+        request,
+        tree=tree,
+        category=category,
+        page_title=category.name,
+        breadcrumbs=breadcrumbs,
+        child_categories=child_categories,
+    )
 
 
 def brand_detail(request: HttpRequest, slug: str) -> HttpResponse:
     brand = get_object_or_404(Brand, slug=slug, is_active=True)
-    sort = _normalise_sort(request)
-    cards = listing_products(brand=brand, sort=sort)
-    paginator = Paginator(cards, PRODUCTS_PER_PAGE)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    tree = CategoryTree()
     breadcrumbs: list[dict[str, str | None]] = [
         {"label": "Home", "url": reverse("home")},
         {"label": brand.name, "url": None},
     ]
-    context = {
-        "page_obj": page_obj,
-        "cards": page_obj.object_list,
-        "current_sort": sort,
-        "sort_options": SORT_OPTIONS,
-        "querystring": _querystring_without_page(request),
-        "breadcrumbs": breadcrumbs,
-        "child_categories": [],
-        "page_title": brand.name,
-    }
-    return render(request, "storefront/product_list.html", context)
+    return _render_listing(
+        request,
+        tree=tree,
+        brand=brand,
+        page_title=brand.name,
+        breadcrumbs=breadcrumbs,
+        child_categories=[],
+    )

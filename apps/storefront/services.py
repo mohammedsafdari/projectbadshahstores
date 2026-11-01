@@ -1,12 +1,14 @@
-"""Storefront business logic (Slice 23c)."""
+"""Storefront business logic (Slice 23c, refactored in 23f)."""
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 
-from django.db.models import Prefetch, Sum
-from django.db.models.functions import Coalesce
+from django.db import models
+from django.db.models import Min, Prefetch, Q, Sum, prefetch_related_objects
+from django.db.models.functions import Coalesce, Lower
 
 from apps.catalog.models import Brand, Category, Product, ProductImage, ProductVariant
 from apps.catalog.services import savings_percent
@@ -26,96 +28,108 @@ class ProductCard:
     alt_text: str
 
 
-def _categories() -> list[Category]:
-    return list(Category.objects.all())
+class CategoryTree:
+    def __init__(self, categories: Iterable[Category] | None = None) -> None:
+        if categories is None:
+            categories = Category.objects.all()
+        self._categories = list(categories)
+        self._by_id = {c.pk: c for c in self._categories}
+        self._children: dict[int | None, list[int]] = {}
+        for cat in self._categories:
+            self._children.setdefault(cat.parent_id, []).append(cat.pk)
 
-
-def category_ancestors(category: Category) -> list[Category]:
-    by_id = {c.pk: c for c in _categories()}
-    result: list[Category] = []
-    visited: set[int] = set()
-    current = category.parent_id
-    while current is not None and current not in visited:
-        visited.add(current)
-        ancestor = by_id.get(current)
-        if ancestor is None:
-            break
-        result.insert(0, ancestor)
-        current = ancestor.parent_id
-    return result
-
-
-def visible_category_ids() -> set[int]:
-    categories = _categories()
-    by_id = {c.pk: c for c in categories}
-    result: set[int] = set()
-    for category in categories:
-        if not category.is_active:
-            continue
-        ok = True
+    def ancestors(self, category: Category) -> list[Category]:
+        result: list[Category] = []
         visited: set[int] = set()
         current = category.parent_id
-        while current is not None:
-            if current in visited:
-                ok = False
-                break
+        while current is not None and current not in visited:
             visited.add(current)
-            ancestor = by_id.get(current)
-            if ancestor is None or not ancestor.is_active:
-                ok = False
+            ancestor = self._by_id.get(current)
+            if ancestor is None:
                 break
+            result.insert(0, ancestor)
             current = ancestor.parent_id
-        if ok:
-            result.add(category.pk)
-    return result
+        return result
+
+    def visible_ids(self) -> set[int]:
+        result: set[int] = set()
+        for category in self._categories:
+            if not category.is_active:
+                continue
+            ok = True
+            visited: set[int] = set()
+            current = category.parent_id
+            while current is not None:
+                if current in visited:
+                    ok = False
+                    break
+                visited.add(current)
+                ancestor = self._by_id.get(current)
+                if ancestor is None or not ancestor.is_active:
+                    ok = False
+                    break
+                current = ancestor.parent_id
+            if ok:
+                result.add(category.pk)
+        return result
+
+    def descendant_ids(self, category: Category) -> set[int]:
+        result: set[int] = set()
+        visited: set[int] = set()
+        stack = [category.pk]
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            result.add(current)
+            for child in self._children.get(current, []):
+                if child not in visited:
+                    stack.append(child)
+        return result
 
 
-def category_with_descendant_ids(category: Category) -> set[int]:
-    categories = _categories()
-    children: dict[int | None, list[int]] = {}
-    for cat in categories:
-        children.setdefault(cat.parent_id, []).append(cat.pk)
-    result: set[int] = set()
-    visited: set[int] = set()
-    stack = [category.pk]
-    while stack:
-        current = stack.pop()
-        if current in visited:
-            continue
-        visited.add(current)
-        result.add(current)
-        for child in children.get(current, []):
-            if child not in visited:
-                stack.append(child)
-    return result
-
-
-def listing_products(
+def visible_products(
     *,
+    tree: CategoryTree,
     category: Category | None = None,
     brand: Brand | None = None,
     sort: str = "name",
-) -> list[ProductCard]:
+) -> models.QuerySet[Product]:
     allowed_sorts = {"name", "price_asc", "price_desc", "newest"}
     if sort not in allowed_sorts:
         sort = "name"
 
-    active_categories = visible_category_ids()
+    active_categories = tree.visible_ids()
 
-    product_qs = Product.objects.filter(is_active=True)
-    product_qs = product_qs.filter(brand__is_active=True)
-    product_qs = product_qs.filter(category_id__in=active_categories)
+    qs = Product.objects.filter(is_active=True, brand__is_active=True).select_related(
+        "brand", "category"
+    )
+    qs = qs.filter(category_id__in=active_categories)
 
     if category is not None:
-        descendant_ids = category_with_descendant_ids(category)
-        product_qs = product_qs.filter(category_id__in=descendant_ids)
+        descendant_ids = tree.descendant_ids(category)
+        qs = qs.filter(category_id__in=descendant_ids)
     if brand is not None:
-        product_qs = product_qs.filter(brand=brand)
+        qs = qs.filter(brand=brand)
 
-    product_qs = product_qs.filter(variants__is_active=True).distinct()
+    qs = qs.annotate(lead_price=Min("variants__selling_price", filter=Q(variants__is_active=True)))
+    qs = qs.filter(lead_price__isnull=False)
 
-    if sort == "newest":
-        product_qs = product_qs.order_by("-created_at", "-pk")
+    if sort == "name":
+        qs = qs.order_by(Lower("name_en"), "pk")
+    elif sort == "price_asc":
+        qs = qs.order_by("lead_price", "pk")
+    elif sort == "price_desc":
+        qs = qs.order_by("-lead_price", "pk")
+    elif sort == "newest":
+        qs = qs.order_by("-created_at", "-pk")
+
+    return qs
+
+
+def build_cards(products: Iterable[Product]) -> list[ProductCard]:
+    product_list = list(products)
 
     variant_qs = (
         ProductVariant.objects.filter(is_active=True)
@@ -124,15 +138,14 @@ def listing_products(
     )
     image_qs = ProductImage.objects.order_by("sort_order", "id")
 
-    products = list(
-        product_qs.select_related("brand", "category").prefetch_related(
-            Prefetch("variants", queryset=variant_qs, to_attr="active_variants"),
-            Prefetch("images", queryset=image_qs, to_attr="sorted_images"),
-        )
+    prefetch_related_objects(
+        product_list,
+        Prefetch("variants", queryset=variant_qs, to_attr="active_variants"),
+        Prefetch("images", queryset=image_qs, to_attr="sorted_images"),
     )
 
     cards: list[ProductCard] = []
-    for product in products:
+    for product in product_list:
         variants = getattr(product, "active_variants", [])
         if not variants:
             continue
@@ -166,12 +179,4 @@ def listing_products(
                 alt_text=alt_text,
             )
         )
-
-    if sort == "name":
-        cards.sort(key=lambda c: (c.name.lower(), c.slug))
-    elif sort == "price_asc":
-        cards.sort(key=lambda c: (c.lead_price, c.slug))
-    elif sort == "price_desc":
-        cards.sort(key=lambda c: c.lead_price, reverse=True)
-
     return cards
