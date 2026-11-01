@@ -32,6 +32,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Which products are sold loose by weight (dal, rice, sugar), in kg or litres, and in what smallest step (suggested 0.100)? — owner; needed before Phase 3 (cart); default in use: nothing is loose until `is_sold_loose` is set per variant (D42)
 - [ ] POS export format for stock/price sync — unknown; planned as one-way CSV import with validation report, plus CSV stock-count adjustment flow — owner (from your billing software); a sample export of about 10 rows is needed by Slice 20 (CSV import); default in use: the website ledger is primary and the billing export is a one-way import
 - [ ] Product/variant seed data: categories, brands, own-brand products at launch — owner/phase-2 data entry
+- [ ] Should the filter panel show how many products each brand has, and offer non-vegetarian and 'not applicable' diet choices once the real catalogue has them? — owner; low priority; ask again before Slice 28; default in use: no counts, Vegetarian only (D51)
 - [ ] Own-brand products: which products are own-brand, and are they FSSAI-licensed — owner/CA
 - [ ] Per-variant HSN/GST rate values — entered at data entry; confirm mapping with CA — CA/owner
 - [ ] Can we use manufacturer or brand photos for third-party products, or must we shoot our own? — owner (brand permission, copyright); needed before launch; default in use: the owner uploads their own photos

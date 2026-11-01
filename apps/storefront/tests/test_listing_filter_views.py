@@ -366,6 +366,39 @@ def test_filters_and_sort_combine(client: Client) -> None:
 
 
 @pytest.mark.django_db
+def test_result_count_is_total_not_page_size(client: Client) -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    for i in range(25):
+        p = ProductFactory(name_en=f"P{i:02d}", brand=brand, category=cat, is_active=True)
+        ProductVariantFactory(product=p, is_active=True)
+    for url in ("/products/", "/products/?page=2"):
+        response = client.get(url)
+        html = response.content.decode()
+        m = re.search(r">(\d+ products?)</p>", html)
+        assert m is not None
+        assert m.group(1) == "25 products"
+
+
+@pytest.mark.django_db
+def test_veg_checkbox_checked_from_the_address(client: Client) -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    p = ProductFactory(name_en="Prod", brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(product=p, is_active=True)
+    response = client.get("/products/?veg=1")
+    html = response.content.decode()
+    m = re.search(r'<input[^>]*name="veg"[^>]*>', html)
+    assert m is not None
+    assert "checked" in m.group(0)
+    response2 = client.get("/products/")
+    html2 = response2.content.decode()
+    m2 = re.search(r'<input[^>]*name="veg"[^>]*>', html2)
+    assert m2 is not None
+    assert "checked" not in m2.group(0)
+
+
+@pytest.mark.django_db
 def test_form_values_are_filled_from_the_address(client: Client) -> None:
     brand = BrandFactory(is_active=True)
     cat = CategoryFactory(is_active=True)
@@ -376,3 +409,23 @@ def test_form_values_are_filled_from_the_address(client: Client) -> None:
     assert 'value="50"' in html
     assert 'value="150"' in html
     assert "checked" in html
+
+
+@pytest.mark.django_db
+def test_sort_select_is_inside_the_form_and_keeps_its_selection(client: Client) -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    p = ProductFactory(name_en="Prod", brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(product=p, is_active=True)
+    response = client.get("/products/?sort=price_desc")
+    html = response.content.decode()
+    start = html.index('<form id="listing-form"')
+    end = html.index("</form>", start) + len("</form>")
+    form_block = html[start:end]
+    assert 'name="sort"' in form_block
+    m = re.search(r'<option value="price_desc"[^>]*>', form_block)
+    assert m is not None
+    assert "selected" in m.group(0)
+    m2 = re.search(r'<option value="name"[^>]*>', form_block)
+    assert m2 is not None
+    assert "selected" not in m2.group(0)
