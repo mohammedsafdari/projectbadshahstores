@@ -358,6 +358,8 @@ Brands and categories are created from the slug/name pairs inside the seed CSV f
   - Thumbnails: ProductImage.thumbnail (ImageField, null/blank, editable=False, upload path products/<product_id>/thumbs/<uuid>.webp). Created on save when image is new or replaced (EXIF orientation, longest side <= 400 px, never enlarge, WebP quality 80, keep transparency); failure logs a warning and still saves original. Image code lives in apps/catalog/images.py.
   - Category.clean() raises ValidationError on "parent" for self-parent or ancestor cycle, walking with a visited set so a corrupted cycle cannot loop forever. Direct .save() is not guarded.
   - base.html: Home links to home, Categories renamed to Shop linking to product_list; HTMX loaded via <script defer>, not a stylesheet link.
+- **Why:** Server-rendered Django templates with Tailwind CDN; no JavaScript needed.
+
 ## D51. Listing filters
 
 - **Decision:** (Slice 24) Listing filters for the storefront.
@@ -367,4 +369,4 @@ Brands and categories are created from the slug/name pairs inside the seed CSV f
   - `brand_options` (`apps/storefront/filter_options.py`): brands with visible products in the page scope (the category and its descendants, or everything); not narrowed by the current selection; no counts; built only when the full page is rendered. On a brand page the brand block is hidden and `?brand=` is ignored.
   - htmx: one GET form `#listing-form` holds the filters and the sort; `hx-get`, `hx-target="#listing-results"`, `hx-push-url="true"`, `hx-trigger="change delay:300ms, submit"`; the Apply button keeps it working without JavaScript. htmx requests get only `_listing_results.html`; a history restore (Back button) gets the whole page; every response carries `Vary: HX-Request`. Pagination links carry `hx-` attributes and keep the query string; a filter change drops `page`. The Clear filters link is a plain link (the form must reset) and keeps a non-default sort.
   - Narrows the brief: section 5 lists a diet filter; only Vegetarian is offered (all real seed rows are VEG; non-veg and not-applicable are not offered). Not done on purpose: option counts, a price slider, category facets, infinite scroll, filters on search results (Slice 26).
-  - Why: server-rendered, shareable addresses, works without JavaScript, nothing loaded in Python.
+- **Why:** Server-rendered, shareable addresses, works without JavaScript, nothing loaded into Python.
