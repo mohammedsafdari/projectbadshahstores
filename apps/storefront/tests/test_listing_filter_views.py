@@ -16,6 +16,15 @@ from apps.catalog.tests.factories import (
 from apps.inventory.services import receive_stock
 
 
+def _product_names(html: str) -> list[str]:
+    """Names of the product cards on the page (each card has one <h2>).
+
+    Compare this list, not substrings of the page: short names such as "P2" can
+    appear by chance in the random CSRF token and make a test fail now and then.
+    """
+    return re.findall(r"<h2[^>]*>\s*(.*?)\s*</h2>", html, re.S)
+
+
 @pytest.mark.django_db
 def test_full_page_has_filter_form_wired_for_htmx(client: Client) -> None:
     response = client.get("/products/")
@@ -46,14 +55,13 @@ def test_brand_filter_limits_products_page(client: Client) -> None:
     b1 = BrandFactory(is_active=True, name="Alpha", slug="alpha")
     b2 = BrandFactory(is_active=True, name="Beta", slug="beta")
     cat = CategoryFactory(is_active=True)
-    p1 = ProductFactory(name_en="P1", brand=b1, category=cat, is_active=True)
-    p2 = ProductFactory(name_en="P2", brand=b2, category=cat, is_active=True)
+    p1 = ProductFactory(name_en="Alpha Rice", brand=b1, category=cat, is_active=True)
+    p2 = ProductFactory(name_en="Beta Rice", brand=b2, category=cat, is_active=True)
     ProductVariantFactory(product=p1, is_active=True)
     ProductVariantFactory(product=p2, is_active=True)
     response = client.get("/products/?brand=alpha")
     html = response.content.decode()
-    assert "P1" in html
-    assert "P2" not in html
+    assert _product_names(html) == ["Alpha Rice"]
 
 
 @pytest.mark.django_db
@@ -62,14 +70,12 @@ def test_two_brands_are_or_on_products_page(client: Client) -> None:
     b2 = BrandFactory(is_active=True, name="Beta", slug="beta")
     b3 = BrandFactory(is_active=True, name="Gamma", slug="gamma")
     cat = CategoryFactory(is_active=True)
-    for b, name in ((b1, "P1"), (b2, "P2"), (b3, "P3")):
+    for b, name in ((b1, "Alpha Rice"), (b2, "Beta Rice"), (b3, "Gamma Rice")):
         p = ProductFactory(name_en=name, brand=b, category=cat, is_active=True)
         ProductVariantFactory(product=p, is_active=True)
     response = client.get("/products/?brand=alpha&brand=beta")
     html = response.content.decode()
-    assert "P1" in html
-    assert "P2" in html
-    assert "P3" not in html
+    assert _product_names(html) == ["Alpha Rice", "Beta Rice"]
 
 
 @pytest.mark.django_db
@@ -82,8 +88,7 @@ def test_price_filter_limits_results(client: Client) -> None:
     ProductVariantFactory(product=p2, is_active=True, selling_price=100, mrp=100)
     response = client.get("/products/?min_price=50&max_price=150")
     html = response.content.decode()
-    assert "Expensive" in html
-    assert "Cheap" not in html
+    assert _product_names(html) == ["Expensive"]
 
 
 @pytest.mark.django_db
@@ -98,8 +103,7 @@ def test_own_brand_filter_limits_results(client: Client) -> None:
     ProductVariantFactory(product=p2, is_active=True)
     response = client.get("/products/?own_brand=1")
     html = response.content.decode()
-    assert "Own" in html
-    assert "Other" not in html
+    assert _product_names(html) == ["Own"]
 
 
 @pytest.mark.django_db
@@ -113,8 +117,7 @@ def test_in_stock_filter_limits_results(client: Client) -> None:
     receive_stock(variant=v1, quantity=5)
     response = client.get("/products/?in_stock=1")
     html = response.content.decode()
-    assert "Stocked" in html
-    assert "Empty" not in html
+    assert _product_names(html) == ["Stocked"]
 
 
 @pytest.mark.django_db
@@ -137,8 +140,7 @@ def test_veg_filter_limits_results(client: Client) -> None:
     ProductVariantFactory(product=p2, is_active=True)
     response = client.get("/products/?veg=1")
     html = response.content.decode()
-    assert "Veg" in html
-    assert "NonVeg" not in html
+    assert _product_names(html) == ["Veg"]
 
 
 @pytest.mark.django_db
