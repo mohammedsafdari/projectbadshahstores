@@ -43,30 +43,40 @@ def test_brand_options_skip_inactive_brand_and_products_without_active_variant()
 
 @pytest.mark.django_db
 def test_brand_options_scoped_to_category_and_descendants() -> None:
-    brand = BrandFactory(is_active=True)
+    in_scope = BrandFactory(is_active=True)
+    out_of_scope = BrandFactory(is_active=True)
     parent = CategoryFactory(is_active=True)
     child = CategoryFactory(is_active=True, parent=parent)
     other = CategoryFactory(is_active=True)
-    p1 = ProductFactory(brand=brand, category=child, is_active=True)
+    # in_scope sells in the child category, out_of_scope only in an unrelated one.
+    p1 = ProductFactory(brand=in_scope, category=child, is_active=True)
     ProductVariantFactory(product=p1, is_active=True)
-    p2 = ProductFactory(brand=brand, category=other, is_active=True)
+    p2 = ProductFactory(brand=out_of_scope, category=other, is_active=True)
     ProductVariantFactory(product=p2, is_active=True)
     tree = CategoryTree()
-    options = brand_options(tree=tree, category=parent)
-    assert [b.slug for b in options] == [brand.slug]
+    assert [b.slug for b in brand_options(tree=tree, category=parent)] == [in_scope.slug]
+    # Without a category, both brands are offered.
+    assert sorted(b.slug for b in brand_options(tree=tree)) == sorted(
+        [in_scope.slug, out_of_scope.slug]
+    )
 
 
 @pytest.mark.django_db
 def test_brand_options_sorted_by_name_ignoring_case() -> None:
-    b1 = BrandFactory(name="zebra", slug="zebra", is_active=True)
-    b2 = BrandFactory(name="Apple", slug="apple", is_active=True)
+    # Created in the order banana, Cherry, apple, so neither id order nor plain
+    # (case-sensitive) sorting gives the expected result by accident.
+    brands = [
+        BrandFactory(name="banana", slug="banana", is_active=True),
+        BrandFactory(name="Cherry", slug="cherry", is_active=True),
+        BrandFactory(name="apple", slug="apple", is_active=True),
+    ]
     cat = CategoryFactory(is_active=True)
-    for b in (b1, b2):
+    for b in brands:
         p = ProductFactory(brand=b, category=cat, is_active=True)
         ProductVariantFactory(product=p, is_active=True)
     tree = CategoryTree()
     options = brand_options(tree=tree)
-    assert [b.name for b in options] == ["Apple", "zebra"]
+    assert [b.name for b in options] == ["apple", "banana", "Cherry"]
 
 
 @pytest.mark.django_db
