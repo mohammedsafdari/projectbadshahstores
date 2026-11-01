@@ -128,26 +128,33 @@ def test_placeholder_image_when_no_photo(client: Client) -> None:
 
 
 @pytest.mark.django_db
-def test_thumbnail_url_used_when_present(client: Client, monkeypatch) -> None:
+def test_thumbnail_url_used_when_present(client: Client) -> None:
+    import io
+
+    from PIL import Image
+
     brand = BrandFactory(is_active=True)
     cat = CategoryFactory(is_active=True)
     product = ProductFactory(brand=brand, category=cat, is_active=True)
     ProductVariantFactory(product=product, is_active=True)
-    img = ProductImage.objects.create(
-        product=product,
-        image=SimpleUploadedFile("p.jpg", b"\xff\xd8\xff", content_type="image/jpeg"),
-    )
-    # ensure thumbnail present
+    img_bytes = io.BytesIO()
+    Image.new("RGB", (20, 20), color=(100, 150, 200)).save(img_bytes, format="JPEG")
+    img_bytes.seek(0)
+    upload = SimpleUploadedFile("p.jpg", img_bytes.read(), content_type="image/jpeg")
+    img = ProductImage.objects.create(product=product, image=upload)
     img.refresh_from_db()
-    if not img.thumbnail:
-        return
+    assert img.thumbnail
     response = client.get("/products/")
     html = response.content.decode()
-    assert img.thumbnail.url in html or "thumbs" in html
+    assert f'src="{img.thumbnail.url}"' in html
 
 
 @pytest.mark.django_db
 def test_original_image_used_when_no_thumbnail(client: Client, monkeypatch) -> None:
+    import io
+
+    from PIL import Image
+
     from apps.catalog import images
 
     monkeypatch.setattr(images, "create_thumbnail", lambda source: None)
@@ -155,14 +162,16 @@ def test_original_image_used_when_no_thumbnail(client: Client, monkeypatch) -> N
     cat = CategoryFactory(is_active=True)
     product = ProductFactory(brand=brand, category=cat, is_active=True)
     ProductVariantFactory(product=product, is_active=True)
-    img = ProductImage.objects.create(
-        product=product,
-        image=SimpleUploadedFile("p.jpg", b"\xff\xd8\xff", content_type="image/jpeg"),
-    )
+    img_bytes = io.BytesIO()
+    Image.new("RGB", (20, 20), color=(100, 150, 200)).save(img_bytes, format="JPEG")
+    img_bytes.seek(0)
+    upload = SimpleUploadedFile("p.jpg", img_bytes.read(), content_type="image/jpeg")
+    img = ProductImage.objects.create(product=product, image=upload)
     img.refresh_from_db()
+    assert not img.thumbnail
     response = client.get("/products/")
     html = response.content.decode()
-    assert img.image.url in html
+    assert f'src="{img.image.url}"' in html
 
 
 @pytest.mark.django_db
@@ -174,9 +183,13 @@ def test_category_breadcrumb_for_nested_category(client: Client) -> None:
     ProductVariantFactory(product=product, is_active=True)
     response = client.get(f"/category/{child.slug}/")
     html = response.content.decode()
-    assert 'href="/"' in html or "Home" in html
-    assert f"/category/{parent.slug}/" in html
-    assert "Child" in html
+    start = html.index('<nav aria-label="Breadcrumb"')
+    end = html.index("</nav>", start) + len("</nav>")
+    block = html[start:end]
+    i_home = block.index('href="/"')
+    i_parent = block.index(f"/category/{parent.slug}/")
+    i_child = block.index("Child")
+    assert i_home < i_parent < i_child
 
 
 @pytest.mark.django_db
@@ -223,9 +236,10 @@ def test_pagination_25_products(client: Client) -> None:
         ProductVariantFactory(product=p, is_active=True)
     r1 = client.get("/products/")
     html1 = r1.content.decode()
-    assert html1.count("Out of stock") == 24
+    assert html1.count("<article") == 24
     r2 = client.get("/products/?page=2")
     html2 = r2.content.decode()
+    assert html2.count("<article") == 1
     assert "Page 2 of 2" in html2
 
 
@@ -239,13 +253,13 @@ def test_bad_page_values_return_200(client: Client) -> None:
 def test_unknown_sort_uses_default_order(client: Client) -> None:
     brand = BrandFactory(is_active=True)
     cat = CategoryFactory(is_active=True)
-    p1 = ProductFactory(name_en="B", brand=brand, category=cat, is_active=True)
-    p2 = ProductFactory(name_en="A", brand=brand, category=cat, is_active=True)
+    p1 = ProductFactory(name_en="Zulu Item", brand=brand, category=cat, is_active=True)
+    p2 = ProductFactory(name_en="Alpha Item", brand=brand, category=cat, is_active=True)
     ProductVariantFactory(product=p1, is_active=True)
     ProductVariantFactory(product=p2, is_active=True)
     response = client.get("/products/?sort=nope")
     html = response.content.decode()
-    assert html.index("A") < html.index("B")
+    assert html.index("Alpha Item") < html.index("Zulu Item")
 
 
 @pytest.mark.django_db
@@ -257,8 +271,24 @@ def test_pagination_links_keep_sort(client: Client) -> None:
         ProductVariantFactory(product=p, is_active=True)
     response = client.get("/products/?sort=price_asc")
     html = response.content.decode()
-    assert "page=2" in html
-    assert "sort=price_asc" in html
+    start = html.find("<nav")
+    # find pagination nav by aria-label
+    import re
+
+    m = re.search(r'<nav[^>]*aria-label="Pagination"[^>]*>', html)
+    assert m is not None
+    start = m.start()
+    end = html.index("</nav>", start) + len("</nav>")
+    block = html[start:end]
+    assert "Next" in block
+    # find href in Next link
+    import re
+
+    m = re.search(r'<a[^>]*href="([^"]*)"[^>]*>Next</a>', block)
+    assert m is not None
+    href = m.group(1)
+    assert "page=2" in href
+    assert "sort=price_asc" in href
 
 
 @pytest.mark.django_db
