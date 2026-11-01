@@ -10,7 +10,7 @@ from django.db.models import Sum
 from django.db.models.functions import Coalesce
 
 from apps.catalog.models import Product, ProductImage, ProductVariant
-from apps.catalog.services import unit_price
+from apps.catalog.services import savings_amount, savings_percent, unit_price
 from apps.storefront.services import CategoryTree, ProductCard, build_cards, visible_products
 
 
@@ -21,6 +21,8 @@ class VariantDetail:
     on_hand: Decimal
     in_stock: bool
     unit_price_text: str | None
+    savings_amount: Decimal
+    savings_percent: int
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,12 @@ def _pack_label(variant: ProductVariant) -> str:
     return f"{size:g} {unit.lower()}"
 
 
-def get_product_detail(slug: str) -> ProductDetail:
+def get_product_detail(slug: str, build_url=None) -> ProductDetail:
+    if build_url is None:
+
+        def build_url(path: str) -> str:
+            return path
+
     tree = CategoryTree()
     qs = visible_products(tree=tree, sort="name")
     product = qs.filter(slug=slug).first()
@@ -60,18 +67,25 @@ def get_product_detail(slug: str) -> ProductDetail:
     image_qs = list(ProductImage.objects.filter(product=product).order_by("sort_order", "id"))
 
     related_qs = visible_products(tree=tree, category=product.category, sort="name")
-    related = [p for p in related_qs if p.pk != product.pk][:4]
+    related = list(related_qs.exclude(pk=product.pk)[:4])
 
     variant_details: list[VariantDetail] = []
     for variant in variants_list:
         on_hand = getattr(variant, "on_hand", Decimal("0"))
         up_text = None
         if variant.unit in {"KG", "G", "ML", "L"}:
-            try:
-                up = unit_price(variant.selling_price, variant.pack_size, variant.unit)
-                up_text = f"{up.amount} {up.label}"
-            except Exception:
-                up_text = None
+            up = unit_price(variant.selling_price, variant.pack_size, variant.unit)
+            up_text = f"{up.amount} {up.label}"
+        save_amt = (
+            savings_amount(variant.mrp, variant.selling_price)
+            if variant.mrp > variant.selling_price
+            else Decimal("0")
+        )
+        save_pct = (
+            int(savings_percent(variant.mrp, variant.selling_price))
+            if variant.mrp > variant.selling_price
+            else 0
+        )
         variant_details.append(
             VariantDetail(
                 variant=variant,
@@ -79,6 +93,8 @@ def get_product_detail(slug: str) -> ProductDetail:
                 on_hand=on_hand,
                 in_stock=on_hand > 0,
                 unit_price_text=up_text,
+                savings_amount=save_amt,
+                savings_percent=save_pct,
             )
         )
 
@@ -86,14 +102,14 @@ def get_product_detail(slug: str) -> ProductDetail:
     main = image_qs[0] if image_qs else None
     if main is not None:
         if main.medium:
-            images_for_json.append(main.medium.url)
+            images_for_json.append(build_url(main.medium.url))
         elif main.image:
-            images_for_json.append(main.image.url)
+            images_for_json.append(build_url(main.image.url))
     for img in image_qs[1:]:
         if img.thumbnail:
-            images_for_json.append(img.thumbnail.url)
+            images_for_json.append(build_url(img.thumbnail.url))
         elif img.image:
-            images_for_json.append(img.image.url)
+            images_for_json.append(build_url(img.image.url))
 
     prices = [v.selling_price for v in variants_list]
     json_ld_obj: dict[str, object] = {

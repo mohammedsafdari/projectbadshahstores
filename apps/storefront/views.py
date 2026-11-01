@@ -23,6 +23,18 @@ from apps.storefront.services import (
     visible_products,
 )
 
+
+def cut_meta(text: str, limit: int = 160) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    space = cut.rfind(" ")
+    if space > 0:
+        cut = cut[:space]
+    return cut + "\u2026"
+
+
 SORT_OPTIONS = [
     ("name", "Name"),
     ("price_asc", "Price: low to high"),
@@ -81,7 +93,7 @@ def _render_listing(
     paginator = Paginator(qs, PRODUCTS_PER_PAGE)
     page_obj = paginator.get_page(request.GET.get("page"))
     cards = build_cards(page_obj.object_list)
-    context = {
+    context: dict[str, object] = {
         "page_obj": page_obj,
         "cards": cards,
         "current_sort": sort,
@@ -108,17 +120,32 @@ def _render_listing(
     return response
 
 
+class HomeView(TemplateView):
+    template_name = "storefront/home.html"
+
+
+def product_list(request: HttpRequest) -> HttpResponse:
+    tree = CategoryTree()
+    return _render_listing(
+        request,
+        tree=tree,
+        page_title="All products",
+        breadcrumbs=[{"label": "Home", "url": reverse("home")}],
+        child_categories=[],
+    )
+
+
 def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     from django.http import Http404
 
     try:
-        detail = get_product_detail(slug)
+        detail = get_product_detail(slug, build_url=request.build_absolute_uri)
     except Product.DoesNotExist:
         raise Http404 from None
     product = detail.product
-    meta_description = (
+    meta_description = cut_meta(
         product.description or f"{product.name_en} by {product.brand.name} at Badshah Store"
-    )[:160]
+    )
     breadcrumbs: list[dict[str, str | None]] = [{"label": "Home", "url": reverse("home")}]
     for ancestor in CategoryTree().ancestors(product.category):
         breadcrumbs.append(
@@ -143,21 +170,6 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "shop_fssai": getattr(settings, "SHOP_FSSAI_LICENCE", ""),
     }
     return render(request, "storefront/product_detail.html", context)
-
-
-class HomeView(TemplateView):
-    template_name = "storefront/home.html"
-
-
-def product_list(request: HttpRequest) -> HttpResponse:
-    tree = CategoryTree()
-    return _render_listing(
-        request,
-        tree=tree,
-        page_title="All products",
-        breadcrumbs=[{"label": "Home", "url": reverse("home")}],
-        child_categories=[],
-    )
 
 
 def category_detail(request: HttpRequest, slug: str) -> HttpResponse:

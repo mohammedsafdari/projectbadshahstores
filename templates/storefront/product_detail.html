@@ -67,7 +67,7 @@
       {% if vd.variant.mrp > vd.variant.selling_price %}
         <div class="text-xs text-gray-500">
           <span class="line-through">₹{{ vd.variant.mrp|floatformat:"2" }}</span>
-          <span>{{ vd.variant.selling_price|floatformat:"2" }} off</span>
+          <span>Save ₹{{ vd.savings_amount|floatformat:"2" }} ({{ vd.savings_percent }}%)</span>
         </div>
       {% endif %}
       {% if vd.unit_price_text %}
