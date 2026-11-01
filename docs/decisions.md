@@ -358,7 +358,25 @@ Brands and categories are created from the slug/name pairs inside the seed CSV f
   - Thumbnails: ProductImage.thumbnail (ImageField, null/blank, editable=False, upload path products/<product_id>/thumbs/<uuid>.webp). Created on save when image is new or replaced (EXIF orientation, longest side <= 400 px, never enlarge, WebP quality 80, keep transparency); failure logs a warning and still saves original. Image code lives in apps/catalog/images.py.
   - Category.clean() raises ValidationError on "parent" for self-parent or ancestor cycle, walking with a visited set so a corrupted cycle cannot loop forever. Direct .save() is not guarded.
   - base.html: Home links to home, Categories renamed to Shop linking to product_list; HTMX loaded via <script defer>, not a stylesheet link.
-- **Why:** Server-rendered Django templates with Tailwind CDN; no JavaScript needed.
+## D52. Product detail page
+
+- **Decision:** (Slice 25) Product detail page at `/product/<slug>/`.
+  - Visibility reuses `visible_products`: hidden products give 404.
+  - Variants: active only, cheapest first then id; per variant pack label, price, MRP, savings (amount and percent only when MRP above price), unit price only for kg/g/ml/l, stock status from ledger (no numbers).
+  - Add to cart: disabled placeholder button "Add to cart (coming soon)".
+  - Photos: main photo uses 900 px WebP `ProductImage.medium`, fallback original, then placeholder SVG; other photos use 400 px thumbnail; gallery works without JS.
+  - `ProductImage.medium` field (migration 0008) created on save like thumbnail; `apps/catalog/images.py` generalised to `create_image(source, max_side, quality)`.
+  - `backfill_image_sizes` command creates missing medium/thumbnail; `--dry-run`; broken files skipped and reported.
+  - Label details (net quantity, best before, shelf life, ingredients, allergens, manufacturer) per variant when filled; hidden when all blank.
+  - FSSAI: `SHOP_FSSAI_LICENCE` setting (default empty); shown only for own-brand products when set. Never invent a number.
+  - Marks: veg/non-veg text marks; "Our own brand" badge.
+  - Related products: up to 4 other visible products from same category, by name.
+  - Listing cards link to detail page.
+  - JSON-LD Product with Offer/AggregateOffer, INR, plain decimal strings, availability, absolute image URLs, gtin only with barcode; escaped for script safety.
+  - Title `<product> — <brand> — Badshah Store`; meta description <=160 chars.
+  - Breadcrumb: Home, category chain, product name.
+  - Query count constant.
+- **Why:** Server-rendered, accessible, mobile first.
 
 ## D51. Listing filters
 

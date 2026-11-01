@@ -249,3 +249,5 @@ SLICE_4_INSTALLED_APP_LABELS = [
     "storefront",
     "adminpanel",
 ]
+
+SHOP_FSSAI_LICENCE = env("SHOP_FSSAI_LICENCE", default="")

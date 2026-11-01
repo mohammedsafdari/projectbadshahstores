@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
@@ -12,9 +13,10 @@ from django.urls import reverse
 from django.utils.cache import patch_vary_headers
 from django.views.generic import TemplateView
 
-from apps.catalog.models import Brand, Category
+from apps.catalog.models import Brand, Category, Product
 from apps.storefront.filter_options import brand_options
 from apps.storefront.filters import parse_filters
+from apps.storefront.product_detail import get_product_detail
 from apps.storefront.services import (
     CategoryTree,
     build_cards,
@@ -102,9 +104,45 @@ def _render_listing(
         )
         context["selected_brands"] = set(filters.brand_slugs)
         response = render(request, "storefront/product_list.html", context)
-    # The same address now has two kinds of answer, so caches must tell them apart.
     patch_vary_headers(response, ["HX-Request"])
     return response
+
+
+def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
+    from django.http import Http404
+
+    try:
+        detail = get_product_detail(slug)
+    except Product.DoesNotExist:
+        raise Http404 from None
+    product = detail.product
+    meta_description = (
+        product.description or f"{product.name_en} by {product.brand.name} at Badshah Store"
+    )[:160]
+    breadcrumbs: list[dict[str, str | None]] = [{"label": "Home", "url": reverse("home")}]
+    for ancestor in CategoryTree().ancestors(product.category):
+        breadcrumbs.append(
+            {
+                "label": ancestor.name,
+                "url": reverse("category_detail", args=[ancestor.slug]),
+            }
+        )
+    breadcrumbs.append(
+        {
+            "label": product.category.name,
+            "url": reverse("category_detail", args=[product.category.slug]),
+        }
+    )
+    breadcrumbs.append({"label": product.name_en, "url": None})
+    context = {
+        "detail": detail,
+        "product": product,
+        "meta_description": meta_description,
+        "page_title": f"{product.name_en} — {product.brand.name} — Badshah Store",
+        "breadcrumbs": breadcrumbs,
+        "shop_fssai": getattr(settings, "SHOP_FSSAI_LICENCE", ""),
+    }
+    return render(request, "storefront/product_detail.html", context)
 
 
 class HomeView(TemplateView):

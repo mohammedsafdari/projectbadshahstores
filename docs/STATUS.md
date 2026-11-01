@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 24 (filters). Next slice: 25 (product detail page).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 25 (product detail page). Next slice: 26 (search).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -117,7 +117,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 22. (done) Seed command (about 40 real rows plus demo rows loaded through the importer; idempotent).
 23. (done) Storefront listing, category and brand pages.
 24. (done) Filters (HTMX) (D51).
-25. Product detail page (variants, savings, FSSAI info, JSON-LD).
+25. (done) Product detail page (variants, savings, FSSAI info, JSON-LD) (D52).
 26. Search service (PostgreSQL full-text and trigram behind an interface).
 27. Search-as-you-type UI.
 28. Phase 2 wrap-up (docs, ADRs, README, smoke test, Python recap).
@@ -138,9 +138,9 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - `Invoice` and `Address` models are in the brief but not yet in the data model of `docs/architecture.md`; design them before Phase 3 (addresses) and Phase 5 (invoices).
 - Rounding rules and HSN format are defaults awaiting the CA (see `docs/open_questions.md`); they must be confirmed before invoices are issued (Phase 5).
 - Photo files are not deleted from disk when an image row or product is deleted; add a clean-up job before production (see `docs/open_questions.md`).
-- Only original photos and 400 px WebP card thumbnails are stored; larger sizes come with the product detail page (Slice 25).
+- Only original photos, 400 px WebP card thumbnails and 900 px WebP detail images are stored; the backfill command must be run once after deploying and photo files are still not deleted from disk.
 - `Category.clean()` blocks parent cycles only in forms and the admin; a direct `.save()` or `update()` can still create one. The storefront helpers are cycle-safe (D50).
-- The listing pages have no search or product links yet (Slices 25 to 27). Brand options have no counts and do not narrow with the other filters, so a customer can pick a combination with no results; the diet filter offers Vegetarian only; the filter form puts empty fields (`min_price=&max_price=`) into the address; the htmx behaviour (swap, push-url, Back button) has no browser test and was checked by hand. `CategoryTree` reads the whole category table once per request, which is fine for hundreds of categories.
+- The listing pages have no search yet (Slice 26). Brand options have no counts and do not narrow with the other filters, so a customer can pick a combination with no results; the diet filter offers Vegetarian only; the filter form puts empty fields (`min_price=&max_price=`) into the address; the htmx behaviour (swap, push-url, Back button) has no browser test and was checked by hand. `CategoryTree` reads the whole category table once per request, which is fine for hundreds of categories.
 - The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
 - Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
 - Operations that touch several rows (the Slice 20 import) lock products first, then variants, each in ascending `pk` order (D43, D47). Slice 21 must keep that order; there is no shared helper for it yet.

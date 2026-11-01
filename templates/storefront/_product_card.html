@@ -1,5 +1,6 @@
 {% load static %}
 <article class="flex h-full flex-col overflow-hidden rounded border border-gray-200 bg-white">
+  <a class="flex h-full flex-col" href="{% url "product_detail" card.slug %}">
   <div class="aspect-square w-full bg-gray-100">
     {% if card.image_url %}
       <img class="h-full w-full object-contain" src="{{ card.image_url }}" alt="{{ card.alt_text }}" loading="lazy">
@@ -23,4 +24,5 @@
       <span class="mt-2 inline-block rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700">Out of stock</span>
     {% endif %}
   </div>
+  </a>
 </article>

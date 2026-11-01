@@ -37,6 +37,10 @@ def product_image_thumbnail_upload_path(instance: "ProductImage", filename: str)
     return f"products/{instance.product_id}/thumbs/{uuid.uuid4().hex}.webp"
 
 
+def product_image_medium_upload_path(instance: "ProductImage", filename: str) -> str:
+    return f"products/{instance.product_id}/medium/{uuid.uuid4().hex}.webp"
+
+
 class Brand(TimeStampedModel, ArchivableModel):
     """A product brand, e.g. a third-party brand or our own spice brand."""
 
@@ -306,6 +310,12 @@ class ProductImage(TimeStampedModel):
         blank=True,
         editable=False,
     )
+    medium = models.ImageField(
+        upload_to=product_image_medium_upload_path,
+        null=True,
+        blank=True,
+        editable=False,
+    )
     alt_text = models.CharField(max_length=200, blank=True)
     # The lowest sort_order is the main image; ties are broken by id.
     sort_order = models.PositiveSmallIntegerField(default=0)
@@ -332,16 +342,26 @@ class ProductImage(TimeStampedModel):
             from apps.catalog import images
 
             thumb = None
+            medium = None
             try:
                 thumb = images.create_thumbnail(self.image)
+                medium = images.create_medium(self.image)
             except Exception:
                 import logging
 
-                logging.getLogger(__name__).warning("Could not create a thumbnail.", exc_info=True)
+                logging.getLogger(__name__).warning(
+                    "Could not create an image size.", exc_info=True
+                )
             if thumb is not None:
                 self.thumbnail.save(
                     os.path.basename(product_image_thumbnail_upload_path(self, "")),
                     thumb,
                     save=False,
                 )
-                super().save(update_fields=["thumbnail"])
+            if medium is not None:
+                self.medium.save(
+                    os.path.basename(product_image_medium_upload_path(self, "")),
+                    medium,
+                    save=False,
+                )
+            super().save(update_fields=["thumbnail", "medium"])
