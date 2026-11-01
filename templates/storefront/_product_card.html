@@ -1,0 +1,26 @@
+{% load static %}
+<article class="flex h-full flex-col overflow-hidden rounded border border-gray-200 bg-white">
+  <div class="aspect-square w-full bg-gray-100">
+    {% if card.image_url %}
+      <img class="h-full w-full object-contain" src="{{ card.image_url }}" alt="{{ card.alt_text }}" loading="lazy">
+    {% else %}
+      <img class="h-full w-full object-contain" src="{% static "img/product-placeholder.svg" %}" alt="{{ card.alt_text }}" loading="lazy">
+    {% endif %}
+  </div>
+  <div class="flex flex-1 flex-col p-3">
+    <h2 class="text-sm font-medium text-gray-900">{{ card.name }}</h2>
+    <p class="text-xs text-gray-500">{{ card.brand_name }}</p>
+    <div class="mt-2 text-sm font-semibold text-gray-900">
+      {% if card.has_more %}from {% endif %}₹{{ card.lead_price|floatformat:"2" }}
+    </div>
+    {% if card.mrp > card.lead_price %}
+      <div class="text-xs text-gray-500">
+        <span class="line-through">₹{{ card.mrp|floatformat:"2" }}</span>
+        <span>{{ card.percent_off }}% off</span>
+      </div>
+    {% endif %}
+    {% if not card.in_stock %}
+      <span class="mt-2 inline-block rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700">Out of stock</span>
+    {% endif %}
+  </div>
+</article>

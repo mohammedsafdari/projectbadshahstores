@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title }} — Badshah Store{% endblock title %}
+
+{% block content %}
+{% include "storefront/_breadcrumbs.html" %}
+
+<h1 class="text-2xl font-bold text-gray-900">{{ page_title }}</h1>
+
+{% if child_categories %}
+  <nav class="mt-4 flex flex-wrap gap-2" aria-label="Child categories">
+    {% for child in child_categories %}
+      <a class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" href="{% url "category_detail" child.slug %}">{{ child.name }}</a>
+    {% endfor %}
+  </nav>
+{% endif %}
+
+<form class="mt-4 flex items-center gap-2" method="get" action="">
+  <label class="text-sm text-gray-700" for="sort">Sort</label>
+  <select id="sort" name="sort" class="rounded border border-gray-300 px-2 py-1 text-sm">
+    {% for value, label in sort_options %}
+      <option value="{{ value }}" {% if value == current_sort %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="rounded bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Apply</button>
+</form>
+
+{% if page_obj.object_list %}
+  <ul class="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+    {% for card in cards %}
+      <li>{% include "storefront/_product_card.html" with card=card %}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="mt-6 text-gray-600">No products found.</p>
+{% endif %}
+
+{% include "storefront/_pagination.html" %}
+{% endblock content %}

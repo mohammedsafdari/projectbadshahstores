@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 22 (seed command). Next slice: 23 (storefront listing, category and brand pages).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 23 (storefront listing). Next slice: 24 (filters).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -104,7 +104,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 20. (done) CSV import with a validation report (dry run, then commit) (D47).
 21. Bulk price update admin action (must write audit rows: `snapshot_variant_from_db` before, `record_variant_change` after; queryset `update()` skips any automatic hook, D44).
 22. (done) Seed command (about 40 real rows plus demo rows loaded through the importer; idempotent).
-23. Storefront listing, category and brand pages.
+23. (done) Storefront listing, category and brand pages.
 24. Filters (HTMX).
 25. Product detail page (variants, savings, FSSAI info, JSON-LD).
 26. Search service (PostgreSQL full-text and trigram behind an interface).
@@ -124,11 +124,10 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 
 ## Known gaps
 
-- Category tree cycles are not prevented (nothing stops A to B to A). Add validation before Slice 23.
 - `Invoice` and `Address` models are in the brief but not yet in the data model of `docs/architecture.md`; design them before Phase 3 (addresses) and Phase 5 (invoices).
 - Rounding rules and HSN format are defaults awaiting the CA (see `docs/open_questions.md`); they must be confirmed before invoices are issued (Phase 5).
 - Photo files are not deleted from disk when an image row or product is deleted; add a clean-up job before production (see `docs/open_questions.md`).
-- Only original photos are stored; resized and WebP versions come with the storefront slices (23 and 25) or Phase 6.
+- Only original photos and 400 px WebP card thumbnails are stored; larger sizes come with the product detail page (Slice 25).
 - The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
 - Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
 - Operations that touch several rows (the Slice 20 import) lock products first, then variants, each in ascending `pk` order (D43, D47). Slice 21 must keep that order; there is no shared helper for it yet.

@@ -1,9 +1,12 @@
 """Catalog app models: brands, categories, products."""
 
+import os
 import uuid
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
+from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 
@@ -28,6 +31,10 @@ def product_image_upload_path(instance: "ProductImage", filename: str) -> str:
     """
     ext = Path(filename).suffix.lower()
     return f"products/{instance.product_id}/{uuid.uuid4().hex}{ext}"
+
+
+def product_image_thumbnail_upload_path(instance: "ProductImage", filename: str) -> str:
+    return f"products/{instance.product_id}/thumbs/{uuid.uuid4().hex}.webp"
 
 
 class Brand(TimeStampedModel, ArchivableModel):
@@ -67,6 +74,24 @@ class Category(TimeStampedModel, ArchivableModel):
 
     def __str__(self) -> str:
         return self.name
+
+    def clean(self) -> None:
+        # A category must not be its own parent or ancestor. Walking up the
+        # parent chain with a visited set keeps a corrupted cycle in the
+        # database from looping forever.
+        if self.parent_id is None:
+            return
+        if self.parent_id == self.pk:
+            raise ValidationError({"parent": "A category cannot be its own parent."})
+        visited: set[int] = set()
+        current = self.parent
+        while current is not None:
+            if current.pk == self.pk:
+                raise ValidationError({"parent": "A category cannot be one of its own ancestors."})
+            if current.pk in visited:
+                break
+            visited.add(current.pk)
+            current = current.parent
 
 
 class Product(TimeStampedModel, ArchivableModel):
@@ -274,6 +299,13 @@ class ProductImage(TimeStampedModel):
     # They exist so the storefront can reserve space and avoid layout shift.
     width = models.PositiveIntegerField(null=True, blank=True, editable=False)
     height = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    # Small WebP thumbnail made on save; the original stays as fallback.
+    thumbnail = models.ImageField(
+        upload_to=product_image_thumbnail_upload_path,
+        null=True,
+        blank=True,
+        editable=False,
+    )
     alt_text = models.CharField(max_length=200, blank=True)
     # The lowest sort_order is the main image; ties are broken by id.
     sort_order = models.PositiveSmallIntegerField(default=0)
@@ -286,3 +318,24 @@ class ProductImage(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.product.name_en} photo {self.sort_order + 1}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        image_changed = True
+        if self.pk:
+            try:
+                old = ProductImage.objects.only("image").get(pk=self.pk)
+                image_changed = old.image.name != (self.image.name if self.image else "")
+            except ProductImage.DoesNotExist:
+                image_changed = True
+        super().save(*args, **kwargs)
+        if self.image and image_changed:
+            from apps.catalog import images
+
+            thumb = images.create_thumbnail(self.image)
+            if thumb is not None:
+                self.thumbnail.save(
+                    os.path.basename(product_image_thumbnail_upload_path(self, "")),
+                    thumb,
+                    save=False,
+                )
+                super().save(update_fields=["thumbnail"])

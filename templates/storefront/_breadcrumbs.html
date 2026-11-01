@@ -1,0 +1,10 @@
+<nav aria-label="Breadcrumb" class="mb-4 text-sm text-gray-600">
+  <ol class="flex flex-wrap items-center gap-1">
+    {% for item in breadcrumbs %}
+      <li>
+        {% if item.url %}<a class="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" href="{{ item.url }}">{{ item.label }}</a>{% else %}{{ item.label }}{% endif %}
+        {% if not forloop.last %}<span aria-hidden="true"> &gt; </span>{% endif %}
+      </li>
+    {% endfor %}
+  </ol>
+</nav>
