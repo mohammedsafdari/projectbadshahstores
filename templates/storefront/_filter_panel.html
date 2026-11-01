@@ -1,0 +1,54 @@
+<form id="listing-form" class="mt-4" method="get" action="{{ request.path }}"
+      hx-get="{{ request.path }}" hx-target="#listing-results" hx-swap="innerHTML"
+      hx-push-url="true" hx-trigger="change delay:300ms, submit">
+  <details class="rounded border border-gray-200 bg-white p-3"{% if filters.is_active %} open{% endif %}>
+    <summary class="cursor-pointer text-sm font-medium text-gray-900">Filters</summary>
+    <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {% if show_brand_filter and brand_options %}
+        <fieldset>
+          <legend class="text-sm font-medium text-gray-900">Brand</legend>
+          {% for option in brand_options %}
+            <label class="mt-1 flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" name="brand" value="{{ option.slug }}"{% if option.slug in selected_brands %} checked{% endif %}>
+              {{ option.name }}
+            </label>
+          {% endfor %}
+        </fieldset>
+      {% endif %}
+      <fieldset>
+        <legend class="text-sm font-medium text-gray-900">Price (₹)</legend>
+        <div class="mt-1 flex items-center gap-2">
+          <label class="sr-only" for="min_price">Minimum price</label>
+          <input id="min_price" name="min_price" type="number" inputmode="decimal" min="0" step="any" placeholder="Min" value="{% if filters.min_price is not None %}{{ filters.min_price|floatformat:"-2" }}{% endif %}" class="w-24 rounded border border-gray-300 px-2 py-1 text-sm">
+          <span class="text-sm text-gray-500">to</span>
+          <label class="sr-only" for="max_price">Maximum price</label>
+          <input id="max_price" name="max_price" type="number" inputmode="decimal" min="0" step="any" placeholder="Max" value="{% if filters.max_price is not None %}{{ filters.max_price|floatformat:"-2" }}{% endif %}" class="w-24 rounded border border-gray-300 px-2 py-1 text-sm">
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="text-sm font-medium text-gray-900">Show only</legend>
+        <label class="mt-1 flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="own_brand" value="1"{% if filters.own_brand %} checked{% endif %}>
+          Our own brand
+        </label>
+        <label class="mt-1 flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="in_stock" value="1"{% if filters.in_stock %} checked{% endif %}>
+          In stock
+        </label>
+        <label class="mt-1 flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="veg" value="1"{% if filters.veg_only %} checked{% endif %}>
+          Vegetarian
+        </label>
+      </fieldset>
+      <div>
+        <label class="text-sm font-medium text-gray-900" for="sort">Sort</label>
+        <select id="sort" name="sort" class="mt-1 block rounded border border-gray-300 px-2 py-1 text-sm">
+          {% for value, label in sort_options %}
+            <option value="{{ value }}"{% if value == current_sort %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="mt-4 rounded bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Apply</button>
+  </details>
+</form>

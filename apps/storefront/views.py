@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from urllib.parse import urlencode
+
 from django.core.paginator import Paginator
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
+from django.utils.cache import patch_vary_headers
 from django.views.generic import TemplateView
 
 from apps.catalog.models import Brand, Category
+from apps.storefront.filter_options import brand_options
+from apps.storefront.filters import parse_filters
 from apps.storefront.services import (
     CategoryTree,
     build_cards,
@@ -38,6 +44,21 @@ def _normalise_sort(request: HttpRequest) -> str:
     return sort
 
 
+def _wants_partial(request: HttpRequest) -> bool:
+    """True when htmx wants only the results block, not the whole page."""
+    is_htmx = request.headers.get("HX-Request") == "true"
+    # After the Back button htmx asks for the page again and needs all of it.
+    is_history_restore = request.headers.get("HX-History-Restore-Request") == "true"
+    return is_htmx and not is_history_restore
+
+
+def _clear_url(request: HttpRequest, sort: str) -> str:
+    """This page's address without filters; a non-default sort is kept."""
+    if sort == "name":
+        return request.path
+    return request.path + "?" + urlencode({"sort": sort})
+
+
 def _render_listing(
     request: HttpRequest,
     *,
@@ -49,7 +70,12 @@ def _render_listing(
     child_categories: list[Category],
 ) -> HttpResponse:
     sort = _normalise_sort(request)
-    qs = visible_products(tree=tree, category=category, brand=brand, sort=sort)
+    filters = parse_filters(request.GET)
+    if brand is not None:
+        # A brand page is already one brand, so a ?brand= in the address is ignored.
+        # replace() makes a copy of the frozen dataclass with one field changed.
+        filters = replace(filters, brand_slugs=())
+    qs = visible_products(tree=tree, category=category, brand=brand, sort=sort, filters=filters)
     paginator = Paginator(qs, PRODUCTS_PER_PAGE)
     page_obj = paginator.get_page(request.GET.get("page"))
     cards = build_cards(page_obj.object_list)
@@ -62,8 +88,23 @@ def _render_listing(
         "breadcrumbs": breadcrumbs,
         "child_categories": child_categories,
         "page_title": page_title,
+        "filters": filters,
+        "result_count": paginator.count,
+        "clear_url": _clear_url(request, sort),
     }
-    return render(request, "storefront/product_list.html", context)
+    if _wants_partial(request):
+        response = render(request, "storefront/_listing_results.html", context)
+    else:
+        # The filter panel is not part of the swapped block, so only a full page needs it.
+        context["show_brand_filter"] = brand is None
+        context["brand_options"] = (
+            brand_options(tree=tree, category=category) if brand is None else []
+        )
+        context["selected_brands"] = set(filters.brand_slugs)
+        response = render(request, "storefront/product_list.html", context)
+    # The same address now has two kinds of answer, so caches must tell them apart.
+    patch_vary_headers(response, ["HX-Request"])
+    return response
 
 
 class HomeView(TemplateView):

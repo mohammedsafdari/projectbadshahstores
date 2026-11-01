@@ -1,0 +1,20 @@
+<div class="mt-4 flex items-center justify-between">
+  <p class="text-sm text-gray-600">{{ result_count }} product{{ result_count|pluralize }}</p>
+  {% if filters.is_active %}
+    <a class="text-sm text-brand-600 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" href="{{ clear_url }}">Clear filters</a>
+  {% endif %}
+</div>
+
+{% if page_obj.object_list %}
+  <ul class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+    {% for card in cards %}
+      <li>{% include "storefront/_product_card.html" with card=card %}</li>
+    {% endfor %}
+  </ul>
+{% elif filters.is_active %}
+  <p class="mt-6 text-gray-600">No products match these filters.</p>
+{% else %}
+  <p class="mt-6 text-gray-600">No products found.</p>
+{% endif %}
+
+{% include "storefront/_pagination.html" %}
