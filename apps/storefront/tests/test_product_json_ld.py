@@ -83,15 +83,115 @@ def test_json_ld_availability_follows_stock() -> None:
 
 
 @pytest.mark.django_db
-def test_json_ld_images_are_absolute_urls() -> None:
+def test_json_ld_images_are_absolute_urls(tmp_path, settings) -> None:
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    from apps.catalog.models import ProductImage
+
+    settings.MEDIA_ROOT = tmp_path
+
+    def make() -> SimpleUploadedFile:
+        buf = io.BytesIO()
+        Image.new("RGB", (20, 20), color=(100, 150, 200)).save(buf, format="JPEG")
+        buf.seek(0)
+        return SimpleUploadedFile("p.jpg", buf.read(), content_type="image/jpeg")
+
     brand = BrandFactory(is_active=True)
     cat = CategoryFactory(is_active=True)
     product = ProductFactory(brand=brand, category=cat, is_active=True)
     ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
+    img0 = ProductImage.objects.create(product=product, image=make(), sort_order=0)
+    img1 = ProductImage.objects.create(product=product, image=make(), sort_order=1)
+    img2 = ProductImage.objects.create(product=product, image=make(), sort_order=2)
+    img0.refresh_from_db()
+    img1.refresh_from_db()
+    img2.refresh_from_db()
+    detail = get_product_detail(product.slug, build_url=lambda path: f"http://testserver{path}")
+    data = json.loads(detail.json_ld)
+    assert data["image"] == [
+        f"http://testserver{img0.medium.url}",
+        f"http://testserver{img1.thumbnail.url}",
+        f"http://testserver{img2.thumbnail.url}",
+    ]
+    assert "/medium/" in data["image"][0]
+    assert "/thumbs/" in data["image"][1]
+    assert "/thumbs/" in data["image"][2]
+    assert data["image"][0] != f"http://testserver{img0.image.url}"
+
+
+@pytest.mark.django_db
+def test_aggregate_offer_in_stock_when_any_variant_in_stock() -> None:
+    from apps.inventory.services import receive_stock
+
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    v1 = ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
+    ProductVariantFactory(product=product, is_active=True, selling_price=20, mrp=20)
+    receive_stock(variant=v1, quantity=5)
     detail = get_product_detail(product.slug)
     data = json.loads(detail.json_ld)
-    for img in data.get("image", []):
-        assert img.startswith("http")
+    assert data["offers"]["availability"] == "https://schema.org/InStock"
+
+
+@pytest.mark.django_db
+def test_aggregate_offer_out_of_stock_when_no_variant_in_stock() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
+    ProductVariantFactory(product=product, is_active=True, selling_price=20, mrp=20)
+    detail = get_product_detail(product.slug)
+    data = json.loads(detail.json_ld)
+    assert data["offers"]["availability"] == "https://schema.org/OutOfStock"
+
+
+@pytest.mark.django_db
+def test_json_ld_main_image_is_medium(tmp_path, settings) -> None:
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    from apps.catalog.models import ProductImage
+
+    settings.MEDIA_ROOT = tmp_path
+
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), color=(100, 150, 200)).save(buf, format="JPEG")
+    buf.seek(0)
+    img = ProductImage.objects.create(
+        product=product, image=SimpleUploadedFile("m.jpg", buf.read(), content_type="image/jpeg")
+    )
+    img.refresh_from_db()
+    detail = get_product_detail(product.slug, build_url=lambda path: f"http://testserver{path}")
+    data = json.loads(detail.json_ld)
+    assert data["image"] == [f"http://testserver{img.medium.url}"]
+    assert "/medium/" in data["image"][0]
+    assert data["image"][0] != f"http://testserver{img.image.url}"
+
+
+@pytest.mark.django_db
+def test_json_ld_sku_is_cheapest_variant_sku() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(
+        product=product, is_active=True, selling_price=20, mrp=20, sku_code="EXPENSIVE"
+    )
+    ProductVariantFactory(
+        product=product, is_active=True, selling_price=10, mrp=10, sku_code="CHEAP"
+    )
+    detail = get_product_detail(product.slug)
+    data = json.loads(detail.json_ld)
+    assert data["sku"] == "CHEAP"
 
 
 @pytest.mark.django_db

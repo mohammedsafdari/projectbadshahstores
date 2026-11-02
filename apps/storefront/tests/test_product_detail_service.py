@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from apps.catalog.models import Product
 from apps.catalog.tests.factories import (
@@ -102,7 +106,8 @@ def test_variant_savings_amount_and_percent() -> None:
     ProductVariantFactory(product=product, is_active=True, selling_price=45, mrp=50)
     detail = get_product_detail(product.slug)
     vd = detail.variants[0]
-    assert vd.variant.mrp - vd.variant.selling_price == 5
+    assert vd.savings_amount == Decimal("5.00")
+    assert vd.savings_percent == 10
 
 
 @pytest.mark.django_db
@@ -112,7 +117,8 @@ def test_no_savings_when_price_equals_mrp() -> None:
     product = ProductFactory(brand=brand, category=cat, is_active=True)
     ProductVariantFactory(product=product, is_active=True, selling_price=48, mrp=48)
     detail = get_product_detail(product.slug)
-    assert detail.variants[0].variant.mrp == detail.variants[0].variant.selling_price
+    assert detail.variants[0].savings_amount == Decimal("0")
+    assert detail.variants[0].savings_percent == 0
 
 
 @pytest.mark.django_db
@@ -176,4 +182,78 @@ def test_related_products_skip_hidden_products() -> None:
     hidden = ProductFactory(brand=brand, category=cat, is_active=False, name_en="Hidden")
     ProductVariantFactory(product=hidden, is_active=True, selling_price=10, mrp=10)
     detail = get_product_detail(main.slug)
-    assert "hidden" not in [p.slug for p in detail.related]
+    assert hidden.slug not in [p.slug for p in detail.related]
+
+
+@pytest.mark.django_db
+def test_related_products_are_sorted_by_name() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    main = ProductFactory(brand=brand, category=cat, is_active=True, name_en="Main")
+    ProductVariantFactory(product=main, is_active=True, selling_price=10, mrp=10)
+    for name in ("Zulu", "Alpha", "Middle"):
+        p = ProductFactory(brand=brand, category=cat, is_active=True, name_en=name)
+        ProductVariantFactory(product=p, is_active=True, selling_price=10, mrp=10)
+    detail = get_product_detail(main.slug)
+    assert [p.name_en for p in detail.related] == ["Alpha", "Middle", "Zulu"]
+
+
+@pytest.mark.django_db
+def test_related_products_query_count_does_not_grow_with_category_size() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    main = ProductFactory(brand=brand, category=cat, is_active=True, name_en="Main")
+    ProductVariantFactory(product=main, is_active=True, selling_price=10, mrp=10)
+    for i in range(3):
+        p = ProductFactory(brand=brand, category=cat, is_active=True, name_en=f"R{i}")
+        ProductVariantFactory(product=p, is_active=True, selling_price=10, mrp=10)
+    with CaptureQueriesContext(connection) as ctx_small:
+        get_product_detail(main.slug)
+    for i in range(20):
+        p = ProductFactory(brand=brand, category=cat, is_active=True, name_en=f"R2{i}")
+        ProductVariantFactory(product=p, is_active=True, selling_price=10, mrp=10)
+    with CaptureQueriesContext(connection) as ctx_large:
+        get_product_detail(main.slug)
+    assert len(ctx_small.captured_queries) == len(ctx_large.captured_queries)
+
+
+@pytest.mark.django_db
+def test_pack_label_prefers_net_quantity_label() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(
+        product=product,
+        is_active=True,
+        selling_price=10,
+        mrp=10,
+        unit="PACKET",
+        pack_size=1,
+        net_quantity_label="500 g",
+    )
+    detail = get_product_detail(product.slug)
+    assert detail.variants[0].pack_label == "500 g"
+
+
+@pytest.mark.django_db
+def test_images_follow_sort_order() -> None:
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.catalog.models import ProductImage
+
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
+    img1 = ProductImage.objects.create(
+        product=product,
+        image=SimpleUploadedFile("a.jpg", b"\xff\xd8\xff", content_type="image/jpeg"),
+        sort_order=2,
+    )
+    img2 = ProductImage.objects.create(
+        product=product,
+        image=SimpleUploadedFile("b.jpg", b"\xff\xd8\xff", content_type="image/jpeg"),
+        sort_order=1,
+    )
+    detail = get_product_detail(product.slug)
+    assert [img.pk for img in detail.images] == [img2.pk, img1.pk]

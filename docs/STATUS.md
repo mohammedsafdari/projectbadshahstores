@@ -35,6 +35,11 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 - Seed command (Slice 22, D49): `apps/catalog/seed.py` and `apps/catalog/management/commands/seed_catalog.py` load `nestle.csv` (and `demo.csv` with `--demo`) through the importer; brands and categories are created from the CSV slug/name pairs; `--demo-stock` receives demo stock once. Tests in `apps/catalog/tests/test_seed_catalog.py`.
 - Storefront listing (Slice 23, D50): `apps/storefront/services.py` (`CategoryTree`, `visible_products`, `build_cards`, `ProductCard`) and three views in `apps/storefront/views.py`: `/products/`, `/category/<slug>/` and `/brand/<slug>/` (templates in `templates/storefront/`). A product is visible when it, its brand, its category and all that category's ancestors are active and it has an active variant. Sorting (name, price up or down, newest) and 24 products per page happen in the database; a card shows the cheapest active variant's price ("from" when there are several), the struck MRP and percent off when the price is lower, and an Out of stock badge (on-hand is the ledger sum). `ProductImage.thumbnail` (migration 0007) holds a 400 px WebP made on save (`apps/catalog/images.py`); cards fall back to the original photo, then to `static/img/product-placeholder.svg`. `Category.clean()` blocks parent cycles. `base.html` loads htmx with a script tag and links Home and Shop.
 - Listing filters (Slice 24, D51): `apps/storefront/filters.py` (`ListingFilters`, `parse_filters`, `apply_filters`) and `apps/storefront/filter_options.py` (`brand_options`); the filter panel and results block in `templates/storefront/_filter_panel.html` and `_listing_results.html`; `views.py` reads the filters, returns only the results block for htmx requests and the whole page otherwise, with `Vary: HX-Request`. Filters: brand (repeatable), min/max price, own brand, in stock, vegetarian.
+- Product detail page (Slice 25, D52): `/product/<slug>/`; `apps/storefront/product_detail.py` (`get_product_detail`, `VariantDetail`, `ProductDetail`) and `templates/storefront/product_detail.html`.
+  - A hidden product (or a hidden brand, category or ancestor) gives 404 through the same `visible_products` rule (D52).
+  - The page shows photos (main `medium`, the rest thumbnails), variants cheapest first with pack label, price, struck MRP, "Save ₹X (Y%)", unit price for kg/g/ml/l, stock from the ledger, "Product details" labels, four related products by name, and JSON-LD with absolute image URLs.
+  - `ProductImage.medium` (900 px WebP, migration 0008) is made on save by `apps/catalog/images.py`; `backfill_image_sizes` fills it for existing photos (run once after deploying).
+  - `SHOP_FSSAI_LICENCE` shows "FSSAI licence no. ..." only when it is non-empty and the product is our own brand; never invent a number.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -103,6 +108,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 24a follow-up | Review: two `brand_options` tests were too weak, one brand sat in both categories and the sort order matched by accident; rewritten, count unchanged. |
 | 24b | Filter panel, htmx results block, `Vary` header, pagination `hx-` attributes, brand page rule, 24 tests (890); review: 19 of 22 deliberate breakages caught. |
 | 24c | Three tests for the gaps review found (893); D51 and these docs. |
+| 25 | Product detail page: `product_detail.py` and `product_detail.html`, `ProductImage.medium` (migration 0008) and the `backfill_image_sizes` command, `SHOP_FSSAI_LICENCE`, JSON-LD; 11 catalog tests + 46 storefront tests (950). D52. |
+| 25d | Savings text "Save ₹X (Y%)" computed in the service, absolute JSON-LD image URLs via `build_url`, related products excluded and limited in the database, meta description cut at a word, 14 new tests (964). |
 
 ## Remaining Phase 2 slices
 
@@ -231,6 +238,9 @@ Everyday commands (they run inside the container):
 - Review's deliberate breakages found weak tests twice in Slice 24: data that makes a scope filter irrelevant (the same brand in both categories), an order that matches by accident (the reverse order was also correct; use three items whose id order and plain sort are both wrong), and an assertion that only works on page 1 (check the total on page 2 as well).
 - A checkbox state test must look at that one `<input>` tag, not at 'checked' anywhere in the form.
 - htmx details that tests cannot see (swap, history, Back button) are checked by hand in the browser before a slice is closed.
+- A test that loops over a list must first assert the list is not empty (the absolute-URL test passed on an empty list).
+- Read the rendered text of a new template, not only its structure (the savings line printed the price).
+- A report that says "done" for docs is checked with `git status` and `git diff docs/`.
 
 ## Slice closeout checklist
 

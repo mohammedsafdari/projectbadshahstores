@@ -136,8 +136,6 @@ def product_list(request: HttpRequest) -> HttpResponse:
 
 
 def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
-    from django.http import Http404
-
     try:
         detail = get_product_detail(slug, build_url=request.build_absolute_uri)
     except Product.DoesNotExist:
