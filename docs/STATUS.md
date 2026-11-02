@@ -8,11 +8,19 @@ Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. La
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
-Questions due at the start of Slice 25 (product detail page): the three low-priority items in `docs/open_questions.md` whose "ask again before" point is Slice 25 (pack weights for KitKat, Munch and Milkybar rows; the veg mark on the real products; the naming rule for price points in product names), asked in the Slice 25 kickoff. The defaults in use stay until then.
+Questions due at the start of Slice 26 (search): none. The next "ask again before" points in `docs/open_questions.md` are Slice 28 (pack weights for KitKat, Munch and Milkybar rows; the veg mark on the real products; the naming rule for price points; the filter-panel counts question) and Phase 7 (the FSSAI licence number). The defaults in use stay until then.
 
-Since Slice 22 the coding is done by an OpenCode Desktop agent (Beam Free), on the `main` branch only; see "How we work". The full suite runs in Docker on PostgreSQL.
+Open follow-ups from the Slice 25 review, to do inside the Slice 26 prompt: a view-level test that the JSON-LD image URLs start with `http://testserver` (the view passes `request.build_absolute_uri` and no test would notice if it stopped), and `cut_meta` in `apps/storefront/views.py`, whose "no space found" case returns 161 characters (160 plus the ellipsis).
+
+Since Slice 22 the coding is done by an OpenCode Desktop agent on the `main` branch only; see "How we work". Beam Free did Slices 22 to 25d; since Slice 25e the model is DeepSeek V4.1 Flash (free, high effort) because Beam Free had problems. The full suite runs in Docker on PostgreSQL.
 
 Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md` section 9. Where section 1 of that brief says "Phase 2 adds pan-India shipping", it means a later business phase, which is Phase 8 in the build plan.
+
+## Starting a new chat
+
+- Claude chat: attach `PROJECT_INSTRUCTIONS.md` and this file and write "Continue at Slice N (name)". Claude reads the repo itself (github.com/mohammedsafdari/projectbadshahstores), asks the due open questions first, then sends one prompt file per run.
+- OpenCode chat: a new chat needs no history. Every prompt names its slice and tells the agent to read `AGENTS.md`, `docs/AGENT_BRIEF.md` and this file first. Model: DeepSeek V4.1 Flash (free, high).
+- Before opening the new chats: the working tree is clean (`git status`), everything is pushed, the suite passes twice in Docker, and `docker compose exec web python manage.py migrate` has been run.
 
 ## What is built
 
@@ -110,6 +118,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 24c | Three tests for the gaps review found (893); D51 and these docs. |
 | 25 | Product detail page: `product_detail.py` and `product_detail.html`, `ProductImage.medium` (migration 0008) and the `backfill_image_sizes` command, `SHOP_FSSAI_LICENCE`, JSON-LD; 11 catalog tests + 46 storefront tests (950). D52. |
 | 25d | Savings text "Save ₹X (Y%)" computed in the service, absolute JSON-LD image URLs via `build_url`, related products excluded and limited in the database, meta description cut at a word, 14 new tests (964). |
+| 25e | Finished what 25d skipped (first run with DeepSeek V4.1 Flash): the 14 new tests, three rewritten weak tests and the STATUS text (964). Review: 44 of 45 deliberate breakages caught; the view's `request.build_absolute_uri` is untested (see "Where we are"). A 24b follow-up made the filter view tests compare product names instead of page substrings (a random CSRF token containing "P2" had made one fail). |
 
 ## Remaining Phase 2 slices
 
@@ -162,13 +171,16 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Stock write permissions are the plain Django ones (`inventory.add_inventorymovement` plus the Stock view permission) until the Phase 5 staff roles exist (D45).
 - Nothing alerts anyone about low stock or near expiry; the screens must be opened (D45, notifications come with Phase 6).
 - `AuditLog` is append-only in Django only; raw SQL can still change rows (same production hardening step as the ledger, D42 and D44). Retention of audit rows is an open question.
+- The detail page has no zoom or swap-the-main-photo gallery (the small photos are links to the thumbnail); there is no "Add to cart" until Phase 3; related products are the first four of the same category by name, not a relevance ranking.
+- `backfill_image_sizes` must be run once after deploying Slice 25 to create `medium` files for photos that already exist.
 
 ## How we work
 
 - Slice 18 changed the routine: 18b to 18d were prompts run in Freebuff; when Freebuff stalled in a loop on 18e, Claude wrote 18e to 18i directly and tested them in a sandbox with PostgreSQL (ruff, format, mypy, the whole pytest suite, `makemigrations --check`). Each slice was delivered as a patch: copy it into the repo folder, run `git apply --check <file>`, then `git apply <file>`, delete the patch file, run the gate yourself, and commit. The sandbox could not run the pre-commit hooks (no network), so your own `pre-commit run --all-files` is the real check. The rules below still apply to any agent run.
-- The agent (OpenCode Desktop; Beam Free for whole parts of a slice, DeepSeek V4.1 Flash for small exact jobs) never touches `.env`, never commits or pushes, and never runs `git reset` or `git checkout`. It runs only the four checks in `docs/AGENT_BRIEF.md` (ruff, ruff format --check, mypy, pytest), once, at the end, plus any command the prompt names (for example one `makemigrations`). The rules every agent reads first are in `AGENTS.md` in the project root. OpenCode models have no memory of the project, so every prompt is self-contained and names the files to read.
+- The agent (OpenCode Desktop; model DeepSeek V4.1 Flash, free, high effort, since Slice 25e; Beam Free before) never touches `.env`, never commits or pushes, and never runs `git reset` or `git checkout`. It runs only the four checks in `docs/AGENT_BRIEF.md` (ruff, ruff format --check, mypy, pytest), once, at the end, plus any command the prompt names (for example one `makemigrations`). The rules every agent reads first are in `AGENTS.md` in the project root. OpenCode models have no memory of the project, so every prompt is self-contained and names the files to read.
 - Each prompt states a goal, the fixed decisions, the files to read first, the exact names of the tests to write (with a minimum count), the allowed commands and the rules. Existing files change by small exact-match edits (each OLD text must appear exactly once, or nothing changes); new files may be written in full. Size: since Slice 24c the owner prefers bigger prompts, ideally one per slice, in which the agent designs and writes the code from a goal, fixed decisions and exact test names (Claude no longer pastes finished code into prompts). To keep a big prompt from stopping early: start it with a PLAN ONLY line, number the work items, and ask for a final report with one line per item saying done or "not written". Big prompts start with a PLAN ONLY line (the desktop app has no plan-mode key): the agent replies with a plan, the owner reads it, then says "go ahead".
 - Every prompt starts with the slice number and letter (for example "Slice 24b"), tells the agent to read `AGENTS.md`, `docs/AGENT_BRIEF.md` and `docs/STATUS.md` first, covers one part of a slice, and ends with "Show the diff and STOP". At the start of each slice Claude asks the due questions first, then gives the prompts. After each run the owner compares the test count with what the prompt promised.
+- What works with the agent (learned in Slices 24 and 25): one prompt that mixes code, a migration, many tests and docs made it stop early and report the rest as "not written (time)", or report "done" for edits that never reached the disk. Prompts that give a goal, fixed decisions, exact test names and a numbered list of work items work. Split the tests by whole files and ask for a single-file pytest run after each file; for docs, ask the agent to read the file again to confirm and to report one line per item. When a run stops early, the owner commits the green part and the next prompt names only the missing items. Claude never trusts a report: the owner checks `git status` and the test count, and Claude re-runs the suite twice and the deliberate breakages after every push.
 - After every prompt the owner runs this block from the repo folder: `uv run ruff format .`, `uv run ruff check .`, `uv run mypy apps`, `docker compose exec web python -m pytest -q`. For a slice that changes models, also `docker compose exec web python manage.py check` and `docker compose exec web python manage.py makemigrations --check --dry-run`. The Docker pytest run is the official one; `uv run pytest` on Windows uses whatever database `.env` points at and can pass or fail for reasons unrelated to the code.
 - Roles: the OpenCode agent does the context-heavy coding. Claude designs, writes the prompts, builds data files and doc fixes that must be exact, and reviews every pushed slice by cloning the public repo (github.com/mohammedsafdari/projectbadshahstores); files do not need to be pasted. Work happens on `main` only. After an agent run the owner runs the Docker pytest, `git status`, `git add` with named folders, `git status` again (no `.env`, `opencode.json`, `.cloud-attachments` or `media`), commits with the slice id, pushes, and sends Claude the pytest summary line and the agent's final message.
 - Claude's review of a pushed slice: pull the repo, run the full suite against PostgreSQL in the sandbox (`pip install pgserver` in a separate venv; start it with `pgserver.get_server(path, cleanup_mode=None)` at the start of every command because it stops between commands; set `PGHOST` to the data folder and `DATABASE_URL=postgres://postgres@/postgres`), run ruff and mypy, then break each guarded line on purpose (locks, `updated_at`, fingerprint check, audit call, rounding) and confirm a test fails. Slice 20 and Slice 21 passed this check (719 and 754 tests).
@@ -241,6 +253,10 @@ Everyday commands (they run inside the container):
 - A test that loops over a list must first assert the list is not empty (the absolute-URL test passed on an empty list).
 - Read the rendered text of a new template, not only its structure (the savings line printed the price).
 - A report that says "done" for docs is checked with `git status` and `git diff docs/`.
+- Never assert that a short string such as "P2" is in or not in the whole page: the page holds random text (the CSRF token) that can contain it. Compare the list of product names read from the `<h2>` headings.
+- After a slice with a migration, run `docker compose exec web python manage.py migrate` in the dev database. pytest builds its own database, so it passes while the site shows "column does not exist".
+- Commit with named files (`git add <paths>`), not `git add -A`, and not while an agent may still be running.
+- A test of a view that hands a helper to a service (`request.build_absolute_uri`) must go through the view; calling the service with its own helper leaves the view untested.
 
 ## Slice closeout checklist
 
