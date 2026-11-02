@@ -4,11 +4,11 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 26 (search). Next slice: 27 (search-as-you-type UI).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 26 (search, with the 26b test follow-up). Next slice: 27 (search-as-you-type UI).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
-Questions due at the start of Slice 26 (search): none. The next "ask again before" points in `docs/open_questions.md` are Slice 28 (pack weights for KitKat, Munch and Milkybar rows; the veg mark on the real products; the naming rule for price points; the filter-panel counts question) and Phase 7 (the FSSAI licence number). The defaults in use stay until then.
+Questions due at the start of Slice 27 (search-as-you-type): none. The next "ask again before" points in `docs/open_questions.md` are Slice 28 (pack weights for KitKat, Munch and Milkybar rows; the veg mark on the real products; the naming rule for price points; the filter-panel counts question; who fills `search_keywords`) and Phase 6 (whether to log search words) and Phase 7 (the FSSAI licence number). The defaults in use stay until then.
 
 Since Slice 22 the coding is done by an OpenCode Desktop agent on the `main` branch only; see "How we work". Beam Free did Slices 22 to 25d; since Slice 25e the model is DeepSeek V4.1 Flash (free, high effort) because Beam Free had problems. The full suite runs in Docker on PostgreSQL.
 
@@ -119,6 +119,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 25d | Savings text "Save ₹X (Y%)" computed in the service, absolute JSON-LD image URLs via `build_url`, related products excluded and limited in the database, meta description cut at a word, 14 new tests (964). |
 | 25e | Finished what 25d skipped (first run with DeepSeek V4.1 Flash): the 14 new tests, three rewritten weak tests and the STATUS text (964). Review: 44 of 45 deliberate breakages caught; the view's `request.build_absolute_uri` is untested (see "Where we are"). A 24b follow-up made the filter view tests compare product names instead of page substrings (a random CSRF token containing "P2" had made one fail). |
 | 26 | Search behind an interface: `apps/catalog/search.py`, pg_trgm migration 0009, `/search/` with filters, relevance sort, pagination and `noindex`, header search form; 24 catalog + 20 storefront + 1 JSON-LD view + 2 `cut_meta` tests (1011). D53. |
+| 26 review | Claude ran the 1011 tests on PostgreSQL 16 (ruff, format, mypy and makemigrations clean) and made 21 deliberate breakages: 14 caught. Not caught: exact vs prefix vs weak score order (the order could match by accident, because an exact name always sorts before a longer name that starts with it), the cap on a candidate limit above 200, the hidden `q` input in the filter form. Three more survived because another rule covers them (name_hi and search_keywords `icontains`, brand name in the full-text vector); the Devanagari test therefore does not prove which rule matched. |
+| 26b | Test follow-up: score assertions for the ranking bands, a prefix-before-full-text test with an adversarial name order, the limit cap, the hidden `q` input; no product code changed (1014). |
 
 ## Remaining Phase 2 slices
 
@@ -184,7 +186,7 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - What works with the agent (learned in Slices 24 and 25): one prompt that mixes code, a migration, many tests and docs made it stop early and report the rest as "not written (time)", or report "done" for edits that never reached the disk. Prompts that give a goal, fixed decisions, exact test names and a numbered list of work items work. Split the tests by whole files and ask for a single-file pytest run after each file; for docs, ask the agent to read the file again to confirm and to report one line per item. When a run stops early, the owner commits the green part and the next prompt names only the missing items. Claude never trusts a report: the owner checks `git status` and the test count, and Claude re-runs the suite twice and the deliberate breakages after every push.
 - After every prompt the owner runs this block from the repo folder: `uv run ruff format .`, `uv run ruff check .`, `uv run mypy apps`, `docker compose exec web python -m pytest -q`. For a slice that changes models, also `docker compose exec web python manage.py check` and `docker compose exec web python manage.py makemigrations --check --dry-run`. The Docker pytest run is the official one; `uv run pytest` on Windows uses whatever database `.env` points at and can pass or fail for reasons unrelated to the code.
 - Roles: the OpenCode agent does the context-heavy coding. Claude designs, writes the prompts, builds data files and doc fixes that must be exact, and reviews every pushed slice by cloning the public repo (github.com/mohammedsafdari/projectbadshahstores); files do not need to be pasted. Work happens on `main` only. After an agent run the owner runs the Docker pytest, `git status`, `git add` with named folders, `git status` again (no `.env`, `opencode.json`, `.cloud-attachments` or `media`), commits with the slice id, pushes, and sends Claude the pytest summary line and the agent's final message.
-- Claude's review of a pushed slice: pull the repo, run the full suite against PostgreSQL in the sandbox (`pip install pgserver` in a separate venv; start it with `pgserver.get_server(path, cleanup_mode=None)` at the start of every command because it stops between commands; set `PGHOST` to the data folder and `DATABASE_URL=postgres://postgres@/postgres`), run ruff and mypy, then break each guarded line on purpose (locks, `updated_at`, fingerprint check, audit call, rounding) and confirm a test fails. Slice 20 and Slice 21 passed this check (719 and 754 tests).
+- Claude's review of a pushed slice: pull the repo, run the full suite against PostgreSQL in the sandbox (install PostgreSQL 16 with contrib from the Ubuntu archive (`apt-get install postgresql postgresql-contrib`), run it on a socket folder with `initdb` and `pg_ctl`, and set `PGHOST` to that folder and `DATABASE_URL=postgres://postgres@/postgres?host=<folder>`), run ruff and mypy, then break each guarded line on purpose (locks, `updated_at`, fingerprint check, audit call, rounding) and confirm a test fails. Slice 20 and Slice 21 passed this check (719 and 754 tests).
 - The agent edits settings or `pyproject.toml` only if the prompt names them. After any `pyproject.toml` edit, run the TOML check.
 - Check the real `git diff` and `--stat`, not the agent's pasted diff. Commit in small steps after `git status` and `git diff --stat`.
 - Every commit message starts with the slice id, for example `Slice 14a: Add ProductImage model`.
@@ -259,6 +261,8 @@ Everyday commands (they run inside the container):
 - Commit with named files (`git add <paths>`), not `git add -A`, and not while an agent may still be running.
 - A test of a view that hands a helper to a service (`request.build_absolute_uri`) must go through the view; calling the service with its own helper leaves the view untested.
 - Split search words on whitespace, never with a `\w` regex: Python's `\w` does not match Devanagari vowel signs such as the one in "आटा", so the query words would be broken (D53).
+- Ranking tests must compare scores, not only the order of names: a name order that is also alphabetical passes by accident (Slice 26). Choose test data whose alphabetical order is the OPPOSITE of the expected rank.
+- Claude's review sandbox needs a real PostgreSQL 16 with the contrib package (the pgserver pip package has no pg_trgm, so every database test errors); install it from the Ubuntu archive.
 
 ## Slice closeout checklist
 

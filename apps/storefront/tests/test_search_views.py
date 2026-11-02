@@ -28,6 +28,18 @@ def _header_search_form(html: str) -> str:
     return html.split('<form role="search"', 1)[1].split("</form>", 1)[0]
 
 
+def _form_block(html: str, form_id: str) -> str:
+    """One form only, so the header search box cannot satisfy a form test."""
+    match = re.search(rf'<form[^>]*id="{form_id}"[^>]*>.*?</form>', html, re.S)
+    assert match is not None
+    return match.group(0)
+
+
+def _inputs_named(form_html: str, name: str) -> list[str]:
+    """The complete <input> tags with this name inside one form block."""
+    return re.findall(rf'<input[^>]*\bname="{name}"[^>]*>', form_html)
+
+
 def _visible_product(name_en: str, *, brand=None, category=None, is_active: bool = True):
     """Create a product with one active variant so it can appear on a page."""
     product = ProductFactory(
@@ -285,3 +297,22 @@ def test_header_search_form_prefilled_on_search_page(client: Client) -> None:
     assert 'value="nestle"' in form
     other = client.get("/products/").content.decode()
     assert 'value="nestle"' not in _header_search_form(other)
+
+
+@pytest.mark.django_db
+def test_search_filter_form_keeps_q_as_hidden_input(client: Client) -> None:
+    _visible_product("Match Biscuit")
+    html = client.get("/search/", {"q": "match"}).content.decode()
+    form = _form_block(html, "listing-form")
+    inputs = _inputs_named(form, "q")
+    assert len(inputs) == 1
+    assert 'type="hidden"' in inputs[0]
+    assert 'value="match"' in inputs[0]
+
+
+@pytest.mark.django_db
+def test_filter_form_has_no_hidden_q_on_all_products_page(client: Client) -> None:
+    _visible_product("Plain Biscuit")
+    html = client.get("/products/").content.decode()
+    form = _form_block(html, "listing-form")
+    assert _inputs_named(form, "q") == []

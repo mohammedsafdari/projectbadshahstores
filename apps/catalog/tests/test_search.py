@@ -5,6 +5,10 @@ from __future__ import annotations
 import pytest
 
 from apps.catalog.search import (
+    SCORE_EXACT_NAME,
+    SCORE_FULL_TEXT_BASE,
+    SCORE_NAME_PREFIX,
+    SCORE_WEAK_MATCH,
     SEARCH_CANDIDATE_LIMIT,
     PostgresSearchBackend,
     SearchHit,
@@ -146,14 +150,37 @@ def test_search_tolerates_one_letter_typo() -> None:
 def test_search_exact_name_ranks_before_prefix_match() -> None:
     exact_id = _make_product("Nestle")
     prefix_id = _make_product("Nestle Milk")
-    assert _search_ids("nestle") == [exact_id, prefix_id]
+    # Compare the scores, not only the order: an exact name always sorts before
+    # a longer name that starts with it, so the order alone can pass by accident.
+    scores = {hit.product_id: hit.score for hit in PostgresSearchBackend().search("nestle")}
+    assert scores[exact_id] == SCORE_EXACT_NAME
+    assert scores[prefix_id] == SCORE_NAME_PREFIX
+    assert scores[exact_id] > scores[prefix_id]
 
 
 @pytest.mark.django_db
 def test_search_prefix_match_ranks_before_trigram_only_match() -> None:
     prefix_id = _make_product("Nestell Choco")
+    # "Nestle Milk" contains no "nestel" substring and no tsquery match, so only
+    # the trigram rule can find it.
     trigram_id = _make_product("Nestle Milk")
-    assert _search_ids("nestel") == [prefix_id, trigram_id]
+    scores = {hit.product_id: hit.score for hit in PostgresSearchBackend().search("nestel")}
+    assert scores[prefix_id] == SCORE_NAME_PREFIX
+    assert scores[trigram_id] == SCORE_WEAK_MATCH
+    assert scores[prefix_id] > scores[trigram_id]
+
+
+@pytest.mark.django_db
+def test_search_name_prefix_ranks_before_other_full_text_match() -> None:
+    full_text_id = _make_product("Aashirvaad Atta")
+    prefix_id = _make_product("Atta Gold")
+    hits = PostgresSearchBackend().search("atta")
+    # The expected order is the OPPOSITE of the alphabetical one ("Aashirvaad"
+    # sorts before "Atta"), so the database cannot produce it by accident.
+    assert [hit.product_id for hit in hits] == [prefix_id, full_text_id]
+    scores = {hit.product_id: hit.score for hit in hits}
+    assert scores[prefix_id] == SCORE_NAME_PREFIX
+    assert SCORE_FULL_TEXT_BASE < scores[full_text_id] < SCORE_NAME_PREFIX
 
 
 @pytest.mark.django_db
@@ -191,7 +218,7 @@ def test_search_respects_candidate_limit() -> None:
             category=category,
             is_active=True,
         )
-    hits = PostgresSearchBackend().search("bulk")
+    hits = PostgresSearchBackend().search("bulk", limit=500)
     assert len(hits) == SEARCH_CANDIDATE_LIMIT
 
 
