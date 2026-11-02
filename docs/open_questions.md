@@ -83,6 +83,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Check diet type (veg mark) on the packs of all 33 real products — owner; low priority; ask again before Slice 28; default in use: VEG on every real row
 - [ ] Product names with price points ("KitKat ₹10 pack") go stale when an MRP changes; decide on a naming rule once pack weights are known — owner; low priority; ask again before Slice 28; default in use: price point in the name
 
+### Added in Slice 26 (search, D53)
+- [ ] Who fills `search_keywords` with Hinglish spellings (for example "aata" for atta) for the real products? — owner; low priority; ask again before Slice 28; default in use: blank except the demo rows
+- [ ] Should we log the search words customers type, so a missing product becomes visible to the owner? — owner/developer; ask again before Phase 6; default in use: no logging (D53)
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1

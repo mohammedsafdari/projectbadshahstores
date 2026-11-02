@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
+from django.test import Client
 
 from apps.catalog.tests.factories import (
     BrandFactory,
@@ -225,3 +227,35 @@ def test_json_ld_gtin_only_when_barcode_set() -> None:
     detail2 = get_product_detail(product2.slug)
     data2 = json.loads(detail2.json_ld)
     assert data2.get("gtin") == "1234567890123"
+
+
+@pytest.mark.django_db
+def test_detail_view_json_ld_image_urls_are_absolute(client: Client, tmp_path, settings) -> None:
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    from apps.catalog.models import ProductImage
+
+    settings.MEDIA_ROOT = tmp_path
+
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), color=(100, 150, 200)).save(buf, format="JPEG")
+    buf.seek(0)
+    image = ProductImage.objects.create(
+        product=product, image=SimpleUploadedFile("v.jpg", buf.read(), content_type="image/jpeg")
+    )
+    image.refresh_from_db()
+    response = client.get(f"/product/{product.slug}/")
+    html = response.content.decode()
+    match = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    assert match is not None
+    data = json.loads(match.group(1))
+    assert data["image"]
+    for url in data["image"]:
+        assert url.startswith("http://testserver")

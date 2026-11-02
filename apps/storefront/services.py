@@ -7,7 +7,17 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db import models
-from django.db.models import Min, Prefetch, Q, Sum, prefetch_related_objects
+from django.db.models import (
+    Case,
+    IntegerField,
+    Min,
+    Prefetch,
+    Q,
+    Sum,
+    Value,
+    When,
+    prefetch_related_objects,
+)
 from django.db.models.functions import Coalesce, Lower
 
 from apps.catalog.models import Brand, Category, Product, ProductImage, ProductVariant
@@ -97,10 +107,17 @@ def visible_products(
     brand: Brand | None = None,
     sort: str = "name",
     filters: ListingFilters | None = None,
+    product_ids: Iterable[int] | None = None,
 ) -> models.QuerySet[Product]:
-    allowed_sorts = {"name", "price_asc", "price_desc", "newest"}
+    allowed_sorts = {"name", "price_asc", "price_desc", "newest", "relevance"}
     if sort not in allowed_sorts:
         sort = "name"
+
+    # A search backend returns ids best first. Keep that order for the database
+    # sort below; None means "no id restriction" and [] means "no matches".
+    ranked_ids: list[int] | None = None
+    if product_ids is not None:
+        ranked_ids = list(product_ids)
 
     active_categories = tree.visible_ids()
 
@@ -108,6 +125,8 @@ def visible_products(
         "brand", "category"
     )
     qs = qs.filter(category_id__in=active_categories)
+    if ranked_ids is not None:
+        qs = qs.filter(pk__in=ranked_ids)
 
     if category is not None:
         descendant_ids = tree.descendant_ids(category)
@@ -120,7 +139,17 @@ def visible_products(
     if filters is not None:
         qs = apply_filters(qs, filters)
 
-    if sort == "name":
+    if sort == "relevance" and ranked_ids:
+        # Case/When gives each product the position of its id in the search
+        # result, so the database sorts by relevance without loading rows into
+        # Python. There are at most SEARCH_CANDIDATE_LIMIT ids.
+        relevance_order = Case(
+            *(When(pk=pk, then=Value(position)) for position, pk in enumerate(ranked_ids)),
+            output_field=IntegerField(),
+        )
+        qs = qs.order_by(relevance_order)
+    elif sort in {"name", "relevance"}:
+        # Relevance without ids has nothing to rank, so it falls back to the name.
         qs = qs.order_by(Lower("name_en"), "pk")
     elif sort == "price_asc":
         qs = qs.order_by("lead_price", "pk")

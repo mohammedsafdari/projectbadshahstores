@@ -4,13 +4,11 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 25 (product detail page). Next slice: 26 (search).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 26 (search). Next slice: 27 (search-as-you-type UI).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
 Questions due at the start of Slice 26 (search): none. The next "ask again before" points in `docs/open_questions.md` are Slice 28 (pack weights for KitKat, Munch and Milkybar rows; the veg mark on the real products; the naming rule for price points; the filter-panel counts question) and Phase 7 (the FSSAI licence number). The defaults in use stay until then.
-
-Open follow-ups from the Slice 25 review, to do inside the Slice 26 prompt: a view-level test that the JSON-LD image URLs start with `http://testserver` (the view passes `request.build_absolute_uri` and no test would notice if it stopped), and `cut_meta` in `apps/storefront/views.py`, whose "no space found" case returns 161 characters (160 plus the ellipsis).
 
 Since Slice 22 the coding is done by an OpenCode Desktop agent on the `main` branch only; see "How we work". Beam Free did Slices 22 to 25d; since Slice 25e the model is DeepSeek V4.1 Flash (free, high effort) because Beam Free had problems. The full suite runs in Docker on PostgreSQL.
 
@@ -48,6 +46,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
   - The page shows photos (main `medium`, the rest thumbnails), variants cheapest first with pack label, price, struck MRP, "Save ₹X (Y%)", unit price for kg/g/ml/l, stock from the ledger, "Product details" labels, four related products by name, and JSON-LD with absolute image URLs.
   - `ProductImage.medium` (900 px WebP, migration 0008) is made on save by `apps/catalog/images.py`; `backfill_image_sizes` fills it for existing photos (run once after deploying).
   - `SHOP_FSSAI_LICENCE` shows "FSSAI licence no. ..." only when it is non-empty and the product is our own brand; never invent a number.
+- Search (Slice 26, D53): `apps/catalog/search.py` (`SearchHit`, `SearchBackend`, `normalise_query`, `build_prefix_tsquery`, `PostgresSearchBackend`, `get_search_backend`) behind the `SEARCH_BACKEND` setting; full-text on the `simple` configuration (every query word, last word a prefix), trigram word similarity and `icontains`; the storefront intersects the ranked ids with `visible_products` and sorts them with a database `Case/When`. `/search/` (`product_search`) has the listing filters, relevance sort, pagination, `noindex`, a no-results block and a header search box on every page; migration `0009_enable_pg_trgm` adds `pg_trgm` (no indexes yet).
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -119,6 +118,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 25 | Product detail page: `product_detail.py` and `product_detail.html`, `ProductImage.medium` (migration 0008) and the `backfill_image_sizes` command, `SHOP_FSSAI_LICENCE`, JSON-LD; 11 catalog tests + 46 storefront tests (950). D52. |
 | 25d | Savings text "Save ₹X (Y%)" computed in the service, absolute JSON-LD image URLs via `build_url`, related products excluded and limited in the database, meta description cut at a word, 14 new tests (964). |
 | 25e | Finished what 25d skipped (first run with DeepSeek V4.1 Flash): the 14 new tests, three rewritten weak tests and the STATUS text (964). Review: 44 of 45 deliberate breakages caught; the view's `request.build_absolute_uri` is untested (see "Where we are"). A 24b follow-up made the filter view tests compare product names instead of page substrings (a random CSRF token containing "P2" had made one fail). |
+| 26 | Search behind an interface: `apps/catalog/search.py`, pg_trgm migration 0009, `/search/` with filters, relevance sort, pagination and `noindex`, header search form; 24 catalog + 20 storefront + 1 JSON-LD view + 2 `cut_meta` tests (1011). D53. |
 
 ## Remaining Phase 2 slices
 
@@ -134,7 +134,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 23. (done) Storefront listing, category and brand pages.
 24. (done) Filters (HTMX) (D51).
 25. (done) Product detail page (variants, savings, FSSAI info, JSON-LD) (D52).
-26. Search service (PostgreSQL full-text and trigram behind an interface).
+26. (done) Search service (PostgreSQL full-text and trigram behind an interface) (D53).
 27. Search-as-you-type UI.
 28. Phase 2 wrap-up (docs, ADRs, README, smoke test, Python recap).
 
@@ -156,7 +156,8 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Photo files are not deleted from disk when an image row or product is deleted; add a clean-up job before production (see `docs/open_questions.md`).
 - Only original photos, 400 px WebP card thumbnails and 900 px WebP detail images are stored; the backfill command must be run once after deploying and photo files are still not deleted from disk.
 - `Category.clean()` blocks parent cycles only in forms and the admin; a direct `.save()` or `update()` can still create one. The storefront helpers are cycle-safe (D50).
-- The listing pages have no search yet (Slice 26). Brand options have no counts and do not narrow with the other filters, so a customer can pick a combination with no results; the diet filter offers Vegetarian only; the filter form puts empty fields (`min_price=&max_price=`) into the address; the htmx behaviour (swap, push-url, Back button) has no browser test and was checked by hand. `CategoryTree` reads the whole category table once per request, which is fine for hundreds of categories.
+- Brand options have no counts and do not narrow with the other filters, so a customer can pick a combination with no results; the diet filter offers Vegetarian only; the filter form puts empty fields (`min_price=&max_price=`) into the address; the htmx behaviour (swap, push-url, Back button) has no browser test and was checked by hand. `CategoryTree` reads the whole category table once per request, which is fine for hundreds of categories.
+- Search (D53): there is no GIN index on the search fields yet (the catalogue is small; add one when it grows); `/search/` has no rate limit; there is no "did you mean" suggestion when a typo finds nothing; search words are not logged, so a missing product is invisible to the owner; the brand filter lists every brand with visible products instead of narrowing to the results; relevance ranking is judged only on the tiny seed catalogue.
 - The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
 - Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
 - Operations that touch several rows (the Slice 20 import) lock products first, then variants, each in ascending `pk` order (D43, D47). Slice 21 must keep that order; there is no shared helper for it yet.
@@ -257,6 +258,7 @@ Everyday commands (they run inside the container):
 - After a slice with a migration, run `docker compose exec web python manage.py migrate` in the dev database. pytest builds its own database, so it passes while the site shows "column does not exist".
 - Commit with named files (`git add <paths>`), not `git add -A`, and not while an agent may still be running.
 - A test of a view that hands a helper to a service (`request.build_absolute_uri`) must go through the view; calling the service with its own helper leaves the view untested.
+- Split search words on whitespace, never with a `\w` regex: Python's `\w` does not match Devanagari vowel signs such as the one in "आटा", so the query words would be broken (D53).
 
 ## Slice closeout checklist
 

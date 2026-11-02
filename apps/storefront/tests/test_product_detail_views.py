@@ -117,10 +117,9 @@ def test_add_to_cart_is_disabled_placeholder(client: Client) -> None:
     ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
     response = client.get(f"/product/{product.slug}/")
     html = response.content.decode()
-    m = re.search(r"<button[^>]*>", html)
+    m = re.search(r"<button[^>]*>Add to cart \(coming soon\)</button>", html)
     assert m is not None
     assert "disabled" in m.group(0)
-    assert "Add to cart (coming soon)" in html
 
 
 @pytest.mark.django_db

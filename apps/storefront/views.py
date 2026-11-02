@@ -14,6 +14,7 @@ from django.utils.cache import patch_vary_headers
 from django.views.generic import TemplateView
 
 from apps.catalog.models import Brand, Category, Product
+from apps.catalog.search import get_search_backend, normalise_query
 from apps.storefront.filter_options import brand_options
 from apps.storefront.filters import parse_filters
 from apps.storefront.product_detail import get_product_detail
@@ -30,8 +31,8 @@ def cut_meta(text: str, limit: int = 160) -> str:
         return text
     cut = text[:limit]
     space = cut.rfind(" ")
-    if space > 0:
-        cut = cut[:space]
+    # No word break, so leave room for the ellipsis inside the limit.
+    cut = cut[:space] if space > 0 else text[: limit - 1]
     return cut + "\u2026"
 
 
@@ -42,6 +43,9 @@ SORT_OPTIONS = [
     ("newest", "Newest"),
 ]
 
+# Search results default to relevance; the other listings must not offer it.
+SEARCH_SORT_OPTIONS = [("relevance", "Relevance"), *SORT_OPTIONS]
+
 PRODUCTS_PER_PAGE = 24
 
 
@@ -51,9 +55,15 @@ def _querystring_without_page(request: HttpRequest) -> str:
     return params.urlencode()
 
 
-def _normalise_sort(request: HttpRequest) -> str:
-    sort = request.GET.get("sort", "name")
-    if sort not in {value for value, _ in SORT_OPTIONS}:
+def _normalise_sort(
+    request: HttpRequest,
+    *,
+    options: list[tuple[str, str]] = SORT_OPTIONS,
+    default: str = "name",
+) -> str:
+    sort = request.GET.get("sort", default)
+    if sort not in {value for value, _ in options}:
+        # An unknown sort always falls back to the name, on every listing.
         sort = "name"
     return sort
 
@@ -66,11 +76,22 @@ def _wants_partial(request: HttpRequest) -> bool:
     return is_htmx and not is_history_restore
 
 
-def _clear_url(request: HttpRequest, sort: str) -> str:
-    """This page's address without filters; a non-default sort is kept."""
-    if sort == "name":
+def _clear_url(
+    request: HttpRequest,
+    sort: str,
+    *,
+    query: str | None = None,
+    default_sort: str = "name",
+) -> str:
+    """This page's address without filters; a search query and a non-default sort are kept."""
+    params: dict[str, str] = {}
+    if query:
+        params["q"] = query
+    if sort != default_sort:
+        params["sort"] = sort
+    if not params:
         return request.path
-    return request.path + "?" + urlencode({"sort": sort})
+    return request.path + "?" + urlencode(params)
 
 
 def _render_listing(
@@ -82,39 +103,79 @@ def _render_listing(
     page_title: str,
     breadcrumbs: list[dict[str, str | None]],
     child_categories: list[Category],
+    query: str | None = None,
 ) -> HttpResponse:
-    sort = _normalise_sort(request)
+    is_search = query is not None
+    sort_options = SEARCH_SORT_OPTIONS if is_search else SORT_OPTIONS
+    default_sort = "relevance" if is_search else "name"
+    sort = _normalise_sort(request, options=sort_options, default=default_sort)
     filters = parse_filters(request.GET)
     if brand is not None:
         # A brand page is already one brand, so a ?brand= in the address is ignored.
         # replace() makes a copy of the frozen dataclass with one field changed.
         filters = replace(filters, brand_slugs=())
-    qs = visible_products(tree=tree, category=category, brand=brand, sort=sort, filters=filters)
-    paginator = Paginator(qs, PRODUCTS_PER_PAGE)
-    page_obj = paginator.get_page(request.GET.get("page"))
-    cards = build_cards(page_obj.object_list)
+    query_text = query or ""
+    too_short = is_search and not query_text
+    heading = page_title
+    if is_search:
+        heading = f"Search results for “{query_text}”" if query_text else "Search"
     context: dict[str, object] = {
-        "page_obj": page_obj,
-        "cards": cards,
         "current_sort": sort,
-        "sort_options": SORT_OPTIONS,
+        "sort_options": sort_options,
         "querystring": _querystring_without_page(request),
         "breadcrumbs": breadcrumbs,
         "child_categories": child_categories,
         "page_title": page_title,
+        "page_heading": heading,
         "filters": filters,
-        "result_count": paginator.count,
-        "clear_url": _clear_url(request, sort),
+        "clear_url": _clear_url(request, sort, query=query, default_sort=default_sort),
+        "is_search": is_search,
+        "query": query_text,
+        "noindex": is_search,
     }
+    if is_search:
+        # The no-results block links to the top-level categories, and the brand
+        # filter uses the same list as All products (the whole active catalogue).
+        context["top_categories"] = list(
+            Category.objects.filter(parent__isnull=True, is_active=True).order_by("name")
+        )
+    if too_short:
+        # An empty or one-letter query never touches the product tables.
+        context["search_prompt"] = True
+    else:
+        product_ids: list[int] | None = None
+        if is_search:
+            hits = get_search_backend().search(query_text)
+            product_ids = [hit.product_id for hit in hits]
+        qs = visible_products(
+            tree=tree,
+            category=category,
+            brand=brand,
+            sort=sort,
+            filters=filters,
+            product_ids=product_ids,
+        )
+        paginator = Paginator(qs, PRODUCTS_PER_PAGE)
+        page_obj = paginator.get_page(request.GET.get("page"))
+        cards = build_cards(page_obj.object_list)
+        context.update(
+            {
+                "page_obj": page_obj,
+                "cards": cards,
+                "result_count": paginator.count,
+            }
+        )
     if _wants_partial(request):
         response = render(request, "storefront/_listing_results.html", context)
     else:
-        # The filter panel is not part of the swapped block, so only a full page needs it.
-        context["show_brand_filter"] = brand is None
-        context["brand_options"] = (
-            brand_options(tree=tree, category=category) if brand is None else []
-        )
-        context["selected_brands"] = set(filters.brand_slugs)
+        if not too_short:
+            # The filter panel is not part of the swapped block, so only a full
+            # page needs it.
+            context["show_brand_filter"] = brand is None
+            context["brand_options"] = (
+                brand_options(tree=tree, category=category) if brand is None else []
+            )
+            context["selected_brands"] = set(filters.brand_slugs)
         response = render(request, "storefront/product_list.html", context)
     patch_vary_headers(response, ["HX-Request"])
     return response
@@ -131,6 +192,22 @@ def product_list(request: HttpRequest) -> HttpResponse:
         tree=tree,
         page_title="All products",
         breadcrumbs=[{"label": "Home", "url": reverse("home")}],
+        child_categories=[],
+    )
+
+
+def product_search(request: HttpRequest) -> HttpResponse:
+    tree = CategoryTree()
+    query = normalise_query(request.GET.get("q", ""))
+    return _render_listing(
+        request,
+        tree=tree,
+        query=query,
+        page_title=f'Search: "{query}"',
+        breadcrumbs=[
+            {"label": "Home", "url": reverse("home")},
+            {"label": "Search", "url": None},
+        ],
         child_categories=[],
     )
 

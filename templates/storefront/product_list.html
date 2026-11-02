@@ -3,10 +3,12 @@
 
 {% block title %}{{ page_title }} — Badshah Store{% endblock title %}
 
+{% block head_extra %}{% if noindex %}<meta name="robots" content="noindex">{% endif %}{% endblock head_extra %}
+
 {% block content %}
 {% include "storefront/_breadcrumbs.html" %}
 
-<h1 class="text-2xl font-bold text-gray-900">{{ page_title }}</h1>
+<h1 class="text-2xl font-bold text-gray-900">{% if page_heading %}{{ page_heading }}{% else %}{{ page_title }}{% endif %}</h1>
 
 {% if child_categories %}
   <nav class="mt-4 flex flex-wrap gap-2" aria-label="Child categories">
@@ -16,7 +18,9 @@
   </nav>
 {% endif %}
 
-{% include "storefront/_filter_panel.html" %}
+{% if not search_prompt %}
+  {% include "storefront/_filter_panel.html" %}
+{% endif %}
 
 <div id="listing-results" aria-live="polite">
   {% include "storefront/_listing_results.html" %}

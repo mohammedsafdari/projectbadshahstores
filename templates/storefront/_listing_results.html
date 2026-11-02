@@ -1,3 +1,7 @@
+{% if search_prompt %}
+  <p class="mt-6 text-gray-600">Type at least 2 letters.</p>
+  <p class="mt-2"><a class="text-sm text-brand-600 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" href="{% url "product_list" %}">Browse all products</a></p>
+{% else %}
 <div class="mt-4 flex items-center justify-between">
   <p class="text-sm text-gray-600">{{ result_count }} product{{ result_count|pluralize }}</p>
   {% if filters.is_active %}
@@ -11,10 +15,20 @@
       <li>{% include "storefront/_product_card.html" with card=card %}</li>
     {% endfor %}
   </ul>
+{% elif is_search %}
+  <p class="mt-6 text-gray-600">No products found for “{{ query }}”.</p>
+  <p class="mt-2 text-sm text-gray-600">Check the spelling or try a shorter word.</p>
+  <nav class="mt-4 flex flex-wrap gap-2" aria-label="Browse categories">
+    <a class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" href="{% url "product_list" %}">All products</a>
+    {% for category in top_categories %}
+      <a class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" href="{% url "category_detail" category.slug %}">{{ category.name }}</a>
+    {% endfor %}
+  </nav>
 {% elif filters.is_active %}
   <p class="mt-6 text-gray-600">No products match these filters.</p>
 {% else %}
   <p class="mt-6 text-gray-600">No products found.</p>
+{% endif %}
 {% endif %}
 
 {% include "storefront/_pagination.html" %}

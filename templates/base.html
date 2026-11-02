@@ -33,8 +33,13 @@
 
   <header class="border-b border-gray-200 bg-white">
     <div class="mx-auto max-w-screen-lg px-4 py-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="text-xl font-semibold text-gray-900 sm:text-2xl">Badshah Store</div>
+        <form role="search" method="get" action="{% url "product_search" %}" class="flex items-center gap-2">
+          <label for="header-search" class="sr-only">Search products</label>
+          <input id="header-search" type="search" name="q" maxlength="100" value="{{ query|default:"" }}" placeholder="Search products" class="w-40 rounded border border-gray-300 px-2 py-1 text-sm sm:w-56">
+          <button type="submit" class="rounded bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Search</button>
+        </form>
         <nav aria-label="Primary" class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
           <a href="{% url "home" %}">Home</a>
           <a href="{% url "product_list" %}">Shop</a>
