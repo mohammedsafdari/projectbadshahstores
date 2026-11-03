@@ -8,7 +8,14 @@ This repository is a modular monolith. Business logic lives in per-app `services
 
 ## Repo status
 
-Phase 1 (scaffold) is complete and Phase 2 (catalogue and inventory) is in progress. For what is built right now and what comes next, see `docs/STATUS.md`.
+Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Phase 3 (cart and checkout) is next. For what is built right now and what comes next, see `docs/STATUS.md`.
+
+## What works now
+
+- Django admin for brands, categories, products and variants, with CSV import and export and a bulk price update action.
+- Inventory: an append-only movement ledger and the Stock screens (receive, adjust, count, damage, history) plus Expiring lots.
+- Seed data: `docker compose exec web python manage.py seed_catalog` loads the real rows; add `--demo` for the demo rows, and `--demo-stock` to receive demo stock once.
+- Storefront: listing pages, filters, the product detail page, search and search-as-you-type.
 
 ## Python version
 
@@ -187,6 +194,7 @@ Every commit message starts with the slice id, for example `Slice 14a: Add Produ
 - `docs/architecture.md`: the target design.
 - `docs/decisions.md`: why each key decision was made.
 - `docs/open_questions.md`: business questions still waiting for an answer.
+- `docs/python_recap.md`: Python idioms explained for a .NET developer, with examples from this repo.
 - `PROJECT_INSTRUCTIONS.md`: the original brief and the build plan (Phases 0 to 8).
 
 ## Troubleshooting

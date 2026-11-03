@@ -402,6 +402,7 @@ Brands and categories are created from the slug/name pairs inside the seed CSV f
   - `/search/?q=` (name `product_search`) shows a title `Search: "<q>" — Badshah Store`, the heading `Search results for "<q>"`, the count, `<meta name="robots" content="noindex">`, and a no-results block with "Check the spelling or try a shorter word" plus links to /products/ and the active top-level categories. The header has a GET search form on every page, pre-filled on the search page. htmx requests get only the results block with `Vary: HX-Request`.
   - Migration `0009_enable_pg_trgm` adds the `pg_trgm` extension only; no indexes yet (the catalogue is small, a GIN index is a documented later step).
   - No search words are logged and `/search/` has no rate limit in this slice.
+  - Amended in Slice 28: rule (b) now applies only when the longest query word has at least 5 characters (`TRIGRAM_MIN_WORD_LENGTH` in `apps/catalog/search.py`), because a 3-letter word has only four trigrams and two of them are the padded start, so "tea" scored 0.5 against "tel" and "test".
 - **Why:** Typos, Hinglish spellings and prefixes work without new infrastructure, and the interface keeps the door open for embeddings (D26).
 
 ## D54. Search-as-you-type
@@ -413,4 +414,5 @@ Brands and categories are created from the slug/name pairs inside the seed CSV f
   - Header (`templates/base.html`): htmx sends the input 250 ms after the last keystroke (`hx-trigger="input changed delay:250ms, search"`, `hx-params="q"`, `hx-sync="this:replace"`, `hx-push-url="false"`) and swaps the fragment into `#search-suggestions`. Alpine 3.14.8 opens and closes the panel and moves focus with ArrowDown and ArrowUp (ArrowUp on the first link returns to the input); Escape closes it and keeps focus in the input. `x-cloak` plus one style rule keeps the panel hidden before Alpine loads.
   - Without JavaScript the plain form still works: Enter or the Search button submits `/search/`, and the panel stays empty and hidden.
   - Narrows the brief: section 5's search extras stop here; typo-tolerance extras such as "did you mean" are not built. Search words are not logged and `/search/suggest/` has no rate limit (D53).
+  - Amended in Slice 28: suggestions inherit D53's length gate, so a short query does not list trigram lookalikes.
 - **Why:** Fast feedback while typing with no new JavaScript files, packages or settings, and the search page's own results are unchanged.

@@ -4,11 +4,11 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 27 (search-as-you-type, 27a and 27b). Next slice: 28 (Phase 2 wrap-up).
+Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Last finished slice: 28 (search fix and Phase 2 wrap-up, 28a and 28b). Next: Phase 3 (cart and checkout, COD first), per `PROJECT_INSTRUCTIONS.md` section 9.
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
-Questions due at the start of Slice 27 (search-as-you-type): none. The next "ask again before" points in `docs/open_questions.md` are Slice 28 (pack weights for KitKat, Munch and Milkybar rows; the veg mark on the real products; the naming rule for price points; the filter-panel counts question; who fills `search_keywords`) and Phase 6 (whether to log search words) and Phase 7 (the FSSAI licence number). The defaults in use stay until then.
+Questions due at the start of Slice 28: the nine items in `docs/open_questions.md` whose point was Slice 28 (pack weights for KitKat, Munch and Milkybar; the veg mark on the real products; the naming rule for price points; the filter-panel counts question; who fills `search_keywords`; the 15 unloaded billing rows; the rest-of-shop export; the rest of the category tree; and the two 1 kg Everyday milk powder rows). The owner chose all the defaults, and those items now ask again in Phase 3. The next "ask again before" points are Phase 3, Phase 5, Phase 6 and Phase 7. The defaults in use stay until then.
 
 Since Slice 22 the coding is done by an OpenCode Desktop agent on the `main` branch only; see "How we work". Beam Free did Slices 22 to 25d; since Slice 25e the model is DeepSeek V4.1 Flash (free, high effort) because Beam Free had problems. The full suite runs in Docker on PostgreSQL.
 
@@ -18,6 +18,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 
 - Claude chat: attach `PROJECT_INSTRUCTIONS.md` and this file and write "Continue at Slice N (name)". Claude reads the repo itself (github.com/mohammedsafdari/projectbadshahstores), asks the due open questions first, then sends one prompt file per run.
 - OpenCode chat: a new chat needs no history. Every prompt names its slice and tells the agent to read `AGENTS.md`, `docs/AGENT_BRIEF.md` and this file first. Model: DeepSeek V4.1 Flash (free, high).
+- Python recap for a .NET developer: `docs/python_recap.md`. It shows each idiom with a real example from this repo.
 - Before opening the new chats: the working tree is clean (`git status`), everything is pushed, the suite passes twice in Docker, and `docker compose exec web python manage.py migrate` has been run.
 
 ## What is built
@@ -124,6 +125,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 26b | Test follow-up: score assertions for the ranking bands, a prefix-before-full-text test with an adversarial name order, the limit cap, the hidden `q` input; no product code changed (1014). |
 | 27a | `/search/suggest/` (`search_suggest`, `SUGGESTION_CANDIDATES = 50`, `SUGGESTION_LIMIT = 6`): an HTML fragment of at most 6 cards from the same backend and visibility rule as `/search/`, empty under 2 characters without touching the backend or the tables, `noindex` and `no-store`; new template `_search_suggestions.html`; 17 tests (1031). |
 | 27b | Header search-as-you-type: htmx request with a 250 ms debounce and `hx-sync`, Alpine open/close and ArrowUp/ArrowDown focus, the `x-cloak` style; 8 tests. D54 and docs. |
+| 28a | Search fix: the three trigram rules run only when the longest query word has at least 5 characters (`TRIGRAM_MIN_WORD_LENGTH`, `allows_typo_matching`), so "tea" no longer returns oils or Test Atta; 8 catalog + 2 storefront tests (1049). D53 and D54 amended. |
+| 28b | Phase 2 wrap-up docs: STATUS, open questions, README, `docs/python_recap.md`; D53 and D54 amendments. |
 
 ## Remaining Phase 2 slices
 
@@ -141,7 +144,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 25. (done) Product detail page (variants, savings, FSSAI info, JSON-LD) (D52).
 26. (done) Search service (PostgreSQL full-text and trigram behind an interface) (D53).
 27. (done) Search-as-you-type UI (D54).
-28. Phase 2 wrap-up (docs, ADRs, README, smoke test, Python recap).
+28. (done) Phase 2 wrap-up (docs, ADRs, README, smoke test, Python recap).
 
 StockReservation stays in Phase 3.
 
@@ -162,7 +165,7 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - Only original photos, 400 px WebP card thumbnails and 900 px WebP detail images are stored; the backfill command must be run once after deploying and photo files are still not deleted from disk.
 - `Category.clean()` blocks parent cycles only in forms and the admin; a direct `.save()` or `update()` can still create one. The storefront helpers are cycle-safe (D50).
 - Brand options have no counts and do not narrow with the other filters, so a customer can pick a combination with no results; the diet filter offers Vegetarian only; the filter form puts empty fields (`min_price=&max_price=`) into the address; the htmx behaviour (swap, push-url, Back button) has no browser test and was checked by hand. `CategoryTree` reads the whole category table once per request, which is fine for hundreds of categories.
-- Search (D53): there is no GIN index on the search fields yet (the catalogue is small; add one when it grows); `/search/` has no rate limit; there is no "did you mean" suggestion when a typo finds nothing; search words are not logged, so a missing product is invisible to the owner; the brand filter lists every brand with visible products instead of narrowing to the results; relevance ranking is judged only on the tiny seed catalogue.
+- Search (D53): there is no GIN index on the search fields yet (the catalogue is small; add one when it grows); `/search/` has no rate limit; there is no "did you mean" suggestion when a typo finds nothing; search words are not logged, so a missing product is invisible to the owner; the brand filter lists every brand with visible products instead of narrowing to the results; relevance ranking is judged only on the tiny seed catalogue. A query whose longest word is under 5 characters skips the trigram rules (D53, Slice 28), so a short typo is not tolerated.
 - Search-as-you-type (D54): `/search/suggest/` has no rate limit; the dropdown has no browser test (the htmx swap, the focus movement and the Back button were checked by hand); matched letters are not highlighted; an IME composition fires one request per input event, debounced only by the 250 ms delay.
 - The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
 - Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
@@ -267,6 +270,7 @@ Everyday commands (they run inside the container):
 - Split search words on whitespace, never with a `\w` regex: Python's `\w` does not match Devanagari vowel signs such as the one in "आटा", so the query words would be broken (D53).
 - Ranking tests must compare scores, not only the order of names: a name order that is also alphabetical passes by accident (Slice 26). Choose test data whose alphabetical order is the OPPOSITE of the expected rank.
 - Claude's review sandbox needs a real PostgreSQL 16 with the contrib package (the pgserver pip package has no pg_trgm, so every database test errors); install it from the Ubuntu archive.
+- Trigram similarity is unreliable on words under 5 characters: a 3-letter word has only four trigrams and two of them are the padded start, so "tea" scored 0.5 against "tel" and "test". Gate typo matching by word length (D53, Slice 28).
 
 ## Slice closeout checklist
 
