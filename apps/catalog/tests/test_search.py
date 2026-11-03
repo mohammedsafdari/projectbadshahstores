@@ -12,6 +12,7 @@ from apps.catalog.search import (
     SEARCH_CANDIDATE_LIMIT,
     PostgresSearchBackend,
     SearchHit,
+    allows_typo_matching,
     build_prefix_tsquery,
     get_search_backend,
     normalise_query,
@@ -231,3 +232,50 @@ def test_get_search_backend_uses_setting(settings) -> None:
     backend = get_search_backend()
     assert isinstance(backend, FakeSearchBackend)
     assert backend.search("anything") == [SearchHit(product_id=1, score=1.0)]
+
+
+def test_allows_typo_matching_false_for_three_letter_word() -> None:
+    assert allows_typo_matching("tea") is False
+
+
+def test_allows_typo_matching_false_when_every_word_is_short() -> None:
+    assert allows_typo_matching("tea leaf") is False
+
+
+def test_allows_typo_matching_true_when_one_word_is_long() -> None:
+    assert allows_typo_matching("tea masala") is True
+
+
+def test_allows_typo_matching_false_for_empty_text() -> None:
+    assert allows_typo_matching("") is False
+
+
+@pytest.mark.django_db
+def test_search_short_query_ignores_similar_keyword() -> None:
+    _make_product("Sunflower Oil", keywords="sunflower oil tel")
+    tea_id = _make_product("Green Tea")
+    # "tel" is close to "tea" by trigrams, so only the length gate keeps the
+    # oil out of the results.
+    assert _search_ids("tea") == [tea_id]
+
+
+@pytest.mark.django_db
+def test_search_short_query_ignores_similar_name() -> None:
+    _make_product("Test Atta")
+    tea_id = _make_product("Green Tea")
+    # "test" is close to "tea" by trigrams; the gate must suppress that rule.
+    assert _search_ids("tea") == [tea_id]
+
+
+@pytest.mark.django_db
+def test_search_short_query_still_finds_prefix_category_and_keyword() -> None:
+    prefix_id = _make_product("Teabags")
+    category_id = _make_product("Nescafe", category_name="Tea & Coffee")
+    keyword_id = _make_product("Chai Patti", keywords="chai patti tea")
+    assert set(_search_ids("tea")) == {prefix_id, category_id, keyword_id}
+
+
+@pytest.mark.django_db
+def test_search_long_query_still_tolerates_typo() -> None:
+    product_id = _make_product("Mustard Oil")
+    assert _search_ids("mustrad") == [product_id]

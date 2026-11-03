@@ -316,3 +316,13 @@ def test_filter_form_has_no_hidden_q_on_all_products_page(client: Client) -> Non
     html = client.get("/products/").content.decode()
     form = _form_block(html, "listing-form")
     assert _inputs_named(form, "q") == []
+
+
+@pytest.mark.django_db
+def test_search_page_short_query_does_not_list_trigram_lookalikes(client: Client) -> None:
+    _visible_product("Green Tea")
+    _visible_product("Test Atta")
+    response = client.get("/search/", {"q": "tea"})
+    names = _product_names(response.content.decode())
+    assert "Green Tea" in names
+    assert "Test Atta" not in names

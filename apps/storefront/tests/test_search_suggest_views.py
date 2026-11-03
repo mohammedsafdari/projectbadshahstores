@@ -244,3 +244,13 @@ def test_suggest_sends_noindex_and_no_store_headers(client: Client) -> None:
 def test_suggest_rejects_post_with_405(client: Client) -> None:
     response = client.post("/search/suggest/", {"q": "biscuit"})
     assert response.status_code == 405
+
+
+@pytest.mark.django_db
+def test_suggest_short_query_does_not_list_trigram_lookalikes(client: Client) -> None:
+    _visible_product("Green Tea")
+    _visible_product("Test Atta")
+    response = client.get("/search/suggest/", {"q": "tea"})
+    names = _suggestion_names(response.content.decode())
+    assert "Green Tea" in names
+    assert "Test Atta" not in names

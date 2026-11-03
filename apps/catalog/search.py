@@ -7,7 +7,9 @@ without knowing anything about the shop rules.
 
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass
+from functools import reduce
 from typing import Any, Protocol, cast
 
 from django.conf import settings
@@ -28,7 +30,14 @@ from apps.catalog.models import Product
 SEARCH_CANDIDATE_LIMIT = 200
 
 # A word-similarity score at or above this counts as a typo-tolerant match.
+# The trigram rules only run when allows_typo_matching() says the longest query
+# word has at least TRIGRAM_MIN_WORD_LENGTH characters.
 SIMILARITY_THRESHOLD = 0.4
+
+# Short words have too few trigrams to judge similarity: a 3-letter word has
+# only four trigrams, and two of them are the padded start (" t" and " te"),
+# so "tea" scores 0.5 against "tel" (Hindi for oil) and against "test".
+TRIGRAM_MIN_WORD_LENGTH = 5
 
 MAX_QUERY_LENGTH = 100
 MAX_QUERY_WORDS = 6
@@ -94,6 +103,17 @@ def build_prefix_tsquery(query: str) -> str | None:
     return " & ".join([*words[:-1], words[-1] + ":*"])
 
 
+def allows_typo_matching(text: str) -> bool:
+    """True when the longest word in text has at least TRIGRAM_MIN_WORD_LENGTH letters."""
+    # split() with no argument splits on whitespace only, so a Devanagari word
+    # such as "आटा" stays whole (D53).
+    words = text.split()
+    if not words:
+        return False
+    # max() over a generator returns the length of the longest word.
+    return max(len(word) for word in words) >= TRIGRAM_MIN_WORD_LENGTH
+
+
 class PostgresSearchBackend:
     """PostgreSQL full-text search plus trigram word similarity."""
 
@@ -125,15 +145,26 @@ class PostgresSearchBackend:
             brand_similarity=TrigramWordSimilarity(text, "brand__name"),
             keyword_similarity=TrigramWordSimilarity(text, "search_keywords"),
         )
-        qs = qs.filter(
-            Q(search_rank__gt=MIN_SEARCH_RANK)
-            | Q(name_en__icontains=text)
-            | Q(name_hi__icontains=text)
-            | Q(search_keywords__icontains=text)
-            | Q(name_similarity__gte=SIMILARITY_THRESHOLD)
-            | Q(brand_similarity__gte=SIMILARITY_THRESHOLD)
-            | Q(keyword_similarity__gte=SIMILARITY_THRESHOLD)
-        )
+        # Full-text and the three icontains rules always apply.
+        conditions = [
+            Q(search_rank__gt=MIN_SEARCH_RANK),
+            Q(name_en__icontains=text),
+            Q(name_hi__icontains=text),
+            Q(search_keywords__icontains=text),
+        ]
+        # Trigram matching is unreliable on short words (see
+        # TRIGRAM_MIN_WORD_LENGTH), so its three rules only join the list when
+        # the longest query word is long enough.
+        if allows_typo_matching(text):
+            conditions.extend(
+                [
+                    Q(name_similarity__gte=SIMILARITY_THRESHOLD),
+                    Q(brand_similarity__gte=SIMILARITY_THRESHOLD),
+                    Q(keyword_similarity__gte=SIMILARITY_THRESHOLD),
+                ]
+            )
+        # reduce folds the list into one condition: q1 | q2 | q3 ...
+        qs = qs.filter(reduce(operator.or_, conditions))
         score = Case(
             When(name_en__iexact=text, then=Value(SCORE_EXACT_NAME)),
             When(name_en__istartswith=text, then=Value(SCORE_NAME_PREFIX)),
