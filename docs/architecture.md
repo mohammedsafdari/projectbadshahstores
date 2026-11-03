@@ -12,7 +12,7 @@ Seed values stored in the database, not hardcoded in logic.
 - Free delivery above: ₹500
 - Minimum order: ₹200 on the product subtotal (excludes delivery fee)
 - COD cap: ₹2,000, checked on the order total at checkout only
-- Delivery slot (MVP): single "Same Day" slot with a 16:00 cutoff
+- Delivery slot (MVP): single "Same Day" slot with a 17:00 cutoff; an order placed after the cutoff is delivered the next morning (D55)
 - Catalogue size at launch: about 100 SKUs
 
 These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logic reads them from the database; it does not bake them in.

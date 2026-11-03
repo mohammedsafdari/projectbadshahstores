@@ -3,8 +3,6 @@
 Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advisor), or **provider** (the third-party service). Items marked as placeholders in the docs are listed here so we can close them as data arrives.
 
 ## Shop and delivery area
-- [ ] Shop pin code — [TO BE FILLED: shop pin code] — owner
-- [ ] Served pin codes (delivery zones) — [TO BE FILLED: served pin codes] — owner
 - [ ] Shop full address (Saifee Nagar, Indore), phone, email — [TO BE FILLED] — owner
 - [ ] Delivery origin address used for pin-code-based serviceability — owner
 
@@ -29,7 +27,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Email provider credentials — recorded default Brevo, console backend in dev — owner when ready
 
 ## Catalog and inventory
-- [ ] Which products are sold loose by weight (dal, rice, sugar), in kg or litres, and in what smallest step (suggested 0.100)? — owner; needed before Phase 3 (cart); default in use: nothing is loose until `is_sold_loose` is set per variant (D42)
+- [ ] Which variants are sold loose by weight (pulses, dry fruits, masalas), and in what smallest step? The owner will send the exact list later and staff will mark the variants in the admin (Slice 29b) — owner; ask again before production data entry; default in use: nothing is loose until `is_sold_loose` is set per variant (D42, D55)
 - [ ] POS export format for stock/price sync — unknown; planned as one-way CSV import with validation report, plus CSV stock-count adjustment flow — owner (from your billing software); a sample export of about 10 rows is needed by Slice 20 (CSV import); default in use: the website ledger is primary and the billing export is a one-way import
 - [ ] Product/variant seed data: categories, brands, own-brand products at launch — owner/phase-2 data entry
 - [ ] Please give the FSSAI licence number; it goes into the `SHOP_FSSAI_LICENCE` setting and must be set in production before launch — owner; ask again before Phase 7; default in use: not shown
@@ -43,7 +41,6 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] When to add resized and WebP versions of photos — developer; planned for the storefront slices (23 and 25) or Phase 6; default in use: originals only
 - [ ] Production hardening of the stock ledger: a Postgres trigger or a restricted database role so movement rows cannot be changed with raw SQL — developer; before production; default in use: the Django-level guard only (D42)
 - [ ] Purchase cost per received lot, for stock valuation — owner/CA; needed by Phase 5 reports; default in use: `ProductVariant.cost_price`
-- [ ] Is repacking (a loose sack into packets) frequent enough to need a `REPACK` movement type? — owner; default in use: two `ADJUSTMENT` movements with a reason
 - [ ] Should a purchase with an expiry date in the past be refused or only warned about? — owner; default in use: allowed, no warning; the Receive page accepts a past date (D43, D45)
 - [ ] Should every damage or write-off entry need a reason (expired, broken, lost)? — owner; default in use: yes, the reason is required (D43)
 - [ ] Who records in-store sales in the ledger (`IN_STORE_SALE`): the billing-software import in Slice 20, or nothing yet? — owner; needed before Slice 20; default in use: nothing writes `IN_STORE_SALE` yet (D43)
@@ -63,13 +60,11 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 
 ### Added in Slice 20a (CSV import and the billing-software sample)
 Each item says when to ask again. At the start of every slice, Claude lists the items whose "ask again before" point is that slice (or earlier) and asks them first.
-- [ ] Who is the stock master while the shop sells in store and online (billing software, website, or a manual count)? This also decides how opening stock enters the ledger (the import has no stock column) — owner; ask again before Phase 3; default in use: the website ledger starts from received stock and counts (D43)
+- [ ] Who is the stock master while the shop sells in store and online? — answered (D55, 3 Nov 2026): the billing software is the main stock source, the website is refreshed by regular imports and the physical count happens at the production stage. The mechanism is still open: see the two Slice 29a items below — owner; ask again before Slice 34
 - [ ] Do we need partial files (for example only sku_code and prices)? — owner; low priority; ask again at Slice 21; default in use: every column of the export must be present (D47)
 - [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before Phase 5; default in use: yes, refused, to catch a dropped zero (D47)
-- [ ] Does the shop sell on credit to regular customers (the invoice says "Credit Tax Invoice")? Does the online store need a credit or khata option? — owner; low priority; ask again before Phase 3 (payments) and Phase 5 (invoices); default in use: no credit sales online
 - [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before Phase 5; default in use: own prefix `INV/...` (see the invoice prefix item above)
 - [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before Phase 5 (extends the rounding item above); default in use: our half-up rule (Slice 13c)
-- [ ] The sample invoice bills Rawa and Maida at 250 g for 15.00 each, which looks like shop-packed portions. Is repacking frequent? — owner; low priority; ask again before Phase 3 (extends the repacking item above); default in use: two `ADJUSTMENT` movements with a reason
 
 ### Added in Slice 22 (seed catalogue, D49)
 - [ ] GST conflict in the billing item master: the tax columns say 5% on every row, the HSN text carries 5, 12 or 18. The seed uses 5% and marks it unconfirmed — CA/owner; ask again before Phase 5; default in use: 5% from the tax columns, no rate built into the code
@@ -87,6 +82,14 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Who fills `search_keywords` with Hinglish spellings (for example "aata" for atta) for the real products? — owner; low priority; ask again before Phase 3; default in use: blank except the demo rows (asked at Slice 28: owner chose the default)
 - [ ] Should we log the search words customers type, so a missing product becomes visible to the owner? — owner/developer; ask again before Phase 6; default in use: no logging (D53)
   - Slice 27 default: suggestions are not logged either
+
+### Added in Slice 29a (Phase 3 answers, D55)
+- [ ] How do website orders reach the billing software, and who issues the GST invoice? — owner; ask again before Slice 34; default in use: staff enter each order into the billing software at packing, the website writes its own `SALE` movement at packing (D43), each stock import recounts, and the website issues the invoice (D55)
+- [ ] What format and frequency does the billing stock export have? — owner; ask again before Slice 34; default in use: a CSV with `sku_code` and on-hand, applied as counts with a validation report (D43, D55)
+- [ ] What is the credit limit for a khata customer, and who records credit payments? — owner; ask again before Slice 36; default in use: only a credit-customer flag, no limit or balance on the website (D55)
+- [ ] What is the minimum loose quantity a customer may order? — owner; ask again before Slice 31; default in use: 0.100 kg with up to 3 decimals (D42, D55)
+- [ ] The shop pin 452014 is not served: do the two served pins (452012 and 453331) share the same delivery fee and minimum-order rules? — owner; ask again before Slice 33; default in use: the same rules for both pins, 452014 not served (D55)
+- [ ] Which delivery windows do customers see (for example "8 am to 12 pm")? — owner; ask again before Slice 33; default in use: an automatic "Today" or "Tomorrow morning" label, no windows (D55)
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

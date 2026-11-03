@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Last finished slice: 28 (search fix and Phase 2 wrap-up, 28a and 28b). Next: Phase 3 (cart and checkout, COD first), per `PROJECT_INSTRUCTIONS.md` section 9.
+Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Last finished slice: 28 (search fix and Phase 2 wrap-up, 28a and 28b). Next: Phase 3 (cart and checkout, COD first), per `PROJECT_INSTRUCTIONS.md` section 9. Phase 3 has started, and the owner's Phase 3 answers are recorded in ADR D55 (Slice 29a, docs only).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -127,6 +127,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 27b | Header search-as-you-type: htmx request with a 250 ms debounce and `hx-sync`, Alpine open/close and ArrowUp/ArrowDown focus, the `x-cloak` style; 8 tests. D54 and docs. |
 | 28a | Search fix: the three trigram rules run only when the longest query word has at least 5 characters (`TRIGRAM_MIN_WORD_LENGTH`, `allows_typo_matching`), so "tea" no longer returns oils or Test Atta; 8 catalog + 2 storefront tests (1049). D53 and D54 amended. |
 | 28b | Phase 2 wrap-up docs: STATUS, open questions, README, `docs/python_recap.md`; D53 and D54 amendments. |
+| 29a | Phase 3 kick-off docs: ADR D55 with the owner's Phase 3 business rules; architecture cutoff changed to 17:00 with next-morning delivery after it; open questions updated (five answered items removed, two rewritten, six Slice 29a items added); no code. |
 
 ## Remaining Phase 2 slices
 
