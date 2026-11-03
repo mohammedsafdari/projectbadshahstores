@@ -11,6 +11,8 @@ from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils.cache import patch_vary_headers
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_GET
 from django.views.generic import TemplateView
 
 from apps.catalog.models import Brand, Category, Product
@@ -47,6 +49,11 @@ SORT_OPTIONS = [
 SEARCH_SORT_OPTIONS = [("relevance", "Relevance"), *SORT_OPTIONS]
 
 PRODUCTS_PER_PAGE = 24
+
+# The suggestion box asks the backend for more ids than it shows, so a few
+# hidden products can drop out and the list still fills up.
+SUGGESTION_CANDIDATES = 50
+SUGGESTION_LIMIT = 6
 
 
 def _querystring_without_page(request: HttpRequest) -> str:
@@ -210,6 +217,29 @@ def product_search(request: HttpRequest) -> HttpResponse:
         ],
         child_categories=[],
     )
+
+
+# require_GET answers anything but GET with 405; never_cache adds no-store.
+@require_GET
+@never_cache
+def search_suggest(request: HttpRequest) -> HttpResponse:
+    """A small HTML fragment with the best few products for a half-typed word."""
+    query = normalise_query(request.GET.get("q", ""))
+    if not query:
+        # Too short: no backend call, no product or category table, no template.
+        response = HttpResponse("")
+    else:
+        hits = get_search_backend().search(query, limit=SUGGESTION_CANDIDATES)
+        # A list comprehension keeps the ids in the backend's best-first order.
+        product_ids = [hit.product_id for hit in hits]
+        # The same visibility and relevance rule as the search page (D50, D53).
+        # The database then cuts the list to the few the box shows.
+        qs = visible_products(tree=CategoryTree(), sort="relevance", product_ids=product_ids)
+        context = {"query": query, "suggestions": build_cards(qs[:SUGGESTION_LIMIT])}
+        response = render(request, "storefront/_search_suggestions.html", context)
+    # A suggestion fragment must never be indexed or cached.
+    response["X-Robots-Tag"] = "noindex"
+    return response
 
 
 def product_detail(request: HttpRequest, slug: str) -> HttpResponse:

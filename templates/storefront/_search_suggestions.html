@@ -1,0 +1,30 @@
+{% load static %}{% if query %}{% if suggestions %}
+<ul role="listbox" id="search-suggestions-list" class="divide-y divide-gray-100">
+  {% for card in suggestions %}
+  <li role="option">
+    <a class="flex items-center gap-3 p-2 hover:bg-gray-50" href="{% url "product_detail" card.slug %}">
+      <div class="h-10 w-10 shrink-0 bg-gray-100">
+        {% if card.image_url %}
+          <img class="h-10 w-10 object-contain" src="{{ card.image_url }}" alt="{{ card.alt_text }}" width="40" height="40" loading="lazy">
+        {% else %}
+          <img class="h-10 w-10 object-contain" src="{% static "img/product-placeholder.svg" %}" alt="{{ card.alt_text }}" width="40" height="40" loading="lazy">
+        {% endif %}
+      </div>
+      <div class="min-w-0 flex-1">
+        <h2 class="truncate text-sm font-medium text-gray-900">{{ card.name }}</h2>
+        <p class="truncate text-xs text-gray-500">{{ card.brand_name }}</p>
+      </div>
+      <div class="shrink-0 text-right text-sm font-semibold text-gray-900">
+        {% if card.has_more %}from {% endif %}₹{{ card.lead_price|floatformat:"2" }}
+        {% if not card.in_stock %}
+          <span class="block text-xs font-normal text-gray-700">Out of stock</span>
+        {% endif %}
+      </div>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+<a class="block p-2 text-sm text-blue-700 underline" href="{% url "product_search" %}?q={{ query|urlencode }}">See all results for “{{ query }}”</a>
+{% else %}
+<p class="p-2 text-sm text-gray-700">No products found for “{{ query }}”.</p>
+{% endif %}{% endif %}
