@@ -403,3 +403,14 @@ Brands and categories are created from the slug/name pairs inside the seed CSV f
   - Migration `0009_enable_pg_trgm` adds the `pg_trgm` extension only; no indexes yet (the catalogue is small, a GIN index is a documented later step).
   - No search words are logged and `/search/` has no rate limit in this slice.
 - **Why:** Typos, Hinglish spellings and prefixes work without new infrastructure, and the interface keeps the door open for embeddings (D26).
+
+## D54. Search-as-you-type
+
+- **Decision:** (Slice 27) A suggestion dropdown under the header search box, fed by `/search/suggest/`.
+  - Endpoint: `/search/suggest/` (name `search_suggest`, view `search_suggest`), GET only (`require_GET`), with `X-Robots-Tag: noindex` and `Cache-Control: no-store`. The query goes through `normalise_query` (D53); under two characters the view returns an empty body without calling the backend or touching the product or category tables.
+  - Otherwise the backend is asked for `SUGGESTION_CANDIDATES = 50` ids, `visible_products` applies the same visibility rule and relevance order as `/search/` (D50, D53), and the database cuts the list to `SUGGESTION_LIMIT = 6` before `build_cards`; no listing filters and no pagination.
+  - Fragment `templates/storefront/_search_suggestions.html`: a `<ul role="listbox" id="search-suggestions-list">` of `<li role="option">` links with a 40 px thumbnail (placeholder fallback, `loading="lazy"`), the name, the brand, the lead price ("from " when there are several variants) and "Out of stock"; after the list one link to `/search/?q=<urlencoded query>`. No hits: one "No products found for “q”." line and no see-all link. The query is escaped by Django's autoescaping (never `|safe`).
+  - Header (`templates/base.html`): htmx sends the input 250 ms after the last keystroke (`hx-trigger="input changed delay:250ms, search"`, `hx-params="q"`, `hx-sync="this:replace"`, `hx-push-url="false"`) and swaps the fragment into `#search-suggestions`. Alpine 3.14.8 opens and closes the panel and moves focus with ArrowDown and ArrowUp (ArrowUp on the first link returns to the input); Escape closes it and keeps focus in the input. `x-cloak` plus one style rule keeps the panel hidden before Alpine loads.
+  - Without JavaScript the plain form still works: Enter or the Search button submits `/search/`, and the panel stays empty and hidden.
+  - Narrows the brief: section 5's search extras stop here; typo-tolerance extras such as "did you mean" are not built. Search words are not logged and `/search/suggest/` has no rate limit (D53).
+- **Why:** Fast feedback while typing with no new JavaScript files, packages or settings, and the search page's own results are unchanged.

@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 26 (search, with the 26b test follow-up). Next slice: 27 (search-as-you-type UI).
+Phase 1 (scaffold) is done. Phase 2 (catalogue and inventory) is in progress. Last finished slice: 27 (search-as-you-type, 27a and 27b). Next slice: 28 (Phase 2 wrap-up).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -47,6 +47,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
   - `ProductImage.medium` (900 px WebP, migration 0008) is made on save by `apps/catalog/images.py`; `backfill_image_sizes` fills it for existing photos (run once after deploying).
   - `SHOP_FSSAI_LICENCE` shows "FSSAI licence no. ..." only when it is non-empty and the product is our own brand; never invent a number.
 - Search (Slice 26, D53): `apps/catalog/search.py` (`SearchHit`, `SearchBackend`, `normalise_query`, `build_prefix_tsquery`, `PostgresSearchBackend`, `get_search_backend`) behind the `SEARCH_BACKEND` setting; full-text on the `simple` configuration (every query word, last word a prefix), trigram word similarity and `icontains`; the storefront intersects the ranked ids with `visible_products` and sorts them with a database `Case/When`. `/search/` (`product_search`) has the listing filters, relevance sort, pagination, `noindex`, a no-results block and a header search box on every page; migration `0009_enable_pg_trgm` adds `pg_trgm` (no indexes yet).
+- Search-as-you-type (Slice 27, D54): `/search/suggest/` (`search_suggest`) returns an HTML fragment with at most 6 products for a query of 2 or more characters, using the same backend, visibility rule and relevance order as `/search/`, with `noindex` and `no-store`; the header search box asks for it with htmx (250 ms debounce, `hx-sync` replace) and Alpine opens and closes the panel and moves focus with the arrow keys. Without JavaScript the plain form still submits `/search/`. No logging and no rate limit.
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -121,6 +122,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 26 | Search behind an interface: `apps/catalog/search.py`, pg_trgm migration 0009, `/search/` with filters, relevance sort, pagination and `noindex`, header search form; 24 catalog + 20 storefront + 1 JSON-LD view + 2 `cut_meta` tests (1011). D53. |
 | 26 review | Claude ran the 1011 tests on PostgreSQL 16 (ruff, format, mypy and makemigrations clean) and made 21 deliberate breakages: 14 caught. Not caught: exact vs prefix vs weak score order (the order could match by accident, because an exact name always sorts before a longer name that starts with it), the cap on a candidate limit above 200, the hidden `q` input in the filter form. Three more survived because another rule covers them (name_hi and search_keywords `icontains`, brand name in the full-text vector); the Devanagari test therefore does not prove which rule matched. |
 | 26b | Test follow-up: score assertions for the ranking bands, a prefix-before-full-text test with an adversarial name order, the limit cap, the hidden `q` input; no product code changed (1014). |
+| 27a | `/search/suggest/` (`search_suggest`, `SUGGESTION_CANDIDATES = 50`, `SUGGESTION_LIMIT = 6`): an HTML fragment of at most 6 cards from the same backend and visibility rule as `/search/`, empty under 2 characters without touching the backend or the tables, `noindex` and `no-store`; new template `_search_suggestions.html`; 17 tests (1031). |
+| 27b | Header search-as-you-type: htmx request with a 250 ms debounce and `hx-sync`, Alpine open/close and ArrowUp/ArrowDown focus, the `x-cloak` style; 8 tests. D54 and docs. |
 
 ## Remaining Phase 2 slices
 
@@ -137,7 +140,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 24. (done) Filters (HTMX) (D51).
 25. (done) Product detail page (variants, savings, FSSAI info, JSON-LD) (D52).
 26. (done) Search service (PostgreSQL full-text and trigram behind an interface) (D53).
-27. Search-as-you-type UI.
+27. (done) Search-as-you-type UI (D54).
 28. Phase 2 wrap-up (docs, ADRs, README, smoke test, Python recap).
 
 StockReservation stays in Phase 3.
@@ -160,6 +163,7 @@ All four were decided and recorded as ADR D42 in `docs/decisions.md`, together w
 - `Category.clean()` blocks parent cycles only in forms and the admin; a direct `.save()` or `update()` can still create one. The storefront helpers are cycle-safe (D50).
 - Brand options have no counts and do not narrow with the other filters, so a customer can pick a combination with no results; the diet filter offers Vegetarian only; the filter form puts empty fields (`min_price=&max_price=`) into the address; the htmx behaviour (swap, push-url, Back button) has no browser test and was checked by hand. `CategoryTree` reads the whole category table once per request, which is fine for hundreds of categories.
 - Search (D53): there is no GIN index on the search fields yet (the catalogue is small; add one when it grows); `/search/` has no rate limit; there is no "did you mean" suggestion when a typo finds nothing; search words are not logged, so a missing product is invisible to the owner; the brand filter lists every brand with visible products instead of narrowing to the results; relevance ranking is judged only on the tiny seed catalogue.
+- Search-as-you-type (D54): `/search/suggest/` has no rate limit; the dropdown has no browser test (the htmx swap, the focus movement and the Back button were checked by hand); matched letters are not highlighted; an IME composition fires one request per input event, debounced only by the 250 ms delay.
 - The ledger is append-only in Django only (`save`, `delete` and queryset methods); raw SQL can still change rows. A Postgres trigger or a restricted database role is a production hardening step (see `docs/open_questions.md`).
 - Loose-by-weight quantities exist in the ledger and on variants; the cart, orders and reservations (Phase 3) must use decimal quantities too.
 - Operations that touch several rows (the Slice 20 import) lock products first, then variants, each in ascending `pk` order (D43, D47). Slice 21 must keep that order; there is no shared helper for it yet.

@@ -27,6 +27,8 @@
   </script>
   <script defer src="{% static "vendor/htmx/htmx-2.0.4.min.js" %}"></script>
   <script defer src="{% static "vendor/alpine/alpine-3.14.8.min.js" %}"></script>
+  {# x-cloak keeps the suggestion panel hidden until Alpine has loaded. #}
+  <style>[x-cloak] { display: none !important; }</style>
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <a class="sr-only focus:not-sr-only focus:fixed focus:z-50 focus:inline-block focus:p-4 focus:bg-brand-500 focus:text-white focus:rounded focus:outline-none" href="#content">Skip to content</a>
@@ -35,10 +37,15 @@
     <div class="mx-auto max-w-screen-lg px-4 py-4 sm:px-6 lg:px-8">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="text-xl font-semibold text-gray-900 sm:text-2xl">Badshah Store</div>
-        <form role="search" method="get" action="{% url "product_search" %}" class="flex items-center gap-2">
+        {# Alpine opens and closes the suggestion panel and moves focus with the arrow keys. #}
+        <form role="search" method="get" action="{% url "product_search" %}" class="relative flex items-center gap-2" x-data="{ open: false }" @keydown.escape="open = false; $refs.input.focus()" @click.outside="open = false">
           <label for="header-search" class="sr-only">Search products</label>
-          <input id="header-search" type="search" name="q" maxlength="100" value="{{ query|default:"" }}" placeholder="Search products" class="w-40 rounded border border-gray-300 px-2 py-1 text-sm sm:w-56">
+          {# htmx asks /search/suggest/ 250 ms after the last keystroke and swaps the answer into the panel; hx-sync drops a slower, older answer. #}
+          <input id="header-search" type="search" name="q" maxlength="100" value="{{ query|default:"" }}" placeholder="Search products" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="search-suggestions-list" :aria-expanded="open" hx-get="{% url "search_suggest" %}" hx-trigger="input changed delay:250ms, search" hx-target="#search-suggestions" hx-swap="innerHTML" hx-sync="this:replace" hx-push-url="false" hx-params="q" @input="open = $event.target.value.trim().length >= 2" @focus="open = true" @keydown.arrow-down.prevent="$refs.panel.querySelector('a')?.focus()" x-ref="input" class="w-40 rounded border border-gray-300 px-2 py-1 text-sm sm:w-56">
           <button type="submit" class="rounded bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Search</button>
+          {# The panel sits under the form, right-aligned and never wider than a phone screen; x-cloak hides it until Alpine loads. ArrowDown and ArrowUp move between the suggestion links, and ArrowUp on the first one returns to the input. #}
+          <div id="search-suggestions" x-ref="panel" x-show="open" x-cloak aria-live="polite" class="absolute right-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded border border-gray-200 bg-white shadow-lg" @keydown.arrow-down.prevent="$event.target.closest('li')?.nextElementSibling?.querySelector('a')?.focus()" @keydown.arrow-up.prevent="$event.target.closest('li')?.previousElementSibling ? $event.target.closest('li').previousElementSibling.querySelector('a')?.focus() : $refs.input.focus()">
+          </div>
         </form>
         <nav aria-label="Primary" class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
           <a href="{% url "home" %}">Home</a>
