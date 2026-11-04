@@ -7,6 +7,8 @@ Django's action handling and the two messages are exercised.
 
 from __future__ import annotations
 
+import threading
+import time
 from decimal import Decimal
 from typing import Any
 
@@ -14,6 +16,7 @@ import pytest
 from django.contrib import admin as django_admin
 from django.contrib.auth.models import Permission
 from django.core.exceptions import PermissionDenied
+from django.db import connection, transaction
 from django.http import HttpResponse
 from django.test import Client, RequestFactory
 from django.urls import reverse
@@ -21,7 +24,11 @@ from django.urls import reverse
 from apps.accounts.models import User
 from apps.catalog.admin import ProductVariantAdmin
 from apps.catalog.audit import VARIANT_UPDATE_ACTION
-from apps.catalog.loose_marking import LooseMarkingRejected, set_variants_loose
+from apps.catalog.loose_marking import (
+    LooseMarkingRejected,
+    LooseMarkResult,
+    set_variants_loose,
+)
 from apps.catalog.models import ProductVariant
 from apps.catalog.price_update import MAX_VARIANTS
 from apps.catalog.tests.factories import ProductVariantFactory
@@ -216,6 +223,33 @@ def test_one_skipped_variant_does_not_stop_the_others() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The timestamp: save(update_fields=...) must name updated_at too
+# ---------------------------------------------------------------------------
+def test_marking_as_loose_moves_updated_at_forward() -> None:
+    variant = _packet_variant()
+    variant.refresh_from_db()  # read the timestamp the database really stores
+    before = variant.updated_at
+
+    set_variants_loose([variant.pk], loose=True, actor=None)
+
+    variant.refresh_from_db()
+    assert variant.is_sold_loose is True
+    assert variant.updated_at > before
+
+
+def test_marking_as_packet_moves_updated_at_forward() -> None:
+    variant = _loose_variant()
+    variant.refresh_from_db()
+    before = variant.updated_at
+
+    set_variants_loose([variant.pk], loose=False, actor=None)
+
+    variant.refresh_from_db()
+    assert variant.is_sold_loose is False
+    assert variant.updated_at > before
+
+
+# ---------------------------------------------------------------------------
 # The admin action: who may run it
 # ---------------------------------------------------------------------------
 def test_the_actions_are_missing_without_the_change_permission() -> None:
@@ -304,3 +338,64 @@ def test_the_warning_lists_skipped_skus_and_escapes_a_script_tag() -> None:
     assert "Skipped 1 variant(s):" in page
     assert "&lt;script&gt;alert(1)&lt;/script&gt;: Unit PACKET is not kg or litre." in page
     assert "<script>alert(1)</script>" not in page
+
+
+# ---------------------------------------------------------------------------
+# The lock: marking loose must wait for a transaction that holds the variant
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db(transaction=True)
+def test_marking_loose_waits_for_a_lock_held_by_another_transaction() -> None:
+    variant = _packet_variant()
+    variant_pk = variant.pk
+
+    locked = threading.Event()
+    outcome: list[LooseMarkResult] = []
+    errors: list[BaseException] = []
+
+    def hold_the_lock() -> None:
+        """Make the variant loose with step 0.100 while holding the row lock."""
+        try:
+            with transaction.atomic():
+                row = ProductVariant.objects.select_for_update().get(pk=variant_pk)
+                row.is_sold_loose = True
+                row.quantity_step = Decimal("0.100")
+                row.save(update_fields=["is_sold_loose", "quantity_step", "updated_at"])
+                locked.set()  # tell the other thread the lock is held
+                time.sleep(0.5)  # keep it for a moment, so the other thread must wait
+            # Leaving the ``with`` block commits, which releases the lock.
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()  # this thread's own connection
+
+    def mark_while_locked() -> None:
+        """Run the marking: it must block, then find the variant already loose."""
+        try:
+            assert locked.wait(timeout=10)
+            outcome.append(set_variants_loose([variant_pk], loose=True, actor=None))
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    first = threading.Thread(target=hold_the_lock)
+    second = threading.Thread(target=mark_while_locked)
+    first.start()
+    second.start()
+    first.join(timeout=30)
+    second.join(timeout=30)
+
+    assert not errors, errors
+    assert len(outcome) == 1
+
+    # Without the lock, the marking would have read the packet row before the other
+    # transaction committed: it would report a change, write its own step 0.001 and
+    # add an audit row. With the lock it sees the committed loose row and leaves it.
+    assert outcome[0].changed == 0
+    assert outcome[0].unchanged == 1
+    assert outcome[0].skipped == []
+
+    variant.refresh_from_db()
+    assert variant.is_sold_loose is True
+    assert variant.quantity_step == Decimal("0.100")
+    assert AuditLog.objects.count() == 0

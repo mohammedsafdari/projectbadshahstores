@@ -130,6 +130,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 29a | Phase 3 kick-off docs: ADR D55 with the owner's Phase 3 business rules; architecture cutoff changed to 17:00 with next-morning delivery after it; open questions updated (five answered items removed, two rewritten, six Slice 29a items added); no code. |
 | 29b | D55 amendment with the owner's follow-up answers: billing route B and the later in-store POS, khata limits and a tracked balance, 1 g loose steps, 452014 served, and a delivery day with no slot or window; the architecture delivery lines follow; open questions updated; Phase 3 slice draft list added; no code. |
 | 29c | Marking variants loose in bulk: `apps/catalog/loose_marking.py` (`set_variants_loose`, `LooseMarkResult`, `LooseSkip`, `LooseMarkingRejected`), two admin actions on the variant list, `is_sold_loose` and `quantity_step` added to `AUDITED_VARIANT_FIELDS`, 12 new tests in `test_loose_marking.py` and the tuple test updated; D56. |
+| 29c-fix | Two missing tests in `test_loose_marking.py`: `updated_at` moves on loose and on packet marking, and a thread test proving `set_variants_loose` waits for another transaction's row lock (D56). |
 
 ## Remaining Phase 2 slices
 
