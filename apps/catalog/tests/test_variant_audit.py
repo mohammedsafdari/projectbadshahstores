@@ -35,13 +35,15 @@ def _save_in_admin(variant: ProductVariant, user: User, *, change: bool) -> None
     model_admin.save_model(request, variant, cast(Any, None), change)
 
 
-def test_audited_field_list_is_the_five_names_in_order() -> None:
+def test_audited_field_list_is_the_seven_names_in_order() -> None:
     assert AUDITED_VARIANT_FIELDS == (
         "mrp",
         "selling_price",
         "cost_price",
         "gst_rate_percent",
         "is_active",
+        "is_sold_loose",
+        "quantity_step",
     )
 
 

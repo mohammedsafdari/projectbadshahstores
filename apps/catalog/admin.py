@@ -26,6 +26,7 @@ from apps.catalog.audit import (
 from apps.catalog.csv_import import MAX_FILE_BYTES, Issue, parse_variants_csv
 from apps.catalog.csv_import_apply import ImportRejected, apply_import
 from apps.catalog.csv_import_plan import CREATE, UPDATE, RowPlan, build_plan
+from apps.catalog.loose_marking import LooseMarkingRejected, LooseSkip, set_variants_loose
 from apps.catalog.price_update import (
     AMOUNT,
     MAX_VARIANTS,
@@ -69,12 +70,25 @@ IMPORT_PERMISSIONS: tuple[str, ...] = (
 MAX_REPORTED_ISSUES = 200
 MAX_REPORTED_ROWS = 50
 
+# The loose/packet warning lists this many skipped variants; the rest are only counted.
+MAX_REPORTED_SKIPS = 10
+
 # The uploaded file waits here between the preview and the click on Confirm.
 IMPORT_SESSION_KEY = "catalog_import"
 
 IMPORT_TEMPLATE = "admin/catalog/productvariant/import_csv.html"
 
 CHANGE_PRICES_TEMPLATE = "admin/catalog/productvariant/change_prices.html"
+
+
+def _skip_message(skipped: list[LooseSkip]) -> str:
+    """One warning line: up to ten skipped SKUs with reasons, then "and N more"."""
+    shown = skipped[:MAX_REPORTED_SKIPS]
+    # A generator inside join() is lazy: only the shown items are turned into text.
+    lines = "; ".join(f"{item.sku_code}: {item.reason}" for item in shown)
+    extra = len(skipped) - len(shown)
+    more = f"; and {extra} more" if extra > 0 else ""
+    return f"Skipped {len(skipped)} variant(s): {lines}{more}."
 
 
 class ImportCsvForm(Form):
@@ -283,7 +297,7 @@ class ProductVariantAdmin(VariantCsvExportPermissionMixin, admin.ModelAdmin):
     search_fields = ("sku_code", "barcode", "product__name_en", "product__name_hi")
     autocomplete_fields = ("product",)
     list_select_related = ("product",)
-    actions = ["export_csv", "change_prices"]
+    actions = ["export_csv", "change_prices", "mark_sold_loose", "mark_as_packets"]
 
     @admin.action(description="Export the selected variants to CSV", permissions=["export"])
     def export_csv(self, request: HttpRequest, queryset: QuerySet[ProductVariant]) -> HttpResponse:
@@ -385,6 +399,60 @@ class ProductVariantAdmin(VariantCsvExportPermissionMixin, admin.ModelAdmin):
             "can_confirm": can_confirm,
         }
         return TemplateResponse(request, CHANGE_PRICES_TEMPLATE, context)
+
+    # -- "Mark selected variants as sold loose / packets" (Slice 29c, D56) -------
+    @admin.action(description="Mark selected variants as sold loose", permissions=["change"])
+    def mark_sold_loose(
+        self, request: HttpRequest, queryset: QuerySet[ProductVariant]
+    ) -> HttpResponse:
+        return self._mark_loose(request, queryset, loose=True)
+
+    @admin.action(description="Mark selected variants as packets", permissions=["change"])
+    def mark_as_packets(
+        self, request: HttpRequest, queryset: QuerySet[ProductVariant]
+    ) -> HttpResponse:
+        return self._mark_loose(request, queryset, loose=False)
+
+    def _mark_loose(
+        self, request: HttpRequest, queryset: QuerySet[ProductVariant], *, loose: bool
+    ) -> HttpResponse:
+        """Run one loose/packet marking and go back to the changelist.
+
+        There is no intermediate page: the change is easy to undo and needs no preview.
+        """
+        # The action is hidden from users without this permission, but a post can be
+        # forged, and this action writes to every selected row.
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        # Count first: the ids are only loaded when the run is small enough, so a
+        # huge selection is never read into memory.
+        if queryset.count() > MAX_VARIANTS:
+            self.message_user(
+                request,
+                f"Select at most {MAX_VARIANTS} variants per run.",
+                messages.ERROR,
+            )
+            return HttpResponseRedirect(reverse("admin:catalog_productvariant_changelist"))
+
+        selected_pks = list(queryset.values_list("pk", flat=True))
+        try:
+            result = set_variants_loose(selected_pks, loose=loose, actor=audit_actor(request))
+        except LooseMarkingRejected as error:
+            # Nothing was written, so say why and leave the rows alone.
+            self.message_user(request, str(error), messages.ERROR)
+            return HttpResponseRedirect(reverse("admin:catalog_productvariant_changelist"))
+
+        what = "sold loose" if loose else "packets"
+        self.message_user(
+            request,
+            f"Marked {result.changed} variant(s) as {what}; "
+            f"{result.unchanged} were already and are unchanged.",
+            messages.SUCCESS,
+        )
+        if result.skipped:
+            self.message_user(request, _skip_message(result.skipped), messages.WARNING)
+        return HttpResponseRedirect(reverse("admin:catalog_productvariant_changelist"))
 
     # By the time save_model runs, the form has already put the new values on
     # ``obj``, so the old values must be read from the database first. Django's

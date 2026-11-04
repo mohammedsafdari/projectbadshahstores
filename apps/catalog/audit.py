@@ -22,6 +22,8 @@ AUDITED_VARIANT_FIELDS: tuple[str, ...] = (
     "cost_price",
     "gst_rate_percent",
     "is_active",
+    "is_sold_loose",
+    "quantity_step",
 )
 
 VARIANT_UPDATE_ACTION = "VARIANT_UPDATE"

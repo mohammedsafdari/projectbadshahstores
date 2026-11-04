@@ -27,7 +27,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Email provider credentials — recorded default Brevo, console backend in dev — owner when ready
 
 ## Catalog and inventory
-- [ ] Which variants are sold loose by weight (pulses, dry fruits, masalas), and in what smallest step? The owner will send the exact list later and staff will mark the variants in the admin (Slice 29b) — owner; ask again before production data entry; default in use: nothing is loose until `is_sold_loose` is set per variant (D42, D55)
+- [ ] Which variants are sold loose by weight (pulses, dry fruits, masalas), and in what smallest step? The owner will send the exact list later and staff will mark the variants in the admin (Slice 29c) — owner; ask again before production data entry; default in use: nothing is loose until `is_sold_loose` is set per variant (D42, D55)
 - [ ] POS export format for stock/price sync — unknown; planned as one-way CSV import with validation report, plus CSV stock-count adjustment flow — owner (from your billing software); a sample export of about 10 rows is needed by Slice 20 (CSV import); default in use: the website ledger is primary and the billing export is a one-way import
 - [ ] Product/variant seed data: categories, brands, own-brand products at launch — owner/phase-2 data entry
 - [ ] Please give the FSSAI licence number; it goes into the `SHOP_FSSAI_LICENCE` setting and must be set in production before launch — owner; ask again before Phase 7; default in use: not shown
