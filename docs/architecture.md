@@ -12,7 +12,7 @@ Seed values stored in the database, not hardcoded in logic.
 - Free delivery above: ₹500
 - Minimum order: ₹200 on the product subtotal (excludes delivery fee)
 - COD cap: ₹2,000, checked on the order total at checkout only
-- Delivery slot (MVP): single "Same Day" slot with a 17:00 cutoff; an order placed after the cutoff is delivered the next morning (D55)
+- Delivery day (MVP): no slot is shown; an order placed before the 17:00 cutoff is delivered the same day, otherwise the next day, with no time window (D55 amendment)
 - Catalogue size at launch: about 100 SKUs
 
 These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logic reads them from the database; it does not bake them in.
@@ -104,7 +104,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 ### Delivery
 - `DeliveryZone` carries the fee and free-delivery threshold.
 - `PinCodeZone` only links pin codes to a `DeliveryZone`.
-- `DeliverySlotDefinition` holds cutoff and capacity; `DeliverySlotDate` per date.
+- `DeliverySlotDefinition` holds cutoff and capacity; `DeliverySlotDate` per date; not built in the MVP, no slots are shown (D55 amendment).
 - Slot capacity is computed on the fly inside the order-placement transaction with a lock; no cached `orders_count`.
 - `DeliveryAssignment`, `CashSettlement` for COD cash reconciliation.
 

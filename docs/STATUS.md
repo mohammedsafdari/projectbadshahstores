@@ -128,6 +128,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 28a | Search fix: the three trigram rules run only when the longest query word has at least 5 characters (`TRIGRAM_MIN_WORD_LENGTH`, `allows_typo_matching`), so "tea" no longer returns oils or Test Atta; 8 catalog + 2 storefront tests (1049). D53 and D54 amended. |
 | 28b | Phase 2 wrap-up docs: STATUS, open questions, README, `docs/python_recap.md`; D53 and D54 amendments. |
 | 29a | Phase 3 kick-off docs: ADR D55 with the owner's Phase 3 business rules; architecture cutoff changed to 17:00 with next-morning delivery after it; open questions updated (five answered items removed, two rewritten, six Slice 29a items added); no code. |
+| 29b | D55 amendment with the owner's follow-up answers: billing route B and the later in-store POS, khata limits and a tracked balance, 1 g loose steps, 452014 served, and a delivery day with no slot or window; the architecture delivery lines follow; open questions updated; Phase 3 slice draft list added; no code. |
 
 ## Remaining Phase 2 slices
 
@@ -148,6 +149,22 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 28. (done) Phase 2 wrap-up (docs, ADRs, README, smoke test, Python recap).
 
 StockReservation stays in Phase 3.
+
+## Phase 3 slices (draft, Slice 29b)
+
+- 29c: admin action to mark variants sold loose or not loose, with audit rows.
+- 29d: Address model and ShopSettings design with ADRs.
+- 30: phone OTP login behind a provider interface (console backend, rate limits).
+- 31: cart services with decimal quantities (REVIEW CAREFULLY).
+- 32: cart UI with htmx.
+- 33: delivery zones, pin-code check and the delivery-day rule.
+- 34: StockReservation (REVIEW CAREFULLY).
+- 35: Order, OrderItem and the state machine (REVIEW CAREFULLY).
+- 36: checkout with COD, double-submit guard and confirmation page.
+- 37: credit customers, limits, balance and payments (REVIEW CAREFULLY).
+- 38: console notifications, order tracking and Phase 3 wrap-up.
+
+Later, after Phase 7: in-store POS to replace the billing software (D55 amendment).
 
 ## Decided in Slice 15 (kept for reference)
 

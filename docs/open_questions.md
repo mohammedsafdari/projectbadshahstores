@@ -84,11 +84,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
   - Slice 27 default: suggestions are not logged either
 
 ### Added in Slice 29a (Phase 3 answers, D55)
-- [ ] How do website orders reach the billing software, and who issues the GST invoice? — owner; ask again before Slice 34; default in use: staff enter each order into the billing software at packing, the website writes its own `SALE` movement at packing (D43), each stock import recounts, and the website issues the invoice (D55)
-- [ ] What format and frequency does the billing stock export have? — owner; ask again before Slice 34; default in use: a CSV with `sku_code` and on-hand, applied as counts with a validation report (D43, D55)
-- [ ] What is the credit limit for a khata customer, and who records credit payments? — owner; ask again before Slice 36; default in use: only a credit-customer flag, no limit or balance on the website (D55)
-- [ ] What is the minimum loose quantity a customer may order? — owner; ask again before Slice 31; default in use: 0.100 kg with up to 3 decimals (D42, D55)
-- [ ] The shop pin 452014 is not served: do the two served pins (452012 and 453331) share the same delivery fee and minimum-order rules? — owner; ask again before Slice 33; default in use: the same rules for both pins, 452014 not served (D55)
+- [ ] Which billing-software features does the shop use every day (counter billing, purchases, supplier dues, khata for walk-ins, GST return data), and when should an in-store POS replace it? — owner; ask again after Phase 7; default in use: the billing software stays at the counter (D55 amendment)
+- [ ] How do website orders reach the billing software, and who issues the GST invoice? — owner; ask again before Slice 34 (route B keeps the billing software at the counter, D55 amendment); default in use: staff enter each order into the billing software at packing, the website writes its own `SALE` movement at packing (D43), each stock import recounts, and the website issues the invoice (D55)
+- [ ] What format and frequency does the billing stock export have? — owner; ask again before Slice 34 (route B keeps the billing software at the counter, D55 amendment); default in use: a CSV with `sku_code` and on-hand, applied as counts with a validation report (D43, D55)
+- [ ] Who records khata payments, and what starting limit does each credit customer get? — owner; ask again before Slice 37; default in use: staff record payments in the admin and no customer has credit until a limit is set (D55 amendment)
 - [ ] Which delivery windows do customers see (for example "8 am to 12 pm")? — owner; ask again before Slice 33; default in use: an automatic "Today" or "Tomorrow morning" label, no windows (D55)
 
 ## Accounts and access
