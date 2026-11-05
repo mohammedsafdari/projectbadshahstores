@@ -67,6 +67,26 @@ def test_loose_refuses_a_fourth_decimal() -> None:
         check_cart_quantity(_loose(), Decimal("0.0001"))
 
 
+def test_loose_refuses_a_fourth_decimal_that_would_round_to_a_valid_quantity() -> None:
+    # 1.2345 is positive and could round to 1.234, so only the decimal rule
+    # can refuse it. The old 0.0001 test was also refused by the zero rule.
+    with pytest.raises(InvalidCartQuantityError):
+        check_cart_quantity(_loose(), Decimal("1.2345"))
+
+
+def test_packet_refuses_a_fraction_even_if_its_step_is_not_one() -> None:
+    # The database forbids a non-loose variant with a step other than 1, so
+    # this unsaved instance guards the whole-number rule independently of it.
+    packet = ProductVariantFactory.build(
+        is_sold_loose=False,
+        quantity_step=Decimal("0.500"),
+        unit=ProductVariant.Unit.PACKET,
+    )
+
+    with pytest.raises(InvalidCartQuantityError):
+        check_cart_quantity(packet, Decimal("1.5"))
+
+
 def test_loose_refuses_zero() -> None:
     with pytest.raises(InvalidCartQuantityError):
         check_cart_quantity(_loose(), Decimal("0.000"))

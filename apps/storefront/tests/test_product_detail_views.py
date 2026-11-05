@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
 import pytest
+from django.core.cache import cache
+from django.db import connection
 from django.test import Client
+from django.test.utils import CaptureQueriesContext
 
 from apps.catalog.tests.factories import (
     BrandFactory,
@@ -13,6 +17,9 @@ from apps.catalog.tests.factories import (
     ProductFactory,
     ProductVariantFactory,
 )
+from apps.core.models import ShopSettings
+from apps.core.services import get_shop_settings
+from apps.inventory.tests.factories import InventoryMovementFactory
 
 
 @pytest.mark.django_db
@@ -107,19 +114,6 @@ def test_out_of_stock_variant_marked(client: Client) -> None:
     response = client.get(f"/product/{product.slug}/")
     html = response.content.decode()
     assert "Out of stock" in html
-
-
-@pytest.mark.django_db
-def test_add_to_cart_is_disabled_placeholder(client: Client) -> None:
-    brand = BrandFactory(is_active=True)
-    cat = CategoryFactory(is_active=True)
-    product = ProductFactory(brand=brand, category=cat, is_active=True)
-    ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
-    response = client.get(f"/product/{product.slug}/")
-    html = response.content.decode()
-    m = re.search(r"<button[^>]*>Add to cart \(coming soon\)</button>", html)
-    assert m is not None
-    assert "disabled" in m.group(0)
 
 
 @pytest.mark.django_db
@@ -356,3 +350,150 @@ def test_query_count_does_not_grow_with_variants(client: Client) -> None:
     ProductVariantFactory(product=p, is_active=True, selling_price=20, mrp=20)
     response = client.get(f"/product/{p.slug}/")
     assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Cart forms on the product page (Slice 32, D61)
+# ---------------------------------------------------------------------------
+def _product_with_variant(*, stock: str = "10.000", **variant_kwargs):
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    variant = ProductVariantFactory(product=product, is_active=True, **variant_kwargs)
+    if Decimal(stock):
+        InventoryMovementFactory(variant=variant, quantity_change=Decimal(stock))
+    return product, variant
+
+
+@pytest.mark.django_db
+def test_each_variant_has_an_add_to_cart_form_posting_to_cart_add(client: Client) -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    for price in (10, 20):
+        variant = ProductVariantFactory(
+            product=product, is_active=True, selling_price=price, mrp=price
+        )
+        InventoryMovementFactory(variant=variant, quantity_change=Decimal("5.000"))
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert html.count('action="/cart/add/"') == 2
+
+
+@pytest.mark.django_db
+def test_form_contains_the_variant_id_and_no_price_field(client: Client) -> None:
+    product, variant = _product_with_variant(selling_price=10, mrp=10)
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert f'name="variant_id" value="{variant.pk}"' in html
+    assert 'name="price"' not in html
+
+
+@pytest.mark.django_db
+def test_loose_variant_input_uses_the_step_min_and_max(client: Client) -> None:
+    product, _variant = _product_with_variant(
+        is_sold_loose=True,
+        unit="KG",
+        pack_size=Decimal("1.000"),
+        quantity_step=Decimal("0.100"),
+        selling_price=10,
+        mrp=10,
+    )
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert 'step="0.1"' in html
+    assert 'min="0.1"' in html
+    assert 'max="50"' in html
+
+
+@pytest.mark.django_db
+def test_loose_variant_shows_only_presets_that_fit_the_step_and_the_stock(client: Client) -> None:
+    product, variant = _product_with_variant(
+        stock="0.000",
+        is_sold_loose=True,
+        unit="KG",
+        pack_size=Decimal("1.000"),
+        quantity_step=Decimal("0.100"),
+        selling_price=10,
+        mrp=10,
+    )
+    InventoryMovementFactory(variant=variant, quantity_change=Decimal("0.700"))
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert 'data-preset="0.5"' in html
+    assert 'data-preset="0.25"' not in html
+    assert 'data-preset="1"' not in html
+
+
+@pytest.mark.django_db
+def test_packet_variant_shows_a_stepper_and_whole_number_input(client: Client) -> None:
+    product, _variant = _product_with_variant(
+        unit="PACKET", pack_size=Decimal("1.000"), selling_price=10, mrp=10
+    )
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert 'data-stepper="minus"' in html
+    assert 'data-stepper="plus"' in html
+    assert 'step="1"' in html
+    assert 'min="1"' in html
+    assert 'inputmode="numeric"' in html
+
+
+@pytest.mark.django_db
+def test_out_of_stock_variant_has_no_active_add_button(client: Client) -> None:
+    product, _variant = _product_with_variant(stock="0.000", selling_price=10, mrp=10)
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert "Out of stock" in html
+    assert "/cart/add/" not in html
+
+
+@pytest.mark.django_db
+def test_variant_below_the_stock_buffer_has_no_active_add_button(client: Client) -> None:
+    product, variant = _product_with_variant(stock="0.000", selling_price=10, mrp=10)
+    InventoryMovementFactory(variant=variant, quantity_change=Decimal("1.000"))
+    row = ShopSettings.load()
+    row.online_stock_buffer = 2
+    row.save(update_fields=["online_stock_buffer", "updated_at"])
+    cache.clear()
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert "Out of stock" in html
+    assert "/cart/add/" not in html
+
+
+@pytest.mark.django_db
+def test_the_old_coming_soon_button_is_gone(client: Client) -> None:
+    product, _variant = _product_with_variant(selling_price=10, mrp=10)
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert "Add to cart (coming soon)" not in html
+    assert "coming soon" not in html
+
+
+@pytest.mark.django_db
+def test_add_result_region_exists_and_is_a_polite_live_region(client: Client) -> None:
+    product, variant = _product_with_variant(selling_price=10, mrp=10)
+    html = client.get(f"/product/{product.slug}/").content.decode()
+
+    assert re.search(rf'<div id="add-result-{variant.pk}"[^>]*aria-live="polite"', html)
+
+
+@pytest.mark.django_db
+def test_product_detail_query_count_does_not_grow_with_the_number_of_variants(
+    client: Client,
+) -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    ProductVariantFactory(product=product, is_active=True, selling_price=10, mrp=10)
+    get_shop_settings()
+
+    with CaptureQueriesContext(connection) as one:
+        client.get(f"/product/{product.slug}/")
+    for price in (20, 30, 40, 50):
+        ProductVariantFactory(product=product, is_active=True, selling_price=price, mrp=price)
+    with CaptureQueriesContext(connection) as many:
+        client.get(f"/product/{product.slug}/")
+
+    assert len(one.captured_queries) == len(many.captured_queries)

@@ -1,0 +1,4 @@
+{% with count=cart_line_count %}
+  {# Django calls the context processor's callable here, once per render. #}
+  <span id="cart-count" data-count="{{ count }}"{% if oob %} hx-swap-oob="true"{% endif %}>{% if count %}<span class="ml-1 rounded-full bg-brand-500 px-1.5 py-0.5 text-xs font-medium text-white">{{ count }}</span><span class="sr-only"> items in cart</span>{% endif %}</span>
+{% endwith %}

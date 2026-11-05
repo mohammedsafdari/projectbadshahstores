@@ -7,6 +7,8 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.sessions.backends.db import SessionStore
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from apps.cart.rules import (
     InsufficientAvailabilityError,
@@ -221,3 +223,28 @@ def test_read_guest_items_returns_variant_ids_and_decimals_in_order() -> None:
     assert list(items) == [second.pk, first.pk]
     assert items[second.pk] == Decimal("2.000")
     assert items[first.pk] == Decimal("0.500")
+
+
+def test_session_lines_load_product_and_brand_without_extra_queries() -> None:
+    session, store = _session_store()
+    first = _packet()
+    session[GUEST_CART_SESSION_KEY] = {str(first.pk): "1.000"}
+
+    with CaptureQueriesContext(connection) as one:
+        one_lines = store.lines()
+        for line in one_lines:
+            assert line.variant.product.brand.name
+            list(line.variant.product.images.all())
+
+    extras = [_packet() for _ in range(9)]
+    session[GUEST_CART_SESSION_KEY] = {str(variant.pk): "1.000" for variant in [first, *extras]}
+
+    with CaptureQueriesContext(connection) as ten:
+        ten_lines = store.lines()
+        for line in ten_lines:
+            assert line.variant.product.brand.name
+            list(line.variant.product.images.all())
+
+    assert len(one_lines) == 1
+    assert len(ten_lines) == 10
+    assert len(one.captured_queries) == len(ten.captured_queries)

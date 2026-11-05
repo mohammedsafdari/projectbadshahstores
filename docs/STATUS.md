@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Last finished slice: 31 (cart services). Phase 3 (cart and checkout, COD first, per `PROJECT_INSTRUCTIONS.md` section 9) is in progress: the owner's answers are in ADR D55 and its amendment, and the next slice is 32 (cart UI with htmx).
+Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Last finished slice: 32 (cart UI with htmx). Phase 3 (cart and checkout, COD first, per `PROJECT_INSTRUCTIONS.md` section 9) is in progress: the owner's answers are in ADR D55 and its amendment, and the next slice is 33 (delivery zones, pin-code check and the delivery-day rule).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -53,6 +53,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 - Availability and purchasable rules (Slice 31, D60): `apps/inventory/availability.py` (`get_available_quantities`, `get_available_quantity`) gives on-hand minus `ShopSettings.online_stock_buffer`, never below zero, in one grouped ledger query; `apps/catalog/purchasable.py` (`purchasable_variant_ids`) applies the storefront visibility rule with a constant query count and a cycle-safe category walk. Neither imports `storefront`.
 - OTP hardening (Slice 31, D59 amendment): `apps/accounts/otp.py` takes a per-phone PostgreSQL advisory lock (`lock_phone_for_otp`) first inside `request_code` and `verify_code`, and one correct code marks every unused challenge for that phone as consumed. `apps/accounts/views.py` now moves the guest cart into the saved cart on login and shows one generic notice when a line was clamped or dropped.
 - 143 new test functions were added in Slice 31: 11 availability, 10 purchasable, 106 cart (rules, models, DB store, session store, totals and merge) and 16 OTP (10 service, 6 view).
+- Cart UI (Slice 32, D61): `apps/cart/forms.py` (`CartQuantityForm`, `CartRemoveForm`, the strict `^\d{1,6}(\.\d{1,3})?$` text rule), `apps/cart/presentation.py` (all cart and error wording), `apps/cart/views.py` and `apps/cart/urls.py` (`cart_detail`, `cart_add`, `cart_update`, `cart_remove`), `apps/cart/context_processors.py` (lazy `cart_line_count`), and the templates `templates/cart/cart_detail.html`, `_cart_body.html`, `_cart_line.html`, `_add_result.html` and `_header_count.html`. `templates/base.html` now has the real Cart link with the line-count badge and the messages block; `templates/storefront/product_detail.html` has one add form per addable variant with loose presets and a packet stepper, and `apps/storefront/product_detail.py` adds `available`, `can_add`, `is_loose`, `unit_label`, `presets`, `default_quantity` and `max_quantity` from one availability query. htmx mutations return HTTP 200 fragments (errors carry `role="alert"`) and update `#cart-count` out of band; without JavaScript the same forms post and redirect with a message. Checkout is a disabled "Checkout (coming soon)" button until Slice 36.
+- 112 new test functions were added in Slice 32: 99 cart (2 quantity rules, 1 DB store, 1 session store, 11 forms, 8 presentation, 6 context processor, 4 URLs, 18 add, 24 cart page, 17 update and remove, 7 header and messages) and 13 storefront (10 product detail view, 3 product detail service).
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -140,6 +142,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 29f | `accounts.Address` per D57: model with pin code validator and one-active-default partial unique constraint, service with `MAX_ACTIVE_ADDRESSES = 5`, per-user "not found", first-address default, promotion on archive, atomic default switch and a `select_for_update()` on the user in create; 24 tests in `test_addresses.py` (not yet run: the migration is pending). |
 | 30 | Phone OTP login per D59: `accounts.OtpChallenge` (HMAC only; no migration file yet), `apps/accounts/otp.py` (6-digit code, 5-minute validity, 5 tries, 30-second resend, 5 per hour, row lock on verify), `apps/notifications/sms.py` (`SmsBackend`, `ConsoleSmsBackend`, `get_sms_backend`, `SMS_BACKEND`), login/verify/logout views, URLs, mobile-first templates and the header Login/Logout controls; the ShopSettings changelist now opens the one row; the address list gets its default-first order test; 44 tests (not yet run: the migration is pending). |
 | 31 | Cart services per D60: `apps/cart/models.py` (`Cart`, `CartItem`), `apps/cart/stores.py` (database and session stores, guest helpers), `apps/cart/rules.py` (step rules and caps 99/50), `apps/cart/services.py` (add/set/remove/clear, live totals, merge on login), `apps/inventory/availability.py`, `apps/catalog/purchasable.py`, the OTP advisory lock and consume-all rule, and the guest-cart merge in `verify_view`; docs D59 amendment and D60; 143 new tests (not yet run: the cart migration is pending). |
+| 32 | Cart UI per D61: `apps/cart/forms.py`, `apps/cart/presentation.py`, `apps/cart/views.py`, `apps/cart/urls.py`, `apps/cart/context_processors.py` and five templates in `templates/cart/`; the header Cart link, count badge and messages block in `templates/base.html`; add forms, presets and stepper on the product page; `VariantDetail` availability fields and one grouped availability query; 112 new tests (99 cart, 13 storefront). |
 
 ## Remaining Phase 2 slices
 
@@ -169,7 +172,7 @@ StockReservation stays in Phase 3.
 - 29f Address model, services and tests
 - 30: phone OTP login behind a provider interface (console backend, rate limits).
 - 31 (done): cart services with decimal quantities (REVIEW CAREFULLY).
-- 32: cart UI with htmx.
+- 32 (done): cart UI with htmx.
 - 33: delivery zones, pin-code check and the delivery-day rule.
 - 34: StockReservation (REVIEW CAREFULLY).
 - 35: Order, OrderItem and the state machine (REVIEW CAREFULLY).
@@ -304,6 +307,8 @@ Everyday commands (they run inside the container):
 - Trigram similarity is unreliable on words under 5 characters: a 3-letter word has only four trigrams and two of them are the padded start, so "tea" scored 0.5 against "tel" and "test". Gate typo matching by word length (D53, Slice 28).
 - A change inside a nested session dict (`session["guest_cart"][key] = value`) is not saved unless the whole value is reassigned or `session.modified = True` is set: Django compares the session at the start and end of a request and does not notice changes inside a dict it already holds (Slice 31).
 - A promised test count must not use `pytest.mark.parametrize`: one parametrized function is still one test function, so the promised number and the real number drift apart. Write separate functions when the prompt promises a count (Slice 31).
+- htmx 2 does not swap 4xx or 5xx responses, so every form error is an HTTP 200 fragment with `role="alert"`; the no-JavaScript path uses `messages.error` and a redirect instead (Slice 32).
+- A test that uses an input another rule already refuses proves nothing: `0.0001` was rejected by the zero rule, so it never exercised the four-decimal rule. Use `1.2345`, which only the decimal rule can refuse (Slice 32).
 
 ## Slice closeout checklist
 

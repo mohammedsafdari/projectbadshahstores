@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Your cart — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+  <h1 class="text-2xl font-bold text-gray-900">Your cart</h1>
+  {% include "cart/_cart_body.html" %}
+{% endblock content %}

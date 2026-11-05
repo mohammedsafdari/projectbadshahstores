@@ -135,7 +135,10 @@ class DbCartStore(CartStore):
         return [
             StoredLine(variant=item.variant, quantity=item.quantity)
             for item in CartItem.objects.filter(cart__user=self.user)
-            .select_related("variant")
+            # The cart page reads the product, its brand and its photos. One
+            # join plus one prefetch keeps the query count flat per line.
+            .select_related("variant__product__brand")
+            .prefetch_related("variant__product__images")
             .order_by("created_at", "pk")
         ]
 
@@ -192,7 +195,14 @@ class SessionCartStore(CartStore):
         if not items:
             return []
         # One query loads every variant, then the session order is restored.
-        by_id = {variant.pk: variant for variant in ProductVariant.objects.filter(pk__in=items)}
+        by_id = {
+            variant.pk: variant
+            for variant in ProductVariant.objects.filter(pk__in=items)
+            # Same joins as the saved cart so the page costs the same for a
+            # guest and a customer.
+            .select_related("product__brand")
+            .prefetch_related("product__images")
+        }
         return [
             StoredLine(variant=by_id[variant_id], quantity=quantity)
             for variant_id, quantity in items.items()

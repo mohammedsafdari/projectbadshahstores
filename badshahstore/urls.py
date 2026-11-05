@@ -11,6 +11,9 @@ from django.urls import include, path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # The cart prefix must come before the storefront include, because that
+    # include starts with the empty pattern and matches every path.
+    path("cart/", include("apps.cart.urls")),
     path("", include("apps.storefront.urls")),
     path("", include("apps.core.urls")),
     path("account/", include("apps.accounts.urls")),

@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 from django.db import connection, transaction
+from django.test.utils import CaptureQueriesContext
 
 from apps.accounts.models import User
 from apps.cart.models import Cart, CartItem
@@ -338,3 +339,36 @@ def test_two_simultaneous_adds_are_both_counted() -> None:
     assert not errors, errors
     # Without the lock both reads see 1 and the second write wins: 2, not 3.
     assert CartItem.objects.get(pk=item.pk).quantity == Decimal("3.000")
+
+
+# ---------------------------------------------------------------------------
+# Joins for the cart page
+# ---------------------------------------------------------------------------
+def test_lines_load_product_and_brand_without_extra_queries() -> None:
+    user = UserFactory()
+    cart = CartFactory(user=user)
+    store = DbCartStore(user)
+    CartItemFactory(
+        cart=cart, variant=ProductVariantFactory(is_active=True), quantity=Decimal("1.000")
+    )
+
+    with CaptureQueriesContext(connection) as one:
+        one_lines = store.lines()
+        for line in one_lines:
+            assert line.variant.product.brand.name
+            list(line.variant.product.images.all())
+
+    for _ in range(9):
+        CartItemFactory(
+            cart=cart, variant=ProductVariantFactory(is_active=True), quantity=Decimal("1.000")
+        )
+
+    with CaptureQueriesContext(connection) as ten:
+        ten_lines = store.lines()
+        for line in ten_lines:
+            assert line.variant.product.brand.name
+            list(line.variant.product.images.all())
+
+    assert len(one_lines) == 1
+    assert len(ten_lines) == 10
+    assert len(one.captured_queries) == len(ten.captured_queries)

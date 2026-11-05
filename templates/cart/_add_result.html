@@ -1,0 +1,6 @@
+{% if error %}
+  <p role="alert" class="text-red-700">{{ error }}</p>
+{% else %}
+  <p class="text-green-700">{{ message }} <a class="underline" href="{% url "cart_detail" %}">View cart</a></p>
+{% endif %}
+{% include "cart/_header_count.html" with oob=True %}

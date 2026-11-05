@@ -1,0 +1,59 @@
+{% load static %}
+<div data-variant-id="{{ line.variant.pk }}" class="flex gap-4 py-4{% if line.status != "ok" %} bg-gray-50 text-gray-500{% endif %}">
+  <div class="h-16 w-16 shrink-0 bg-gray-100">
+    {% with image=line.variant.product.images.all|first %}
+      {% if image and image.thumbnail %}
+        <img class="h-full w-full object-contain" src="{{ image.thumbnail.url }}" alt="{{ line.variant.product.name_en }}" loading="lazy">
+      {% elif image and image.image %}
+        <img class="h-full w-full object-contain" src="{{ image.image.url }}" alt="{{ line.variant.product.name_en }}" loading="lazy">
+      {% else %}
+        <img class="h-full w-full object-contain" src="{% static "img/product-placeholder.svg" %}" alt="{{ line.variant.product.name_en }}" loading="lazy">
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <div class="min-w-0 flex-1">
+    <a class="text-sm font-medium text-gray-900 hover:text-brand-600" href="{% url "product_detail" line.variant.product.slug %}">{{ line.variant.product.name_en }}</a>
+    <p class="text-xs text-gray-500">{% if line.variant.net_quantity_label %}{{ line.variant.net_quantity_label }}{% else %}{{ line.variant.pack_size|stringformat:"g" }} {{ line.variant.unit|lower }}{% endif %}</p>
+
+    {% if line.status == "unavailable" %}
+      <p class="mt-1 text-xs text-red-700">No longer available. Please remove it.</p>
+    {% elif line.status == "out_of_stock" %}
+      <p class="mt-1 text-xs text-red-700">Out of stock right now. Please remove it.</p>
+    {% elif line.status == "not_enough_stock" %}
+      <p class="mt-1 text-xs text-red-700">Only {{ line.available|stringformat:"g" }} available. Please lower the quantity or remove it.</p>
+    {% elif line.status == "bad_quantity" %}
+      <p class="mt-1 text-xs text-red-700">This quantity is not valid for this item. Please enter a valid amount.</p>
+    {% endif %}
+
+    <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
+      <form method="post" action="{% url "cart_update" %}" class="flex items-end gap-2" x-data="{ qty: '{{ line.quantity|stringformat:"g" }}' }" hx-post="{% url "cart_update" %}" hx-trigger="change" hx-target="#cart-body" hx-swap="outerHTML" hx-sync="closest form:replace">
+        {% csrf_token %}
+        <input type="hidden" name="variant_id" value="{{ line.variant.pk }}">
+        <div>
+          <label class="block text-xs text-gray-600" for="cart-quantity-{{ line.variant.pk }}">Quantity{% if line.variant.is_sold_loose %} ({% if line.variant.unit == "KG" %}kg{% elif line.variant.unit == "L" %}litre{% else %}{{ line.variant.unit|lower }}{% endif %}){% endif %}</label>
+          <div class="mt-1 flex items-center gap-1">
+            {% if not line.variant.is_sold_loose %}
+              <button type="button" data-stepper="minus" @click="qty = Math.max(1, Number(qty) - 1)" aria-label="One less pack" class="rounded border border-gray-300 px-2 py-1 text-sm">−</button>
+            {% endif %}
+            <input id="cart-quantity-{{ line.variant.pk }}" type="number" name="quantity" x-model="qty" value="{{ line.quantity|stringformat:"g" }}" step="{{ line.variant.quantity_step|stringformat:"g" }}" min="{{ line.variant.quantity_step|stringformat:"g" }}" {% if line.variant.is_sold_loose %}max="{{ loose_cap|stringformat:"g" }}" inputmode="decimal"{% else %}max="{{ packet_cap }}" inputmode="numeric"{% endif %} class="w-24 rounded border border-gray-300 px-2 py-1 text-sm">
+            {% if not line.variant.is_sold_loose %}
+              <button type="button" data-stepper="plus" @click="qty = Math.min({{ packet_cap }}, Number(qty) + 1)" aria-label="One more pack" class="rounded border border-gray-300 px-2 py-1 text-sm">+</button>
+            {% endif %}
+          </div>
+        </div>
+        <button type="submit" class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">Update</button>
+      </form>
+
+      <div class="text-right">
+        <p class="text-xs text-gray-500">₹{{ line.unit_price|floatformat:"2" }} each</p>
+        <p class="text-sm font-semibold text-gray-900">₹{{ line.line_total|floatformat:"2" }}</p>
+        <form method="post" action="{% url "cart_remove" %}" class="mt-1" hx-post="{% url "cart_remove" %}" hx-target="#cart-body" hx-swap="outerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="variant_id" value="{{ line.variant.pk }}">
+          <button type="submit" class="text-xs text-red-700 hover:underline">Remove</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

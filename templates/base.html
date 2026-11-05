@@ -50,7 +50,7 @@
         <nav aria-label="Primary" class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
           <a href="{% url "home" %}">Home</a>
           <a href="{% url "product_list" %}">Shop</a>
-          <a href="#">Cart</a>
+          <a href="{% url "cart_detail" %}">Cart{% include "cart/_header_count.html" %}</a>
           {% if user.is_authenticated %}
           {# Logout is a POST, so a link or a prefetch cannot end the session. #}
           <form method="post" action="{% url "account_logout" %}" class="inline">
@@ -64,6 +64,17 @@
       </div>
     </div>
   </header>
+
+  {% if messages %}
+    {# This is also where the login cart-merge notice appears (Slice 31). #}
+    <div role="status" aria-live="polite" class="border-b border-gray-200 bg-gray-50">
+      <ul class="mx-auto max-w-screen-lg space-y-1 px-4 py-3 text-sm sm:px-6 lg:px-8">
+        {% for message in messages %}
+          <li class="message {{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
 
   <main id="content" class="mx-auto max-w-screen-lg px-4 py-8 sm:px-6 lg:px-8">
     {% block content %}{% endblock content %}

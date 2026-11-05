@@ -257,3 +257,78 @@ def test_images_follow_sort_order() -> None:
     )
     detail = get_product_detail(product.slug)
     assert [img.pk for img in detail.images] == [img2.pk, img1.pk]
+
+
+# ---------------------------------------------------------------------------
+# Cart availability on the detail page (Slice 32, D61)
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_variant_detail_has_available_and_can_add() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    variant = ProductVariantFactory(
+        product=product,
+        is_active=True,
+        selling_price=10,
+        mrp=10,
+        unit="PACKET",
+        pack_size=1,
+        quantity_step=1,
+    )
+    receive_stock(variant=variant, quantity=5)
+
+    detail = get_product_detail(product.slug)
+
+    assert detail.variants[0].available == Decimal("5.000")
+    assert detail.variants[0].can_add is True
+
+
+@pytest.mark.django_db
+def test_can_add_is_false_when_available_is_below_the_step() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    variant = ProductVariantFactory(
+        product=product,
+        is_active=True,
+        selling_price=10,
+        mrp=10,
+        unit="KG",
+        pack_size=1,
+        is_sold_loose=True,
+        quantity_step=1,
+    )
+    # 500 g is in the ledger, but this item is sold in 1 kg steps, so there is
+    # nothing the customer may add.
+    receive_stock(variant=variant, quantity=Decimal("0.500"))
+
+    detail = get_product_detail(product.slug)
+
+    assert detail.variants[0].available == Decimal("0.500")
+    assert detail.variants[0].can_add is False
+
+
+@pytest.mark.django_db
+def test_in_stock_is_unchanged_for_json_ld() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    variant = ProductVariantFactory(
+        product=product,
+        is_active=True,
+        selling_price=10,
+        mrp=10,
+        unit="KG",
+        pack_size=1,
+        is_sold_loose=True,
+        quantity_step=1,
+    )
+    receive_stock(variant=variant, quantity=Decimal("0.500"))
+
+    detail = get_product_detail(product.slug)
+
+    # The JSON-LD rule stays "on hand is above zero"; only can_add knows that
+    # the amount is below one whole step.
+    assert detail.variants[0].in_stock is True
+    assert detail.variants[0].can_add is False
