@@ -332,3 +332,64 @@ def test_in_stock_is_unchanged_for_json_ld() -> None:
     # the amount is below one whole step.
     assert detail.variants[0].in_stock is True
     assert detail.variants[0].can_add is False
+
+
+# ---------------------------------------------------------------------------
+# The default quantity (Slice 33, D62)
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_default_quantity_is_one_when_it_fits_the_step_and_the_stock() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+    product = ProductFactory(brand=brand, category=cat, is_active=True)
+    variant = ProductVariantFactory(
+        product=product,
+        is_active=True,
+        selling_price=10,
+        mrp=10,
+        unit="PACKET",
+        pack_size=1,
+        quantity_step=1,
+    )
+    receive_stock(variant=variant, quantity=5)
+
+    detail = get_product_detail(product.slug)
+
+    assert detail.variants[0].default_quantity == Decimal("1")
+
+
+@pytest.mark.django_db
+def test_default_quantity_is_the_step_when_one_does_not_fit() -> None:
+    brand = BrandFactory(is_active=True)
+    cat = CategoryFactory(is_active=True)
+
+    # A step of 0.3 does not divide one, even though the stock is plentiful.
+    odd = ProductFactory(brand=brand, category=cat, is_active=True)
+    odd_variant = ProductVariantFactory(
+        product=odd,
+        is_active=True,
+        selling_price=10,
+        mrp=10,
+        unit="KG",
+        pack_size=1,
+        is_sold_loose=True,
+        quantity_step=Decimal("0.300"),
+    )
+    receive_stock(variant=odd_variant, quantity=2)
+
+    # Half a kilogram is below one whole unit, so the step is the default too.
+    low = ProductFactory(brand=brand, category=cat, is_active=True)
+    low_variant = ProductVariantFactory(
+        product=low,
+        is_active=True,
+        selling_price=20,
+        mrp=20,
+        unit="KG",
+        pack_size=1,
+        is_sold_loose=True,
+        quantity_step=Decimal("0.500"),
+    )
+    receive_stock(variant=low_variant, quantity=Decimal("0.500"))
+
+    assert get_product_detail(odd.slug).variants[0].default_quantity == Decimal("0.300")
+    assert get_product_detail(low.slug).variants[0].default_quantity == Decimal("0.500")

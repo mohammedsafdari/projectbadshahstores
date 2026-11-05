@@ -102,7 +102,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - `Coupon`, `CouponRedemption` with a unique constraint on `(coupon, order)`. Lock the coupon row (`select_for_update`) while checking limits and redeeming.
 
 ### Delivery
-- `DeliveryZone` carries the fee and free-delivery threshold.
+- `DeliveryZone` carries the zone name and an active switch; the fee and free-delivery threshold are shop-wide in `ShopSettings` (D58, D62).
 - `PinCodeZone` only links pin codes to a `DeliveryZone`.
 - `DeliverySlotDefinition` holds cutoff and capacity; `DeliverySlotDate` per date; not built in the MVP, no slots are shown (D55 amendment).
 - Slot capacity is computed on the fly inside the order-placement transaction with a lock; no cached `orders_count`.

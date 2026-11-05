@@ -11,7 +11,9 @@ class UserFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = User
 
-    phone = factory.Sequence(lambda n: f"+9198765432{n:02d}")
+    # A fixed ten-digit base plus the sequence stays a valid Indian number far
+    # beyond the first 100 users in one test run.
+    phone = factory.Sequence(lambda n: f"+91{9876543200 + n}")
     email = factory.LazyFunction(lambda: f"user-{factory.Sequence(lambda n: n)}@example.com")
     full_name = factory.Faker("name")
     role = User.ROLE_MEMBER

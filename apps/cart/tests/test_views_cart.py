@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal
+from html.parser import HTMLParser
 
 import pytest
 from django.core.cache import cache
@@ -12,6 +13,7 @@ from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from apps.accounts.models import Address
 from apps.cart.stores import GUEST_CART_SESSION_KEY
 from apps.cart.tests.factories import CartFactory, CartItemFactory
 from apps.catalog.models import ProductVariant
@@ -88,6 +90,36 @@ def _set_settings(
             "updated_at",
         ]
     )
+
+
+class _CartBodyInspector(HTMLParser):
+    """Records whether the "Check delivery" text sits inside #cart-body."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.div_depth = 0
+        self.cart_body_depth: int | None = None
+        self.delivery_seen = False
+        self.delivery_inside_cart_body = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "div":
+            return
+        # dict() turns the attribute pairs into a lookup table by name.
+        if dict(attrs).get("id") == "cart-body":
+            self.cart_body_depth = self.div_depth
+        self.div_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "div":
+            self.div_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if "Check delivery" not in data:
+            return
+        self.delivery_seen = True
+        if self.cart_body_depth is not None and self.div_depth > self.cart_body_depth:
+            self.delivery_inside_cart_body = True
 
 
 def test_cart_page_is_available_to_a_guest() -> None:
@@ -348,3 +380,119 @@ def test_cart_page_lines_keep_the_order_they_were_added_in() -> None:
 
     order = [int(pk) for pk in re.findall(r'data-variant-id="(\d+)"', html)]
     assert order == [first.pk, second.pk, third.pk]
+
+
+# ---------------------------------------------------------------------------
+# Delivery check box and the Slice 32 review fixes (Slice 33, D62)
+# ---------------------------------------------------------------------------
+def test_cart_page_has_the_delivery_check_box_outside_the_cart_body() -> None:
+    html = Client().get(reverse("cart_detail")).content.decode()
+    inspector = _CartBodyInspector()
+    inspector.feed(html)
+
+    assert inspector.delivery_seen is True
+    assert inspector.delivery_inside_cart_body is False
+
+
+def test_the_delivery_check_box_is_not_part_of_the_htmx_cart_fragment() -> None:
+    variant = _variant()
+    client = Client()
+    _guest_with(client, [(variant, "1.000")])
+
+    response = client.post(
+        reverse("cart_update"),
+        {"variant_id": str(variant.pk), "quantity": "2"},
+        HTTP_HX_REQUEST="true",
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Check delivery" not in html
+    assert 'id="delivery-result"' not in html
+
+
+def test_delivery_box_is_prefilled_with_the_default_address_pin_code_for_a_customer() -> None:
+    user = UserFactory()
+    Address.objects.create(
+        user=user,
+        recipient_name="Asha Sharma",
+        recipient_phone="+919876543210",
+        line1="12, Saifee Nagar",
+        pincode="452012",
+        is_default=True,
+    )
+    Address.objects.create(
+        user=user,
+        recipient_name="Asha Sharma",
+        recipient_phone="+919876543210",
+        line1="1, Another Road",
+        pincode="452099",
+    )
+    client = Client()
+    client.force_login(user)
+
+    html = client.get(reverse("cart_detail")).content.decode()
+
+    assert re.search(r'id="delivery-pincode"[^>]*value="452012"', html)
+
+
+def test_delivery_box_is_empty_for_a_guest() -> None:
+    html = Client().get(reverse("cart_detail")).content.decode()
+
+    assert re.search(r'id="delivery-pincode"[^>]*value=""', html)
+
+
+def test_delivery_box_posts_by_get_to_the_delivery_check_url() -> None:
+    html = Client().get(reverse("cart_detail")).content.decode()
+
+    assert 'method="get"' in html
+    assert 'action="/delivery/check/"' in html
+    assert 'hx-get="/delivery/check/"' in html
+
+
+def test_cart_page_hides_the_free_delivery_hint_when_delivery_is_free() -> None:
+    _set_settings(threshold="500.00")
+    variant = _variant(price="500.00")
+    client = Client()
+    _guest_with(client, [(variant, "1.000")])
+
+    html = client.get(reverse("cart_detail")).content.decode()
+
+    assert "more for free delivery" not in html
+
+
+def test_login_hint_after_an_htmx_update_links_back_to_the_cart_page() -> None:
+    variant = _variant()
+    client = Client()
+    _guest_with(client, [(variant, "1.000")])
+
+    html = client.post(
+        reverse("cart_update"),
+        {"variant_id": str(variant.pk), "quantity": "2"},
+        HTTP_HX_REQUEST="true",
+    ).content.decode()
+
+    assert "/account/login/?next=%2Fcart%2F" in html
+    assert "%2Fcart%2Fupdate%2F" not in html
+
+
+def test_update_form_on_the_cart_page_carries_a_working_csrf_token() -> None:
+    variant = _variant()
+    client = Client(enforce_csrf_checks=True)
+    _guest_with(client, [(variant, "1.000")])
+    html = client.get(reverse("cart_detail")).content.decode()
+    match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', html)
+    assert match is not None
+    token = match.group(1)
+
+    response = client.post(
+        reverse("cart_update"),
+        {
+            "variant_id": str(variant.pk),
+            "quantity": "2",
+            "csrfmiddlewaretoken": token,
+        },
+    )
+
+    assert response.status_code == 302
+    assert client.session[GUEST_CART_SESSION_KEY] == {str(variant.pk): "2.000"}

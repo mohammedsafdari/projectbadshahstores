@@ -10,7 +10,9 @@ from django.core.cache import cache
 from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 
+from apps.cart.stores import GUEST_CART_SESSION_KEY
 from apps.catalog.tests.factories import (
     BrandFactory,
     CategoryFactory,
@@ -497,3 +499,28 @@ def test_product_detail_query_count_does_not_grow_with_the_number_of_variants(
         client.get(f"/product/{product.slug}/")
 
     assert len(one.captured_queries) == len(many.captured_queries)
+
+
+# ---------------------------------------------------------------------------
+# The add form's CSRF token (Slice 33, D62)
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_add_form_on_the_product_page_carries_a_working_csrf_token() -> None:
+    product, variant = _product_with_variant(selling_price=10, mrp=10)
+    client = Client(enforce_csrf_checks=True)
+    html = client.get(f"/product/{product.slug}/").content.decode()
+    match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', html)
+    assert match is not None
+    token = match.group(1)
+
+    response = client.post(
+        reverse("cart_add"),
+        {
+            "variant_id": str(variant.pk),
+            "quantity": "1",
+            "csrfmiddlewaretoken": token,
+        },
+    )
+
+    assert response.status_code == 302
+    assert client.session[GUEST_CART_SESSION_KEY] == {str(variant.pk): "1.000"}

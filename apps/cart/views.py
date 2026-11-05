@@ -17,6 +17,8 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.accounts.models import User
+from apps.accounts.services import list_addresses
 from apps.cart.forms import CartQuantityForm, CartRemoveForm
 from apps.cart.presentation import (
     INVALID_QUANTITY_INPUT,
@@ -102,11 +104,26 @@ def _add_failure(request: HttpRequest, message: str, next_url: str) -> HttpRespo
     return redirect(next_url)
 
 
+def _default_delivery_pincode(request: HttpRequest) -> str:
+    """The pin code of a customer's default address, or "" when there is none.
+
+    ``list_addresses`` already puts the default first. A guest gets an empty
+    box: nothing is checked automatically (D62).
+    """
+    user = request.user
+    if not isinstance(user, User) or not user.is_authenticated:
+        return ""
+    addresses = list_addresses(user)
+    return addresses[0].pincode if addresses else ""
+
+
 @require_GET
 @never_cache
 def cart_detail(request: HttpRequest) -> HttpResponse:
     """The cart page for a guest or a customer."""
-    return render(request, "cart/cart_detail.html", _cart_context(request))
+    context = _cart_context(request)
+    context["delivery_pincode"] = _default_delivery_pincode(request)
+    return render(request, "cart/cart_detail.html", context)
 
 
 @require_POST

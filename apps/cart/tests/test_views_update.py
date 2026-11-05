@@ -247,3 +247,53 @@ def test_update_for_unknown_variant_is_a_clean_error() -> None:
 
     assert response.status_code == 200
     assert 'role="alert"' in response.content.decode()
+
+
+# ---------------------------------------------------------------------------
+# An archived line and the CSRF token (Slice 33, D62)
+# ---------------------------------------------------------------------------
+def test_remove_works_for_a_line_whose_variant_was_archived() -> None:
+    variant = _variant()
+    variant.is_active = False
+    variant.save(update_fields=["is_active", "updated_at"])
+    client = Client()
+    _guest_with(client, [(variant, "1.000")])
+
+    response = _remove(client, variant)
+
+    assert response.status_code == 302
+    assert client.session[GUEST_CART_SESSION_KEY] == {}
+
+
+def test_update_to_zero_works_for_a_line_whose_variant_was_archived() -> None:
+    variant = _variant()
+    variant.is_active = False
+    variant.save(update_fields=["is_active", "updated_at"])
+    client = Client()
+    _guest_with(client, [(variant, "1.000")])
+
+    response = _update(client, variant, "0")
+
+    assert response.status_code == 302
+    assert client.session[GUEST_CART_SESSION_KEY] == {}
+
+
+def test_remove_form_on_the_cart_page_carries_a_working_csrf_token() -> None:
+    variant = _variant()
+    client = Client(enforce_csrf_checks=True)
+    _guest_with(client, [(variant, "1.000")])
+    html = client.get(reverse("cart_detail")).content.decode()
+    match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', html)
+    assert match is not None
+    token = match.group(1)
+
+    response = client.post(
+        reverse("cart_remove"),
+        {
+            "variant_id": str(variant.pk),
+            "csrfmiddlewaretoken": token,
+        },
+    )
+
+    assert response.status_code == 302
+    assert client.session[GUEST_CART_SESSION_KEY] == {}

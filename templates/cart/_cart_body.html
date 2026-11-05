@@ -45,8 +45,11 @@
   {% endif %}
 
   {% if not user.is_authenticated %}
+    {# Build the return link from the named cart URL: inside an htmx fragment
+       request.path is /cart/update/, which only accepts POST. #}
+    {% url "cart_detail" as cart_url %}
     <p class="mt-4 text-sm text-gray-600">
-      <a class="font-medium text-brand-600 hover:text-brand-700" href="{% url "account_login" %}?next={{ request.path|urlencode:"" }}">Log in</a>
+      <a class="font-medium text-brand-600 hover:text-brand-700" href="{% url "account_login" %}?next={{ cart_url|urlencode:"" }}">Log in</a>
       to keep your cart when you come back.
     </p>
   {% endif %}

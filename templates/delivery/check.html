@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Check delivery — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+  <h1 class="text-2xl font-bold text-gray-900">Check delivery</h1>
+  <p class="mt-2 text-sm text-gray-600">Enter your pin code to see when we can deliver.</p>
+
+  <form method="get" action="{% url "delivery_check" %}" class="mt-4 flex flex-wrap items-end gap-2">
+    <div>
+      <label class="block text-xs text-gray-600" for="check-pincode">Pin code</label>
+      <input id="check-pincode" type="text" name="pincode" inputmode="numeric" maxlength="6" pattern="[1-9][0-9]{5}" class="mt-1 w-32 rounded border border-gray-300 px-2 py-1 text-sm">
+    </div>
+    <button type="submit" class="rounded bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600">Check delivery</button>
+  </form>
+
+  <div id="delivery-result" aria-live="polite">
+    {% include "delivery/_check_result.html" %}
+  </div>
+
+  <p class="mt-6 text-sm text-gray-600">
+    <a class="font-medium text-brand-600 hover:text-brand-700" href="{% url "cart_detail" %}">Back to cart</a>
+  </p>
+{% endblock content %}
