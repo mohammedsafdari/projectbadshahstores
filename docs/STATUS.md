@@ -131,6 +131,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 29b | D55 amendment with the owner's follow-up answers: billing route B and the later in-store POS, khata limits and a tracked balance, 1 g loose steps, 452014 served, and a delivery day with no slot or window; the architecture delivery lines follow; open questions updated; Phase 3 slice draft list added; no code. |
 | 29c | Marking variants loose in bulk: `apps/catalog/loose_marking.py` (`set_variants_loose`, `LooseMarkResult`, `LooseSkip`, `LooseMarkingRejected`), two admin actions on the variant list, `is_sold_loose` and `quantity_step` added to `AUDITED_VARIANT_FIELDS`, 12 new tests in `test_loose_marking.py` and the tuple test updated; D56. |
 | 29c-fix | Two missing tests in `test_loose_marking.py`: `updated_at` moves on loose and on packet marking, and a thread test proving `set_variants_loose` waits for another transaction's row lock (D56). |
+| 29d | ADRs for the Phase 3 accounts settings: D57 (`accounts.Address` fields, one default per user by partial unique constraint, 5 active addresses as a service constant, per-user access in a service, pin serviceability outside the model, order address snapshot in Slice 35, no maps) and D58 (`core.ShopSettings` singleton with `load()`, field defaults, non-negative constraints, 60-second `get_shop_settings()` cache, global delivery rules with per-zone overrides as intent, `SHOP_SETTINGS_UPDATE` audit plan for Slice 29e); open questions and the Phase 3 slice list updated; no code. |
 
 ## Remaining Phase 2 slices
 
@@ -155,7 +156,9 @@ StockReservation stays in Phase 3.
 ## Phase 3 slices (draft, Slice 29b)
 
 - 29c: admin action to mark variants sold loose or not loose, with audit rows.
-- 29d: Address model and ShopSettings design with ADRs.
+- 29d ADRs for Address and ShopSettings (docs only)
+- 29e ShopSettings model, admin, cached accessor and audit
+- 29f Address model, services and tests
 - 30: phone OTP login behind a provider interface (console backend, rate limits).
 - 31: cart services with decimal quantities (REVIEW CAREFULLY).
 - 32: cart UI with htmx.

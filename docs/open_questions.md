@@ -90,6 +90,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Who records khata payments, and what starting limit does each credit customer get? — owner; ask again before Slice 37; default in use: staff record payments in the admin and no customer has credit until a limit is set (D55 amendment)
 - [ ] Which delivery windows do customers see (for example "8 am to 12 pm")? — owner; ask again before Slice 33; default in use: an automatic "Today" or "Tomorrow morning" label, no windows (D55)
 
+### Added in Slice 29d
+- [ ] How many saved addresses may one customer keep? — owner; ask again before Slice 29f; default in use: 5 active addresses, a constant in the service (D57)
+- [ ] May a customer save an address in a pin code we do not serve? — owner; ask again before Slice 33; default in use: yes, saving is allowed with a notice in the address list, and checkout refuses that address (D57)
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1
