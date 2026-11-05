@@ -37,6 +37,7 @@ You are the coding agent for Badshah Store, a custom e-commerce site for a retai
 - Admin inlines are built as `MyInline(ParentModel, admin.site)`. Tests must not pass `model=`.
 - Do not unpack values you never use (ruff RUF059) and do not leave unused imports.
 - If an edit or write is rejected, re-read the file and change your approach. Never send the same rejected edit twice. After two failed attempts on one step, stop and report exactly what failed.
+- Guard tests every prompt must include: (a) every `save(update_fields=...)` needs a test that `updated_at` moves; (b) every `select_for_update()` needs a thread lock test in the style of `test_apply_waits_for_a_lock_held_by_another_transaction`; (c) every audit call needs one test that the audit row is written and one that no row is written when nothing changed.
 
 ## Test-writing and layout rules
 - `SomeFactory(...)` already creates and saves the row. Never call `.save()` on its result again. `SomeFactory.build(...)` makes an unsaved object, sub-objects included, so pass already-saved parents in; a `.save()` after `.build(...)` is a real insert.

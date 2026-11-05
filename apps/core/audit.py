@@ -1,19 +1,19 @@
 """The only place AuditLog rows are written (ADR D44).
 
-Callers (admin save_model, CSV import, bulk price update) describe the change
-by passing the old and new field values; this module writes one AuditLog row
-when at least one value changed.
+Callers (admin save_model, CSV import, bulk price update, the ShopSettings
+admin) describe the change by passing the old and new field values; this module
+writes one AuditLog row when at least one value changed.
 """
 
 from collections.abc import Iterable, Mapping
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.db import models
 
-from apps.core.models import AuditLog
+from apps.core.models import SHOP_SETTINGS_PK, AuditLog, ShopSettings
 
 
 class AuditError(ValueError):
@@ -33,9 +33,10 @@ def _clean_value(value: object, *, field: str) -> Any:
     """Normalise a value for JSON, raising AuditError for unsupported types.
 
     JSON has no Decimal type, so ``Decimal`` values become strings like
-    ``"12.50"`` so the stored row is stable and round-trippable. Floats are
-    rejected on purpose (the same reason as D43): money and quantities must stay
-    exact, and a float would lose that exactness the moment it is stored.
+    ``"12.50"`` so the stored row is stable and round-trippable. Dates, datetimes
+    and times become ISO text. Floats are rejected on purpose (the same reason
+    as D43): money and quantities must stay exact, and a float would lose that
+    exactness the moment it is stored.
     """
     # bool is a subclass of int, but we only need to accept it as-is, so a
     # single isinstance check for int is enough where it comes after None and
@@ -50,11 +51,11 @@ def _clean_value(value: object, *, field: str) -> Any:
         return value
     if isinstance(value, Decimal):
         return str(value)
-    if isinstance(value, (datetime, date)):
+    if isinstance(value, (datetime, date, time)):
         return value.isoformat()
     raise AuditError(
         f"Field {field!r} has unsupported type {type(value).__name__!r}; "
-        "only None, bool, int, str, Decimal, date and datetime are allowed."
+        "only None, bool, int, str, Decimal, date, datetime and time are allowed."
     )
 
 
@@ -112,5 +113,63 @@ def record_change(
         target_type=target_type,
         target_id=target_id,
         changes=changed,
+        note=note,
+    )
+
+
+# Every editable ShopSettings field is audited (D58): these values decide what
+# the shop charges, promises and prints, so a change must be as traceable as a
+# price change (D44).
+AUDITED_SHOP_SETTINGS_FIELDS: tuple[str, ...] = (
+    "shop_name",
+    "address",
+    "phone",
+    "email",
+    "gstin",
+    "fssai_number",
+    "fssai_expiry",
+    "grievance_officer_name",
+    "grievance_officer_phone",
+    "grievance_officer_email",
+    "minimum_order_value",
+    "delivery_fee",
+    "free_delivery_threshold",
+    "cod_cap",
+    "same_day_cutoff",
+    "reservation_minutes",
+    "online_stock_buffer",
+    "order_number_prefix",
+    "invoice_number_prefix",
+    "is_published",
+)
+
+SHOP_SETTINGS_UPDATE_ACTION = "SHOP_SETTINGS_UPDATE"
+
+
+def snapshot_shop_settings_from_db() -> dict[str, Any]:
+    """Read the stored audited values of the one settings row.
+
+    Call this BEFORE saving the form, because by then the in-memory instance
+    already holds the new values and only the database still has the old ones.
+    """
+    row = ShopSettings.objects.get(pk=SHOP_SETTINGS_PK)
+    return snapshot(row, AUDITED_SHOP_SETTINGS_FIELDS)
+
+
+def record_shop_settings_change(
+    *,
+    actor: AbstractBaseUser | None,
+    settings_row: ShopSettings,
+    old: Mapping[str, Any],
+    note: str = "",
+) -> AuditLog | None:
+    """Write one AuditLog row when an audited settings field changed, else None."""
+    new = snapshot(settings_row, AUDITED_SHOP_SETTINGS_FIELDS)
+    return record_change(
+        actor=actor,
+        action=SHOP_SETTINGS_UPDATE_ACTION,
+        target=settings_row,
+        old=old,
+        new=new,
         note=note,
     )

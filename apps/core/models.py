@@ -6,9 +6,12 @@ own. Their fields are copied into every model that inherits from them.
 """
 
 from collections.abc import Iterable
+from datetime import time
+from decimal import Decimal
 from typing import Any
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import models
 
 
@@ -110,3 +113,99 @@ class ArchivableModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+# The one ShopSettings row always has this primary key (D58).
+SHOP_SETTINGS_PK = 1
+
+# The cache key that every save clears; get_shop_settings() reads through it.
+SHOP_SETTINGS_CACHE_KEY = "core.shopsettings"
+
+
+class ShopSettings(TimeStampedModel):
+    """The shop-wide settings: exactly one row, always pk 1 (D58).
+
+    Money is ``Decimal``, never float. Every text field may be blank, because
+    the real GSTIN, FSSAI number and addresses come from the owner later and
+    must never be guessed into a public repository.
+    """
+
+    shop_name = models.CharField(max_length=200, blank=True, default="")
+    address = models.TextField(blank=True, default="")
+    phone = models.CharField(max_length=20, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
+    gstin = models.CharField(max_length=15, blank=True, default="")
+    fssai_number = models.CharField(max_length=14, blank=True, default="")
+    fssai_expiry = models.DateField(null=True, blank=True)
+    grievance_officer_name = models.CharField(max_length=200, blank=True, default="")
+    grievance_officer_phone = models.CharField(max_length=20, blank=True, default="")
+    grievance_officer_email = models.EmailField(blank=True, default="")
+    minimum_order_value = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("200.00")
+    )
+    delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("30.00"))
+    free_delivery_threshold = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("500.00")
+    )
+    cod_cap = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("2000.00"))
+    # Stored as a wall-clock time and compared in settings.TIME_ZONE (D58).
+    same_day_cutoff = models.TimeField(default=time(17, 0))
+    reservation_minutes = models.IntegerField(default=15)
+    online_stock_buffer = models.IntegerField(default=0)
+    # Blank means "not configured yet": the Phase 5 number-series slice decides.
+    order_number_prefix = models.CharField(max_length=20, blank=True, default="")
+    invoice_number_prefix = models.CharField(max_length=20, blank=True, default="")
+    is_published = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name_plural = "shop settings"
+        constraints = [
+            # A CheckConstraint on the key makes a second row impossible.
+            models.CheckConstraint(
+                condition=models.Q(pk=SHOP_SETTINGS_PK),
+                name="core_shopsettings_singleton",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(minimum_order_value__gte=0),
+                name="core_shopsettings_minimum_order_value_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(delivery_fee__gte=0),
+                name="core_shopsettings_delivery_fee_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(free_delivery_threshold__gte=0),
+                name="core_shopsettings_free_delivery_threshold_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(cod_cap__gte=0),
+                name="core_shopsettings_cod_cap_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(reservation_minutes__gt=0),
+                name="core_shopsettings_reservation_minutes_gt_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(online_stock_buffer__gte=0),
+                name="core_shopsettings_online_stock_buffer_gte_0",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.shop_name or "Shop settings"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Save the row and drop the cached copy (D58).
+
+        The override holds no business logic: its only job is to make sure no
+        write can leave a stale cache entry behind.
+        """
+        super().save(*args, **kwargs)
+        cache.delete(SHOP_SETTINGS_CACHE_KEY)
+
+    @classmethod
+    def load(cls) -> "ShopSettings":
+        """Return the one row, creating it with the defaults the first time."""
+        # get_or_create returns a pair (object, created); we only need the object.
+        row, _created = cls.objects.get_or_create(pk=SHOP_SETTINGS_PK)
+        return row

@@ -1,10 +1,18 @@
-"""Django admin for the core app: a read-only view of the audit log."""
+"""Django admin for the core app: the audit log and the shop settings."""
 
 from collections.abc import Mapping, Sequence
 
 from django.contrib import admin
+from django.contrib.auth.base_user import AbstractBaseUser
+from django.forms import ModelForm
+from django.http import HttpRequest
 
-from .models import AuditLog
+from .audit import (
+    AUDITED_SHOP_SETTINGS_FIELDS,
+    record_shop_settings_change,
+    snapshot_shop_settings_from_db,
+)
+from .models import AuditLog, ShopSettings
 
 
 # Mapping and Sequence are read-only types, so a dict[str, list[str]] is
@@ -27,6 +35,16 @@ def format_changes(changes: Mapping[str, Sequence[object]]) -> str:
     if len(text) > 120:
         text = text[:117] + "..."
     return text
+
+
+def _audit_actor(request: HttpRequest) -> AbstractBaseUser | None:
+    """The logged-in user behind a request, or None for anything else.
+
+    The isinstance check narrows the type from "user or anonymous user" to a
+    real user for the type checker.
+    """
+    user = getattr(request, "user", None)
+    return user if isinstance(user, AbstractBaseUser) else None
 
 
 @admin.register(AuditLog)
@@ -63,3 +81,39 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         return [f.name for f in self.model._meta.fields]
+
+
+@admin.register(ShopSettings)
+class ShopSettingsAdmin(admin.ModelAdmin):
+    """The one-row settings page: no add, no delete, audited saves (D58)."""
+
+    list_display = ("shop_name", "phone", "is_published", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+
+    # A second row would make "the settings" ambiguous, so the admin cannot add
+    # one; the row must stay for the site to work, so it cannot be deleted.
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def save_model(
+        self,
+        request: HttpRequest,
+        obj: ShopSettings,
+        form: ModelForm,
+        change: bool,
+    ) -> None:
+        # Read the stored values BEFORE the save: the form has already put the
+        # new values on ``obj``, so only the database still has the old ones.
+        old = snapshot_shop_settings_from_db()
+        # ``update_fields`` writes only the named columns, and auto_now touches
+        # ``updated_at`` only when it is named, so list it too (D44, D58).
+        obj.save(update_fields=[*AUDITED_SHOP_SETTINGS_FIELDS, "updated_at"])
+        record_shop_settings_change(
+            actor=_audit_actor(request),
+            settings_row=obj,
+            old=old,
+            note="Shop settings (admin)",
+        )

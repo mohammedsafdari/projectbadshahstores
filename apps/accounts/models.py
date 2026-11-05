@@ -11,9 +11,11 @@ is_staff is True.
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
+from apps.core.models import ArchivableModel, TimeStampedModel
 from apps.core.phone import normalise_phone
 
 
@@ -148,3 +150,57 @@ class User(AbstractBaseUser, PermissionsMixin):
             normalise_phone(self.phone)
         except ValueError as exc:
             raise ValidationError({"phone": str(exc)}) from exc
+
+
+# A pin code is exactly six digits and cannot start with 0 (D57).
+PINCODE_VALIDATOR = RegexValidator(
+    regex=r"^[1-9][0-9]{5}$",
+    message="Enter a six-digit pin code; the first digit cannot be 0.",
+)
+
+
+class Address(TimeStampedModel, ArchivableModel):
+    """One saved delivery address of one customer (D57).
+
+    The customer deletes an address by archiving it; the row is never removed,
+    so a placed order can keep pointing at the copy it froze (Slice 35).
+    """
+
+    class Label(models.TextChoices):
+        HOME = "HOME", "Home"
+        WORK = "WORK", "Work"
+        OTHER = "OTHER", "Other"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="addresses",
+    )
+    recipient_name = models.CharField(max_length=200)
+    # E.164, written by the service through normalise_phone.
+    recipient_phone = models.CharField(max_length=16)
+    # House, flat or building.
+    line1 = models.CharField(max_length=200)
+    # Street or area; optional.
+    line2 = models.CharField(max_length=200, blank=True, default="")
+    landmark = models.CharField(max_length=200, blank=True, default="")
+    city = models.CharField(max_length=100, default="Indore")
+    state = models.CharField(max_length=100, default="Madhya Pradesh")
+    pincode = models.CharField(max_length=6, validators=[PINCODE_VALIDATOR])
+    label = models.CharField(max_length=10, choices=Label, default=Label.HOME)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            # A partial unique constraint: of the rows that match the condition
+            # (active and default), each user may have at most one. Archived
+            # rows are outside the condition, so they never block a new default.
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_default=True, is_active=True),
+                name="accounts_address_one_active_default_per_user",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.recipient_name}: {self.line1}, {self.city} {self.pincode}"
