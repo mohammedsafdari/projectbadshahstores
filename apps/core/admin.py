@@ -1,11 +1,14 @@
 """Django admin for the core app: the audit log and the shop settings."""
 
 from collections.abc import Mapping, Sequence
+from typing import Any
 
 from django.contrib import admin
 from django.contrib.auth.base_user import AbstractBaseUser
+from django.core.exceptions import PermissionDenied
 from django.forms import ModelForm
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.urls import reverse
 
 from .audit import (
     AUDITED_SHOP_SETTINGS_FIELDS,
@@ -94,6 +97,23 @@ class ShopSettingsAdmin(admin.ModelAdmin):
     # one; the row must stay for the site to work, so it cannot be deleted.
     def has_add_permission(self, request) -> bool:
         return False
+
+    def changelist_view(
+        self,
+        request: HttpRequest,
+        extra_context: dict[str, Any] | None = None,
+    ) -> HttpResponse:
+        """There is one row, so skip the list and open its change page.
+
+        ``ShopSettings.load()`` creates the row on a fresh install, which means
+        the first staff visit works without a data migration. The permission
+        check stays explicit: opening this URL needs the change permission.
+        """
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+        row = ShopSettings.load()
+        # reverse() builds the admin URL from the model and pk, never by hand.
+        return HttpResponseRedirect(reverse("admin:core_shopsettings_change", args=[row.pk]))
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return False

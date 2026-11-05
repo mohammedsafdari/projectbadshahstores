@@ -281,3 +281,26 @@ def test_a_staff_user_without_change_permission_gets_403() -> None:
     response = client.get(_change_url(row))
 
     assert response.status_code == 403
+
+
+def test_fresh_install_changelist_creates_the_row_and_redirects_to_its_change_page() -> None:
+    client = _client(_superuser())
+    assert not ShopSettings.objects.exists()
+
+    response = client.get(reverse("admin:core_shopsettings_changelist"))
+
+    assert response.status_code == 302
+    row = ShopSettings.objects.get()
+    assert row.pk == 1
+    assert response["Location"] == _change_url(row)
+
+
+def test_the_change_page_of_the_created_row_opens() -> None:
+    client = _client(_superuser())
+    # Visiting the list creates the row and sends the browser to its page.
+    client.get(reverse("admin:core_shopsettings_changelist"))
+
+    response = client.get(reverse("admin:core_shopsettings_change", args=[1]))
+
+    assert response.status_code == 200
+    assert "Change shop settings" in response.content.decode()

@@ -226,6 +226,10 @@ AUTH_PASSWORD_VALIDATORS = [
 AUTH_USER_MODEL = "accounts.User"
 AUTHENTICATION_BACKENDS = ["apps.accounts.backends.ActiveUserModelBackend"]
 
+# The SMS backend for phone login codes (D59). A dotted path to a class with
+# send_otp(phone, code); the console backend is for development only.
+SMS_BACKEND = env("SMS_BACKEND", default="apps.notifications.sms.ConsoleSmsBackend")
+
 # auth.W004 warns when USERNAME_FIELD is not unique in the database. For this
 # project the phone username is unique only among active users (deactivated
 # accounts may be re-activated with their original phone), so the conditional

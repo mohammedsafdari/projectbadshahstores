@@ -170,6 +170,19 @@ def test_set_default_switches_the_default() -> None:
     assert second.is_default is True
 
 
+def test_list_puts_the_default_first_even_when_it_is_the_newest() -> None:
+    user = _user()
+    first = create_address(user, **_base())
+    second = create_address(user, **_base(line1="99, New Palasia"))
+    set_default_address(user, second.pk)
+
+    result = list_addresses(user)
+
+    # Ordering by pk alone would return the older first address, so this fails
+    # if the default rule is dropped from list_addresses.
+    assert [address.pk for address in result] == [second.pk, first.pk]
+
+
 def test_archiving_the_default_promotes_the_oldest_remaining() -> None:
     user = _user()
     first = create_address(user, **_base())

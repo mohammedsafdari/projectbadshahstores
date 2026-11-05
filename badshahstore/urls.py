@@ -13,6 +13,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("apps.storefront.urls")),
     path("", include("apps.core.urls")),
+    path("account/", include("apps.accounts.urls")),
     # Dev only: serve uploaded files from MEDIA_ROOT. static() returns an empty
     # list when DEBUG is False, so production is unaffected. The * unpacks that
     # list into urlpatterns.

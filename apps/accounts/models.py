@@ -204,3 +204,37 @@ class Address(TimeStampedModel, ArchivableModel):
 
     def __str__(self) -> str:
         return f"{self.recipient_name}: {self.line1}, {self.city} {self.pincode}"
+
+
+class OtpChallenge(models.Model):
+    """One pending phone login code (D59).
+
+    Only an HMAC of the code is stored, never the code itself. ``purpose``
+    exists so other flows (for example a phone change) can reuse the table
+    later; only LOGIN is used today.
+    """
+
+    class Purpose(models.TextChoices):
+        LOGIN = "LOGIN", "Login"
+
+    phone = models.CharField(max_length=16)
+    purpose = models.CharField(max_length=20, choices=Purpose, default=Purpose.LOGIN)
+    # Hex SHA-256 HMAC of "phone:purpose:code" keyed with SECRET_KEY.
+    code_hmac = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            # Rate limits read the newest rows for one phone, so this one
+            # index serves both the "too soon" and "too many per hour" checks.
+            models.Index(
+                fields=["phone", "created_at"],
+                name="accounts_otp_phone_created_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.phone} {self.purpose} {self.created_at}"

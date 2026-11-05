@@ -94,6 +94,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] How many saved addresses may one customer keep? — owner; ask again before Slice 29f; default in use: 5 active addresses, a constant in the service (D57)
 - [ ] May a customer save an address in a pin code we do not serve? — owner; ask again before Slice 33; default in use: yes, saving is allowed with a notice in the address list, and checkout refuses that address (D57)
 
+### Added in Slice 30
+- [ ] OTP policy numbers: codes valid for 5 minutes, 5 wrong tries per challenge, 30 seconds between requests and 5 requests per phone per rolling hour — owner; ask again before launch; default in use: those numbers in `apps/accounts/otp.py` (D59)
+- [ ] Per-IP rate limit and SMS-abuse protection before a real SMS provider is connected — owner/developer; ask again before real SMS; default in use: none, only the per-phone limits (D59)
+- [ ] MSG91 account and DLT registration for the login SMS template — owner/provider; ask again before launch; default in use: the console SMS backend (D59)
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1

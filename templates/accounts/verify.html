@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Enter your code — Badshah Store{% endblock title %}
+
+{% block content %}
+<div class="mx-auto max-w-md">
+  <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">Enter your code</h1>
+  <p class="mt-2 text-sm text-gray-600">
+    We sent a 6-digit code to <span class="font-medium text-gray-900">{{ phone }}</span>.
+  </p>
+
+  {% if messages %}
+  <ul class="mt-4 space-y-2">
+    {% for message in messages %}
+    <li class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ message }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <form method="post" action="{% url "account_verify" %}" class="mt-6 space-y-4">
+    {% csrf_token %}
+    <div>
+      <label for="id_code" class="block text-sm font-medium text-gray-700">{{ form.code.label }}</label>
+      {{ form.code }}
+      {% for error in form.code.errors %}
+      <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    <button type="submit" class="w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+      Log in
+    </button>
+  </form>
+
+  <p class="mt-4 text-sm text-gray-600">
+    <a class="text-brand-600 hover:text-brand-700" href="{% url "account_login" %}">Use another number</a>
+  </p>
+</div>
+{% endblock content %}
