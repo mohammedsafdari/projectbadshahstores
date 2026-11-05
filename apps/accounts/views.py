@@ -18,6 +18,8 @@ from django.views.decorators.http import require_POST
 from apps.accounts.forms import OtpVerifyForm, PhoneLoginForm
 from apps.accounts.models import User
 from apps.accounts.otp import request_code, verify_code
+from apps.cart.services import merge_guest_cart
+from apps.cart.stores import clear_guest_cart, read_guest_items
 
 # The phone waiting for its code, and an optional page to return to after login.
 SESSION_PHONE_KEY = "otp_phone"
@@ -27,6 +29,8 @@ RATE_LIMITED_MESSAGE = _("Too many codes requested for this number. Please try a
 # One generic message for a wrong code and for an account that may not use OTP,
 # so the page never says whether a phone belongs to staff (D59).
 CODE_ERROR_MESSAGE = _("That code is not valid. Please try again.")
+# One notice for any line the merge clamped or dropped, never per item (D60).
+CART_MERGE_MESSAGE = _("Some items in your cart were adjusted to what we have in stock.")
 
 
 def _allowed_next(request: HttpRequest, next_url: str | None) -> str | None:
@@ -104,10 +108,18 @@ def verify_view(request: HttpRequest) -> HttpResponse:
             if result.ok and result.phone is not None:
                 user = _customer_for_login(result.phone)
                 if user is not None:
+                    # Read the guest cart before login(): logging in changes
+                    # the session key, and the merge needs the guest quantities
+                    # as they were before that (D59, D60).
+                    guest_items = read_guest_items(request.session)
                     # Django's login() cycles the session key, so a code used
                     # before login cannot keep the old session (D59).
                     login(request, user)
                     request.session.pop(SESSION_PHONE_KEY, None)
+                    merge = merge_guest_cart(user, guest_items)
+                    clear_guest_cart(request.session)
+                    if merge.needs_notice:
+                        messages.info(request, CART_MERGE_MESSAGE)
                     next_url = _allowed_next(
                         request,
                         request.session.pop(SESSION_NEXT_KEY, None),

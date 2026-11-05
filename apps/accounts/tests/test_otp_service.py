@@ -10,16 +10,19 @@ from __future__ import annotations
 import hmac
 import logging
 import threading
+import time
 from datetime import timedelta
 
 import pytest
-from django.db import connection
+from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.accounts.models import OtpChallenge
 from apps.accounts.otp import (
     MAX_ATTEMPTS,
+    _code_hmac,
     delete_old_challenges,
+    lock_phone_for_otp,
     request_code,
     verify_code,
 )
@@ -69,6 +72,17 @@ def _make_challenge(phone: str, created_at) -> OtpChallenge:
         phone=phone,
         purpose=OtpChallenge.Purpose.LOGIN,
         code_hmac="x" * 64,
+        created_at=created_at,
+        expires_at=created_at + timedelta(minutes=5),
+    )
+
+
+def _valid_challenge(phone: str, code: str, created_at) -> OtpChallenge:
+    """A challenge whose stored HMAC really matches ``code``."""
+    return OtpChallenge.objects.create(
+        phone=phone,
+        purpose=OtpChallenge.Purpose.LOGIN,
+        code_hmac=_code_hmac(phone, OtpChallenge.Purpose.LOGIN, code),
         created_at=created_at,
         expires_at=created_at + timedelta(minutes=5),
     )
@@ -318,3 +332,225 @@ def test_old_challenges_are_deleted() -> None:
     assert deleted == 1
     assert not OtpChallenge.objects.filter(pk=old.pk).exists()
     assert OtpChallenge.objects.filter(pk=recent.pk).exists()
+
+
+# ---------------------------------------------------------------------------
+# Consuming the other challenges (Slice 31)
+# ---------------------------------------------------------------------------
+def test_verify_consumes_every_earlier_unused_challenge() -> None:
+    now = timezone.now()
+    older = _valid_challenge(PHONE, "111111", now - timedelta(minutes=2))
+    newer = _valid_challenge(PHONE, "222222", now)
+
+    result = verify_code(PHONE, "222222")
+
+    assert result.ok is True
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert older.consumed_at is not None
+    assert newer.consumed_at is not None
+
+
+def test_older_code_cannot_log_in_after_a_newer_code_was_used() -> None:
+    now = timezone.now()
+    _valid_challenge(PHONE, "111111", now - timedelta(minutes=2))
+    _valid_challenge(PHONE, "222222", now)
+
+    assert verify_code(PHONE, "222222").ok is True
+
+    old = verify_code(PHONE, "111111")
+    assert old.ok is False
+    assert old.reason == "no_challenge"
+
+
+def test_a_wrong_code_does_not_consume_the_earlier_challenges() -> None:
+    now = timezone.now()
+    older = _valid_challenge(PHONE, "111111", now - timedelta(minutes=2))
+    newer = _valid_challenge(PHONE, "222222", now)
+
+    result = verify_code(PHONE, "999999")
+
+    assert result.ok is False
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert older.consumed_at is None
+    assert newer.consumed_at is None
+
+
+# ---------------------------------------------------------------------------
+# The HMAC covers all three inputs (Slice 31)
+# ---------------------------------------------------------------------------
+def test_code_hmac_changes_with_the_phone() -> None:
+    first = _code_hmac(PHONE, OtpChallenge.Purpose.LOGIN, "123456")
+    second = _code_hmac(OTHER_PHONE, OtpChallenge.Purpose.LOGIN, "123456")
+
+    assert first != second
+
+
+def test_code_hmac_changes_with_the_purpose() -> None:
+    first = _code_hmac(PHONE, OtpChallenge.Purpose.LOGIN, "123456")
+    second = _code_hmac(PHONE, "CHANGE_PHONE", "123456")
+
+    assert first != second
+
+
+def test_code_hmac_changes_with_the_code() -> None:
+    first = _code_hmac(PHONE, OtpChallenge.Purpose.LOGIN, "123456")
+    second = _code_hmac(PHONE, OtpChallenge.Purpose.LOGIN, "123457")
+
+    assert first != second
+
+
+# ---------------------------------------------------------------------------
+# The per-phone advisory lock (Slice 31)
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db(transaction=True)
+def test_request_code_waits_for_the_phone_lock() -> None:
+    locked = threading.Event()
+    errors: list[BaseException] = []
+    results = []
+
+    def hold_the_lock() -> None:
+        try:
+            with transaction.atomic():
+                lock_phone_for_otp(PHONE)
+                # A challenge created by another request while the lock is
+                # held: after the lock, request_code must see it and refuse.
+                _make_challenge(PHONE, timezone.now())
+                locked.set()
+                time.sleep(0.5)
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    def ask_for_a_code() -> None:
+        try:
+            assert locked.wait(timeout=10)
+            results.append(request_code(PHONE))
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    holder = threading.Thread(target=hold_the_lock)
+    asker = threading.Thread(target=ask_for_a_code)
+    holder.start()
+    asker.start()
+    holder.join(timeout=30)
+    asker.join(timeout=30)
+
+    assert not errors, errors
+    assert len(results) == 1
+    # Without the lock this request would read no challenge and send a code.
+    assert results[0].sent is False
+    assert results[0].reason == "too_soon"
+    assert OtpChallenge.objects.filter(phone=PHONE).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_verify_code_waits_for_the_phone_lock() -> None:
+    # An older challenge with a different code already exists.
+    _valid_challenge(PHONE, "111111", timezone.now() - timedelta(minutes=1))
+
+    locked = threading.Event()
+    errors: list[BaseException] = []
+    results = []
+
+    def hold_the_lock() -> None:
+        try:
+            with transaction.atomic():
+                lock_phone_for_otp(PHONE)
+                # A newer challenge with the code the caller will use.
+                _valid_challenge(PHONE, "222222", timezone.now())
+                locked.set()
+                time.sleep(0.5)
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    def check_the_code() -> None:
+        try:
+            assert locked.wait(timeout=10)
+            results.append(verify_code(PHONE, "222222"))
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    holder = threading.Thread(target=hold_the_lock)
+    checker = threading.Thread(target=check_the_code)
+    holder.start()
+    checker.start()
+    holder.join(timeout=30)
+    checker.join(timeout=30)
+
+    assert not errors, errors
+    assert len(results) == 1
+    # Without the lock the caller reads the older challenge and refuses the
+    # code; with the lock it waits and sees the newer challenge.
+    assert results[0].ok is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_two_simultaneous_requests_send_only_one_code() -> None:
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+    results = []
+
+    def ask() -> None:
+        try:
+            barrier.wait(timeout=10)
+            results.append(request_code(PHONE))
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=ask) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not errors, errors
+    assert len(results) == 2
+    assert sum(1 for result in results if result.sent) == 1
+    assert OtpChallenge.objects.filter(phone=PHONE).count() == 1
+    assert len(SENT) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_phone_lock_does_not_block_another_phone() -> None:
+    locked = threading.Event()
+    errors: list[BaseException] = []
+    results = []
+
+    def hold_the_lock() -> None:
+        try:
+            with transaction.atomic():
+                lock_phone_for_otp(PHONE)
+                locked.set()
+                time.sleep(1)
+        except BaseException as exc:  # reported to the test below
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    holder = threading.Thread(target=hold_the_lock)
+    holder.start()
+    try:
+        assert locked.wait(timeout=10)
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                # If the lock were global, acquiring it would wait longer than
+                # this and PostgreSQL would raise instead of sending a code.
+                cursor.execute("SET LOCAL lock_timeout = '250ms'")
+            results.append(request_code(OTHER_PHONE))
+    finally:
+        holder.join(timeout=30)
+
+    assert not errors, errors
+    assert len(results) == 1
+    assert results[0].sent is True

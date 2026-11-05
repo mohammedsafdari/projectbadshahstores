@@ -6,11 +6,18 @@ the code, so the tests can post it back the way a customer would.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
+from django.contrib.messages import get_messages
 from django.test import Client
 from django.urls import reverse
 
 from apps.accounts.models import User
+from apps.accounts.views import CART_MERGE_MESSAGE
+from apps.cart.models import Cart, CartItem
+from apps.catalog.tests.factories import ProductVariantFactory
+from apps.inventory.tests.factories import InventoryMovementFactory
 from apps.notifications.sms import SmsBackend
 
 pytestmark = pytest.mark.django_db
@@ -283,3 +290,87 @@ def test_header_shows_login_when_logged_out_and_logout_when_logged_in() -> None:
     page = client.get(reverse("home")).content.decode()
     assert 'action="/account/logout/"' in page
     assert 'href="/account/login/"' not in page
+
+
+# ---------------------------------------------------------------------------
+# The guest cart on login (Slice 31, D60)
+# ---------------------------------------------------------------------------
+def _variant_with_stock(quantity: str = "10.000"):
+    variant = ProductVariantFactory(is_active=True)
+    InventoryMovementFactory(variant=variant, quantity_change=Decimal(quantity))
+    return variant
+
+
+def _put_guest_cart(client: Client, variant_id: int, quantity: str) -> None:
+    session = client.session
+    session["guest_cart"] = {str(variant_id): quantity}
+    session.save()
+
+
+def test_otp_phone_session_key_is_gone_after_login() -> None:
+    client = Client()
+    _start(client)
+
+    _verify(client, _code())
+
+    assert "otp_phone" not in client.session
+
+
+def test_guest_cart_is_moved_into_the_saved_cart_on_login() -> None:
+    variant = _variant_with_stock()
+    client = Client()
+    _start(client)
+    _put_guest_cart(client, variant.pk, "2.000")
+
+    _verify(client, _code())
+
+    user = User.objects.get(phone=PHONE)
+    item = CartItem.objects.get(cart__user=user)
+    assert item.variant_id == variant.pk
+    assert item.quantity == Decimal("2.000")
+
+
+def test_guest_cart_session_key_is_gone_after_login() -> None:
+    variant = _variant_with_stock()
+    client = Client()
+    _start(client)
+    _put_guest_cart(client, variant.pk, "1.000")
+
+    _verify(client, _code())
+
+    assert "guest_cart" not in client.session
+
+
+def test_login_without_a_guest_cart_creates_no_cart() -> None:
+    client = Client()
+    _start(client)
+
+    _verify(client, _code())
+
+    assert Cart.objects.count() == 0
+
+
+def test_login_shows_a_message_when_the_merge_changed_a_line() -> None:
+    variant = _variant_with_stock("1.000")
+    client = Client()
+    _start(client)
+    _put_guest_cart(client, variant.pk, "2.000")
+
+    response = _verify(client, _code())
+
+    # The redirect target does not render messages, so read the storage this
+    # request queued them in.
+    stored = [str(message) for message in get_messages(response.wsgi_request)]
+    assert str(CART_MERGE_MESSAGE) in stored
+
+
+def test_a_failed_code_keeps_the_guest_cart_in_the_session() -> None:
+    variant = _variant_with_stock()
+    client = Client()
+    _start(client)
+    _put_guest_cart(client, variant.pk, "3.000")
+
+    _verify(client, _wrong_code())
+
+    assert client.session["guest_cart"] == {str(variant.pk): "3.000"}
+    assert not User.objects.exists()

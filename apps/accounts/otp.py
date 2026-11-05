@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.accounts.models import OtpChallenge
@@ -83,6 +83,21 @@ def _code_hmac(phone: str, purpose: str, code: str) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), message, hashlib.sha256).hexdigest()
 
 
+def lock_phone_for_otp(phone: str) -> None:
+    """Take a per-phone advisory lock for the rest of the transaction (D59).
+
+    Two requests for the same phone must queue, or both could pass the resend
+    check and send two codes. ``pg_advisory_xact_lock`` is a PostgreSQL lock
+    that is not tied to a row and is released automatically when the current
+    transaction commits or rolls back, so it must be called inside
+    ``transaction.atomic()``. ``hashtext`` turns the phone string into the
+    integer key the lock function expects.
+    """
+    normalised = normalise_phone(phone)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [f"otp:{normalised}"])
+
+
 def request_code(phone: str) -> OtpRequestResult:
     """Create a challenge and send one SMS, or refuse without sending.
 
@@ -94,6 +109,9 @@ def request_code(phone: str) -> OtpRequestResult:
     purpose = OtpChallenge.Purpose.LOGIN
 
     with transaction.atomic():
+        # Hold the phone lock before the resend check, so two requests at the
+        # same moment cannot both read "no recent challenge" and both send.
+        lock_phone_for_otp(normalised)
         latest = (
             OtpChallenge.objects.filter(phone=normalised, purpose=purpose)
             .order_by("-created_at", "-pk")
@@ -155,6 +173,10 @@ def verify_code(phone: str, code: str) -> OtpVerifyResult:
     purpose = OtpChallenge.Purpose.LOGIN
 
     with transaction.atomic():
+        # The phone lock serialises verification with a new request for the
+        # same phone, so a code cannot be checked against a challenge that a
+        # concurrent request has just replaced.
+        lock_phone_for_otp(normalised)
         challenge = (
             OtpChallenge.objects.select_for_update()
             .filter(
@@ -187,8 +209,15 @@ def verify_code(phone: str, code: str) -> OtpVerifyResult:
             challenge.save(update_fields=fields)
             return OtpVerifyResult(phone=None, reason=REASON_WRONG_CODE)
 
-        challenge.consumed_at = now
-        challenge.save(update_fields=["consumed_at"])
+        # One correct code closes every other unused challenge for this phone,
+        # not only the row just checked: an older code that arrived before a
+        # newer request must never be usable afterwards. One queryset update
+        # does it without a loop.
+        OtpChallenge.objects.filter(
+            phone=normalised,
+            purpose=purpose,
+            consumed_at__isnull=True,
+        ).update(consumed_at=now)
         return OtpVerifyResult(phone=normalised, reason=REASON_OK)
 
 

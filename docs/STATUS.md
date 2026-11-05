@@ -4,7 +4,7 @@ Start here in every new chat. Update this file at the end of every slice (see "S
 
 ## Where we are
 
-Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Last finished slice: 28 (search fix and Phase 2 wrap-up, 28a and 28b). Next: Phase 3 (cart and checkout, COD first), per `PROJECT_INSTRUCTIONS.md` section 9. Phase 3 has started, and the owner's Phase 3 answers are recorded in ADR D55 (Slice 29a, docs only).
+Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Last finished slice: 31 (cart services). Phase 3 (cart and checkout, COD first, per `PROJECT_INSTRUCTIONS.md` section 9) is in progress: the owner's answers are in ADR D55 and its amendment, and the next slice is 32 (cart UI with htmx).
 
 Before every slice, Claude lists the open questions in `docs/open_questions.md` that are due (their "ask again before" point is that slice or earlier) and asks them first, with the default in use. This rule lives here and in `PROJECT_INSTRUCTIONS.md` so every new chat inherits it.
 
@@ -49,6 +49,10 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
   - `SHOP_FSSAI_LICENCE` shows "FSSAI licence no. ..." only when it is non-empty and the product is our own brand; never invent a number.
 - Search (Slice 26, D53): `apps/catalog/search.py` (`SearchHit`, `SearchBackend`, `normalise_query`, `build_prefix_tsquery`, `PostgresSearchBackend`, `get_search_backend`) behind the `SEARCH_BACKEND` setting; full-text on the `simple` configuration (every query word, last word a prefix), trigram word similarity and `icontains`; the storefront intersects the ranked ids with `visible_products` and sorts them with a database `Case/When`. `/search/` (`product_search`) has the listing filters, relevance sort, pagination, `noindex`, a no-results block and a header search box on every page; migration `0009_enable_pg_trgm` adds `pg_trgm` (no indexes yet).
 - Search-as-you-type (Slice 27, D54): `/search/suggest/` (`search_suggest`) returns an HTML fragment with at most 6 products for a query of 2 or more characters, using the same backend, visibility rule and relevance order as `/search/`, with `noindex` and `no-store`; the header search box asks for it with htmx (250 ms debounce, `hx-sync` replace) and Alpine opens and closes the panel and moves focus with the arrow keys. Without JavaScript the plain form still submits `/search/`. No logging and no rate limit.
+- Cart (Slice 31, D60): `apps/cart/models.py` (`Cart`, `CartItem` with a 3-decimal quantity and the named constraints `cart_item_quantity_gt_0` and `cart_item_unique_variant_per_cart`), `apps/cart/stores.py` (`CartStore`, `DbCartStore`, `SessionCartStore`, `get_store`, `read_guest_items`, `clear_guest_cart`), `apps/cart/rules.py` (step-based quantity rules, `MAX_PACKETS_PER_LINE = 99`, `MAX_LOOSE_PER_LINE = 50`, the cart errors) and `apps/cart/services.py` (`add_item`, `set_item_quantity`, `remove_item`, `clear_cart`, `build_cart` with live totals, `merge_guest_cart`). The guest cart lives in the session under `guest_cart` as `{variant_id: "quantity string"}`; a saved cart is one `Cart` row per customer, changed under `select_for_update()` on that row. No views, templates, admin or audit rows yet (Slice 32 is the UI).
+- Availability and purchasable rules (Slice 31, D60): `apps/inventory/availability.py` (`get_available_quantities`, `get_available_quantity`) gives on-hand minus `ShopSettings.online_stock_buffer`, never below zero, in one grouped ledger query; `apps/catalog/purchasable.py` (`purchasable_variant_ids`) applies the storefront visibility rule with a constant query count and a cycle-safe category walk. Neither imports `storefront`.
+- OTP hardening (Slice 31, D59 amendment): `apps/accounts/otp.py` takes a per-phone PostgreSQL advisory lock (`lock_phone_for_otp`) first inside `request_code` and `verify_code`, and one correct code marks every unused challenge for that phone as consumed. `apps/accounts/views.py` now moves the guest cart into the saved cart on login and shows one generic notice when a line was clamped or dropped.
+- 143 new test functions were added in Slice 31: 11 availability, 10 purchasable, 106 cart (rules, models, DB store, session store, totals and merge) and 16 OTP (10 service, 6 view).
 - Everything else in `docs/architecture.md` is target design only; the other app folders are empty shells.
 
 ## Slice log
@@ -135,6 +139,7 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 29e | `core.ShopSettings` per D58: singleton model with named check constraints and `load()`, cached `get_shop_settings()` with `save()` clearing the key, `AUDITED_SHOP_SETTINGS_FIELDS` and `SHOP_SETTINGS_UPDATE` with the audit helper, no-add/no-delete admin whose save takes the snapshot before and writes `updated_at`; 19 tests in `test_shop_settings.py` (not yet run: the migration is pending). |
 | 29f | `accounts.Address` per D57: model with pin code validator and one-active-default partial unique constraint, service with `MAX_ACTIVE_ADDRESSES = 5`, per-user "not found", first-address default, promotion on archive, atomic default switch and a `select_for_update()` on the user in create; 24 tests in `test_addresses.py` (not yet run: the migration is pending). |
 | 30 | Phone OTP login per D59: `accounts.OtpChallenge` (HMAC only; no migration file yet), `apps/accounts/otp.py` (6-digit code, 5-minute validity, 5 tries, 30-second resend, 5 per hour, row lock on verify), `apps/notifications/sms.py` (`SmsBackend`, `ConsoleSmsBackend`, `get_sms_backend`, `SMS_BACKEND`), login/verify/logout views, URLs, mobile-first templates and the header Login/Logout controls; the ShopSettings changelist now opens the one row; the address list gets its default-first order test; 44 tests (not yet run: the migration is pending). |
+| 31 | Cart services per D60: `apps/cart/models.py` (`Cart`, `CartItem`), `apps/cart/stores.py` (database and session stores, guest helpers), `apps/cart/rules.py` (step rules and caps 99/50), `apps/cart/services.py` (add/set/remove/clear, live totals, merge on login), `apps/inventory/availability.py`, `apps/catalog/purchasable.py`, the OTP advisory lock and consume-all rule, and the guest-cart merge in `verify_view`; docs D59 amendment and D60; 143 new tests (not yet run: the cart migration is pending). |
 
 ## Remaining Phase 2 slices
 
@@ -163,7 +168,7 @@ StockReservation stays in Phase 3.
 - 29e ShopSettings model, admin, cached accessor and audit
 - 29f Address model, services and tests
 - 30: phone OTP login behind a provider interface (console backend, rate limits).
-- 31: cart services with decimal quantities (REVIEW CAREFULLY).
+- 31 (done): cart services with decimal quantities (REVIEW CAREFULLY).
 - 32: cart UI with htmx.
 - 33: delivery zones, pin-code check and the delivery-day rule.
 - 34: StockReservation (REVIEW CAREFULLY).
@@ -297,6 +302,8 @@ Everyday commands (they run inside the container):
 - Ranking tests must compare scores, not only the order of names: a name order that is also alphabetical passes by accident (Slice 26). Choose test data whose alphabetical order is the OPPOSITE of the expected rank.
 - Claude's review sandbox needs a real PostgreSQL 16 with the contrib package (the pgserver pip package has no pg_trgm, so every database test errors); install it from the Ubuntu archive.
 - Trigram similarity is unreliable on words under 5 characters: a 3-letter word has only four trigrams and two of them are the padded start, so "tea" scored 0.5 against "tel" and "test". Gate typo matching by word length (D53, Slice 28).
+- A change inside a nested session dict (`session["guest_cart"][key] = value`) is not saved unless the whole value is reassigned or `session.modified = True` is set: Django compares the session at the start and end of a request and does not notice changes inside a dict it already holds (Slice 31).
+- A promised test count must not use `pytest.mark.parametrize`: one parametrized function is still one test function, so the promised number and the real number drift apart. Write separate functions when the prompt promises a count (Slice 31).
 
 ## Slice closeout checklist
 

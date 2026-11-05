@@ -99,6 +99,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Per-IP rate limit and SMS-abuse protection before a real SMS provider is connected — owner/developer; ask again before real SMS; default in use: none, only the per-phone limits (D59)
 - [ ] MSG91 account and DLT registration for the login SMS template — owner/provider; ask again before launch; default in use: the console SMS backend (D59)
 
+### Added in Slice 31
+- [ ] Per-line caps: 99 packets and 50 loose units per cart line — owner; low priority; ask again before launch; default in use: `MAX_PACKETS_PER_LINE = 99` and `MAX_LOOSE_PER_LINE = Decimal("50")` in `apps/cart/rules.py` (D60)
+- [ ] Guest cart lifetime: how long a guest cart should last before it is forgotten — owner; low priority; ask again before launch; default in use: Django's 14-day session age, unchanged (D60)
+- [ ] Deleting saved carts that nobody has touched for a long time — owner; low priority; ask again before launch; default in use: never delete; a clean-up job is needed before production (D60)
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1
