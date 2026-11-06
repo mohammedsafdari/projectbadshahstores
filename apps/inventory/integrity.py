@@ -8,11 +8,14 @@ variant switched from loose to packet later).
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 
+from django.db import models
 from django.db.models import Sum
 from django.db.models.functions import Floor
+from django.utils import timezone
 
-from apps.inventory.models import InventoryMovement
+from apps.inventory.models import InventoryMovement, StockReservation
 
 SEVERITY_ERROR = "ERROR"
 SEVERITY_WARNING = "WARNING"
@@ -117,6 +120,45 @@ def find_integrity_problems() -> list[IntegrityProblem]:
                 message=f"On-hand for variant {row['variant_id']} is {row['total']}, below zero.",
             )
         )
+
+    # 5. Active holds above on-hand. The database allows this because physical
+    # stock is the truth: damage, adjustment and count are never blocked by a
+    # hold (D63). A checkout hold counts only while it has not expired.
+    now = timezone.now()
+    held_rows = (
+        StockReservation.objects.filter(status=StockReservation.Status.ACTIVE)
+        .filter(
+            models.Q(kind=StockReservation.Kind.HELD_FOR_FULFILMENT)
+            | models.Q(
+                kind=StockReservation.Kind.CHECKOUT_PENDING_PAYMENT,
+                expires_at__gt=now,
+            )
+        )
+        .order_by()
+        .values("variant_id", "variant__sku_code")
+        .annotate(total=Sum("quantity"))
+    )
+    on_hand_rows = (
+        InventoryMovement.objects.order_by()
+        .values("variant_id")
+        .annotate(total=Sum("quantity_change"))
+    )
+    on_hand = {row["variant_id"]: row["total"] for row in on_hand_rows}
+    for row in held_rows:
+        stock = on_hand.get(row["variant_id"], Decimal("0"))
+        if row["total"] > stock:
+            problems.append(
+                IntegrityProblem(
+                    code="over_reserved",
+                    severity=SEVERITY_ERROR,
+                    variant_sku=row["variant__sku_code"],
+                    movement_id=None,
+                    message=(
+                        f"Variant {row['variant_id']} has {row['total']} held "
+                        f"but only {stock} on hand."
+                    ),
+                )
+            )
 
     severity_rank = {SEVERITY_ERROR: 0, SEVERITY_WARNING: 1}
     problems.sort(

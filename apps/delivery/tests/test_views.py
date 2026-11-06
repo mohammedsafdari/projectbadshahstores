@@ -154,3 +154,13 @@ def test_the_cutoff_time_is_shown_as_5_00_pm() -> None:
         html = _get(Client(), "452012").content.decode()
 
     assert "5:00 PM" in html
+
+
+def test_the_zone_name_is_escaped_in_the_message() -> None:
+    zone = DeliveryZoneFactory(name="<b>x</b>")
+    PinCodeZoneFactory(zone=zone, pincode="452012")
+
+    html = _get(Client(), "452012").content.decode()
+
+    assert "&lt;b&gt;x&lt;/b&gt;" in html
+    assert "<b>x</b>" not in html

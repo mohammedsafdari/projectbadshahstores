@@ -73,6 +73,26 @@ def _db_cart(user, lines: list[tuple[ProductVariant, str]]) -> None:
         CartItemFactory(cart=cart, variant=variant, quantity=Decimal(quantity))
 
 
+def _form_with_action(html: str, action: str) -> str:
+    """Return the first complete <form> whose action is `action`.
+
+    The cart line has two forms, so a test must look inside the specific one;
+    the first token on the page may belong to the other form (Slice 34).
+    """
+    # re.DOTALL lets "." match newlines inside the form block.
+    pattern = rf'<form[^>]*action="{re.escape(action)}"[^>]*>.*?</form>'
+    match = re.search(pattern, html, re.DOTALL)
+    assert match is not None, f"No form with action {action}."
+    return match.group(0)
+
+
+def _csrf_token_from(form: str) -> str:
+    """Read the CSRF token out of one form block."""
+    match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', form)
+    assert match is not None, "The form has no CSRF token."
+    return match.group(1)
+
+
 def _set_settings(
     delivery_fee: str = "45.00",
     threshold: str = "800.00",
@@ -481,9 +501,12 @@ def test_update_form_on_the_cart_page_carries_a_working_csrf_token() -> None:
     client = Client(enforce_csrf_checks=True)
     _guest_with(client, [(variant, "1.000")])
     html = client.get(reverse("cart_detail")).content.decode()
-    match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', html)
-    assert match is not None
-    token = match.group(1)
+
+    update_form = _form_with_action(html, reverse("cart_update"))
+    remove_form = _form_with_action(html, reverse("cart_remove"))
+    assert "csrfmiddlewaretoken" in update_form
+    assert "csrfmiddlewaretoken" in remove_form
+    token = _csrf_token_from(update_form)
 
     response = client.post(
         reverse("cart_update"),

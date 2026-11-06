@@ -174,3 +174,89 @@ class ExpiringLot(InventoryMovement):
         proxy = True
         verbose_name = "expiring lot"
         verbose_name_plural = "expiring lots"
+
+
+class StockReservation(TimeStampedModel):
+    """A hold on a variant's stock for one checkout group (D63).
+
+    A reservation changes availability only; the stock ledger is untouched
+    until the single ``SALE`` writer consumes the hold at packing (D7).
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        CONSUMED = "CONSUMED", "Consumed"
+        RELEASED = "RELEASED", "Released"
+
+    class Kind(models.TextChoices):
+        CHECKOUT_PENDING_PAYMENT = "CHECKOUT_PENDING_PAYMENT", "Checkout pending payment"
+        HELD_FOR_FULFILMENT = "HELD_FOR_FULFILMENT", "Held for fulfilment"
+
+    variant = models.ForeignKey(
+        "catalog.ProductVariant",
+        on_delete=models.PROTECT,
+        related_name="stock_reservations",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="stock_reservations",
+    )
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    kind = models.CharField(max_length=30, choices=Kind.choices)
+    # There is no order row yet (Slice 35), so the rows of one checkout are
+    # tied together by this UUID. The named index below is the only index on
+    # the column, so the field itself does not ask for a second one.
+    checkout_group = models.UUIDField()
+    expires_at = models.DateTimeField(null=True, blank=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    # The nested Status and Kind names are not visible inside Meta, so the
+    # constraints below use the plain stored strings.
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(
+                fields=["variant", "status"],
+                name="stockreservation_var_stat_idx",
+            ),
+            models.Index(fields=["checkout_group"], name="stockreservation_group_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0),
+                name="stockreservation_quantity_gt_0",
+            ),
+            models.UniqueConstraint(
+                fields=["checkout_group", "variant"],
+                name="stockreservation_unique_variant_per_group",
+            ),
+            # A checkout hold must expire; a fulfilment hold must not.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="CHECKOUT_PENDING_PAYMENT", expires_at__isnull=False)
+                    | models.Q(kind="HELD_FOR_FULFILMENT", expires_at__isnull=True)
+                ),
+                name="stockreservation_expiry_matches_kind",
+            ),
+            # Each timestamp is set exactly when the status says so.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status="CONSUMED", consumed_at__isnull=False)
+                    | (~models.Q(status="CONSUMED") & models.Q(consumed_at__isnull=True))
+                ),
+                name="stockreservation_consumed_at_matches_status",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status="RELEASED", released_at__isnull=False)
+                    | (~models.Q(status="RELEASED") & models.Q(released_at__isnull=True))
+                ),
+                name="stockreservation_released_at_matches_status",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} {self.quantity} {self.variant}"
