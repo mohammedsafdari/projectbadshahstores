@@ -99,7 +99,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 33
 - [ ] Does the shop deliver on its weekly off day and on holidays? — owner; ask again before launch; default in use: every day delivers, with no holiday or weekly-off rule (D62)
-- [ ] Should the pin-code check also appear on the product page? — owner; ask again before Slice 36; default in use: the cart page only (D62)
+- [x] Should the pin-code check also appear on the product page? — answered: no, cart page only (owner chose the default on 7 November 2026).
 
 ### Added in Slice 35
 - [ ] Choose the order-number prefix the shop wants on the website (for example `BS`), set in `ShopSettings.order_number_prefix`; a blank prefix uses `BS` — owner; ask again before launch; default in use: `BS/26-27/000001`, with a new counter each financial year (D64)

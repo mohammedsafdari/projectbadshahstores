@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}{{ text.list_title }} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-bold text-gray-900">{{ text.list_heading }}</h1>
+    {% if not at_limit %}
+      <a href="{% url "address_add" %}" class="rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.add_link }}</a>
+    {% endif %}
+  </div>
+
+  {% if at_limit %}
+    <p role="alert" class="mt-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{{ text.limit_message }}</p>
+  {% endif %}
+
+  {% if cards %}
+    <div class="mt-6 space-y-4">
+      {# Each card is one active address; the included file also prints the badges. #}
+      {% for card in cards %}
+        {% include "accounts/_address_card.html" with card=card text=text %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="mt-6 text-sm text-gray-600">{{ text.empty_message }}</p>
+  {% endif %}
+{% endblock content %}

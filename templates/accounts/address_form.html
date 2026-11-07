@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_edit %}{{ text.edit_title }}{% else %}{{ text.add_title }}{% endif %} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+<div class="mx-auto max-w-lg">
+  <h1 class="text-2xl font-bold text-gray-900">{% if is_edit %}{{ text.edit_heading }}{% else %}{{ text.add_heading }}{% endif %}</h1>
+
+  {% if limit_reached %}
+    <p role="alert" class="mt-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{{ text.limit_message }}</p>
+    <p class="mt-4 text-sm">
+      <a href="{% url "address_list" %}" class="text-brand-600 hover:text-brand-700">{{ text.back_link }}</a>
+    </p>
+  {% else %}
+  <form method="post" action="{% if is_edit %}{% url "address_edit" address.pk %}{% else %}{% url "address_add" %}{% endif %}" class="mt-6 space-y-4">
+    {% csrf_token %}
+    {% if next_url %}
+      <input type="hidden" name="next" value="{{ next_url }}">
+    {% endif %}
+
+    {% for error in form.non_field_errors %}
+      <p class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
+    {% endfor %}
+
+    {# One block per field; the form already holds every label and widget class. #}
+    {% for field in form %}
+      <div>
+        <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ field.label }}</label>
+        {{ field }}
+        {% for error in field.errors %}
+          <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endfor %}
+
+    <div class="flex items-center gap-3">
+      <button type="submit" class="rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.save_button }}</button>
+      <a href="{% url "address_list" %}" class="text-sm text-gray-600 hover:text-brand-600">{{ text.cancel_link }}</a>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock content %}

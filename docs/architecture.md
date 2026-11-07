@@ -34,6 +34,8 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 | `storefront` | Customer-facing templates/views, home, catalogue, product, cart, checkout, order tracking, account. |
 | `adminpanel` | Django admin customizations, actions (CSV import/export, pick list, invoice print, bulk price/stock). |
 
+- `accounts` address book pages: `address_list` `/account/addresses/`, `address_add` `/account/addresses/add/`, `address_edit` `/account/addresses/<int:pk>/edit/`, `address_archive` `/account/addresses/<int:pk>/archive/` and `address_set_default` `/account/addresses/<int:pk>/default/` (D65).
+
 ## 2. Data model
 
 ### Shop settings
