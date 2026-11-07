@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.db import connection, transaction
+from django.test.utils import CaptureQueriesContext
 
 from apps.core.models import NumberSeriesCounter
 from apps.core.numbering import financial_year_label, next_number
@@ -87,6 +88,21 @@ def test_next_number_moves_the_counter_updated_at() -> None:
 
     counter.refresh_from_db()
     assert counter.updated_at > before
+
+
+def test_next_number_locks_the_counter_row() -> None:
+    # The first call creates the counter row, so the measured call updates it.
+    next_number("BS", when=NOW)
+
+    with CaptureQueriesContext(connection) as captured:
+        next_number("BS", when=NOW)
+
+    table = NumberSeriesCounter._meta.db_table
+    # The generator inside any() stops at the first matching query.
+    assert any(
+        "FOR UPDATE" in query["sql"] and table in query["sql"]
+        for query in captured.captured_queries
+    )
 
 
 def test_next_number_does_not_truncate_after_six_digits() -> None:

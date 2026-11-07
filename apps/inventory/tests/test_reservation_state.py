@@ -130,6 +130,19 @@ def test_hold_refuses_expired_rows() -> None:
         hold_for_fulfilment(group, now=NOW)
 
 
+def test_hold_refuses_a_row_that_expires_exactly_now() -> None:
+    group = uuid4()
+    row = _checkout(group, expires_at=NOW)
+
+    with pytest.raises(ReservationExpiredError):
+        hold_for_fulfilment(group, now=NOW)
+
+    row.refresh_from_db()
+    assert row.status == StockReservation.Status.ACTIVE
+    assert row.kind == StockReservation.Kind.CHECKOUT_PENDING_PAYMENT
+    assert row.expires_at == NOW
+
+
 def test_hold_refuses_a_group_with_released_rows() -> None:
     group = uuid4()
     _checkout(group)
@@ -280,6 +293,17 @@ def test_consume_does_not_change_on_hand() -> None:
 def test_expire_releases_expired_checkout_rows() -> None:
     group = uuid4()
     row = _checkout(group, expires_at=NOW - timedelta(minutes=1))
+
+    assert expire_stale_reservations(now=NOW) == 1
+
+    row.refresh_from_db()
+    assert row.status == StockReservation.Status.RELEASED
+    assert row.released_at == NOW
+
+
+def test_expire_releases_a_row_that_expires_exactly_now() -> None:
+    group = uuid4()
+    row = _checkout(group, expires_at=NOW)
 
     assert expire_stale_reservations(now=NOW) == 1
 

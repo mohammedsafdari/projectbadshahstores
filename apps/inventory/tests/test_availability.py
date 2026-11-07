@@ -308,6 +308,8 @@ def test_query_count_with_holds_is_constant_for_one_and_ten_variants() -> None:
         _held(variant, "1.000")
     # Warm the settings cache, so only the two grouped queries are measured.
     get_shop_settings()
+    # The first call after a fresh process can run extra queries, so warm it up.
+    get_available_quantities([variants[0].pk], now=NOW)
 
     with CaptureQueriesContext(connection) as one:
         get_available_quantities([variants[0].pk], now=NOW)

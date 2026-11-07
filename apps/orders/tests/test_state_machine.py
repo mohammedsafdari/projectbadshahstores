@@ -32,6 +32,29 @@ def test_every_transition_target_is_a_known_status() -> None:
     assert set(targets) <= set(Order.Status.values)
 
 
+def test_the_transition_table_is_exactly_this() -> None:
+    # The literal copy is deliberately independent of state.py, so any added or
+    # removed edge fails this test.
+    expected = {
+        "PLACED": ("PAYMENT_PENDING", "CONFIRMED", "CANCELLED"),
+        "PAYMENT_PENDING": ("PAID", "PAYMENT_FAILED", "CANCELLED"),
+        "PAYMENT_FAILED": ("PAYMENT_PENDING", "CANCELLED"),
+        "PAID": ("CONFIRMED", "REFUND_PENDING"),
+        "CONFIRMED": ("PACKING", "CANCELLED"),
+        "PACKING": ("OUT_FOR_DELIVERY", "CANCELLED"),
+        "OUT_FOR_DELIVERY": ("DELIVERED", "CANCELLED"),
+        "DELIVERED": (),
+        "CANCELLED": (),
+        "REFUND_PENDING": ("REFUNDED", "PARTIALLY_REFUNDED"),
+        "REFUNDED": (),
+        "PARTIALLY_REFUNDED": (),
+    }
+    # Comparing sets ignores the order inside each tuple, which is not a rule.
+    actual = {status: set(moves) for status, moves in ALLOWED_TRANSITIONS.items()}
+    wanted = {status: set(moves) for status, moves in expected.items()}
+    assert actual == wanted
+
+
 def test_placed_can_move_to_payment_pending() -> None:
     assert can_transition(PLACED, PAYMENT_PENDING)
 

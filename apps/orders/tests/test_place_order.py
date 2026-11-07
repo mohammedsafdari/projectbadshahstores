@@ -642,6 +642,27 @@ def test_transition_order_cancels_the_order_releases_stock_and_cancels_items() -
     assert item.updated_at > before_item
 
 
+def test_cancel_reason_is_stripped_and_cut_to_200_characters() -> None:
+    user = UserFactory()
+    address = _address(user)
+    _serve()
+    _fill_cart(user, _variant())
+    placed = _place(user, address)
+    reason = "  " + "x" * 250 + "  "
+
+    cancelled = transition_order(
+        placed.order.pk,
+        CANCELLED,
+        actor=user,
+        reason=reason,
+        now=NOW,
+    )
+
+    assert cancelled.cancel_reason == "x" * 200
+    log = OrderStatusLog.objects.filter(order=cancelled, to_status=CANCELLED).get()
+    assert len(log.note) <= 200
+
+
 def test_a_delivered_order_cannot_be_cancelled() -> None:
     order = OrderFactory(status=Order.Status.DELIVERED, delivered_at=NOW)
 
