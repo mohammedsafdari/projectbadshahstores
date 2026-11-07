@@ -61,6 +61,24 @@ def test_integrity_ignores_expired_checkout_holds() -> None:
     assert find_integrity_problems() == []
 
 
+def test_integrity_ignores_released_and_consumed_holds() -> None:
+    variant = _variant_with_stock("1.000")
+    StockReservationFactory(
+        variant=variant,
+        quantity=Decimal("5.000"),
+        status=StockReservation.Status.RELEASED,
+        released_at=timezone.now(),
+    )
+    StockReservationFactory(
+        variant=variant,
+        quantity=Decimal("5.000"),
+        status=StockReservation.Status.CONSUMED,
+        consumed_at=timezone.now(),
+    )
+
+    assert find_integrity_problems() == []
+
+
 def test_check_inventory_integrity_command_prints_the_over_reserved_variant() -> None:
     variant = _variant_with_stock("1.000")
     StockReservationFactory(variant=variant, quantity=Decimal("2.000"))

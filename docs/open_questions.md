@@ -60,7 +60,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 
 ### Added in Slice 20a (CSV import and the billing-software sample)
 Each item says when to ask again. At the start of every slice, Claude lists the items whose "ask again before" point is that slice (or earlier) and asks them first.
-- [ ] Who is the stock master while the shop sells in store and online? — answered (D55, 3 Nov 2026): the billing software is the main stock source, the website is refreshed by regular imports and the physical count happens at the production stage. The mechanism is still open: see the two Slice 29a items below — owner; ask again before Slice 34
+- [x] Who is the stock master while the shop sells in store and online? — answered (D55, 3 Nov 2026; the route and the export confirmed in D63, 6 Nov 2026): the billing software is the main stock source, the website is refreshed by regular imports and the physical count happens at the production stage — owner
 - [ ] Do we need partial files (for example only sku_code and prices)? — owner; low priority; ask again at Slice 21; default in use: every column of the export must be present (D47)
 - [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before Phase 5; default in use: yes, refused, to catch a dropped zero (D47)
 - [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before Phase 5; default in use: own prefix `INV/...` (see the invoice prefix item above)
@@ -85,14 +85,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 29a (Phase 3 answers, D55)
 - [ ] Which billing-software features does the shop use every day (counter billing, purchases, supplier dues, khata for walk-ins, GST return data), and when should an in-store POS replace it? — owner; ask again after Phase 7; default in use: the billing software stays at the counter (D55 amendment)
-- [ ] How do website orders reach the billing software, and who issues the GST invoice? — owner; ask again before Slice 34 (route B keeps the billing software at the counter, D55 amendment); default in use: staff enter each order into the billing software at packing, the website writes its own `SALE` movement at packing (D43), each stock import recounts, and the website issues the invoice (D55) — answered (D63, 6 November 2026): default confirmed; ask again before launch
-- [ ] What format and frequency does the billing stock export have? — owner; ask again before Slice 34 (route B keeps the billing software at the counter, D55 amendment); default in use: a CSV with `sku_code` and on-hand, applied as counts with a validation report (D43, D55) — answered (D63, 6 November 2026): default confirmed; ask again before launch
 - [ ] Who records khata payments, and what starting limit does each credit customer get? — owner; ask again before Slice 37; default in use: staff record payments in the admin and no customer has credit until a limit is set (D55 amendment)
-- [ ] Which delivery windows do customers see (for example "8 am to 12 pm")? — owner; ask again before Slice 33; default in use: an automatic "Today" or "Tomorrow morning" label, no windows (D55)
-
-### Added in Slice 29d
-- [ ] How many saved addresses may one customer keep? — owner; ask again before Slice 29f; default in use: 5 active addresses, a constant in the service (D57)
-- [ ] May a customer save an address in a pin code we do not serve? — owner; ask again before Slice 33; default in use: yes, saving is allowed with a notice in the address list, and checkout refuses that address (D57)
 
 ### Added in Slice 30
 - [ ] OTP policy numbers: codes valid for 5 minutes, 5 wrong tries per challenge, 30 seconds between requests and 5 requests per phone per rolling hour — owner; ask again before launch; default in use: those numbers in `apps/accounts/otp.py` (D59)
@@ -107,6 +100,9 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 ### Added in Slice 33
 - [ ] Does the shop deliver on its weekly off day and on holidays? — owner; ask again before launch; default in use: every day delivers, with no holiday or weekly-off rule (D62)
 - [ ] Should the pin-code check also appear on the product page? — owner; ask again before Slice 36; default in use: the cart page only (D62)
+
+### Added in Slice 35
+- [ ] Choose the order-number prefix the shop wants on the website (for example `BS`), set in `ShopSettings.order_number_prefix`; a blank prefix uses `BS` — owner; ask again before launch; default in use: `BS/26-27/000001`, with a new counter each financial year (D64)
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

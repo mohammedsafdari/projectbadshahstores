@@ -336,3 +336,64 @@ def test_expire_makes_the_stock_available_again() -> None:
     assert expire_stale_reservations(now=NOW + timedelta(minutes=15)) == 1
 
     assert get_available_quantity(variant, now=NOW) == Decimal("5.000")
+
+
+def test_release_moves_updated_at() -> None:
+    row = _row(uuid4())
+    before = row.updated_at
+
+    release_group(row.checkout_group, now=NOW)
+
+    row.refresh_from_db()
+    assert row.updated_at > before
+
+
+def test_consume_moves_updated_at() -> None:
+    row = _row(uuid4())
+    before = row.updated_at
+
+    consume_reservation(row.pk, now=NOW)
+
+    row.refresh_from_db()
+    assert row.updated_at > before
+
+
+def test_expire_moves_updated_at() -> None:
+    row = _checkout(uuid4(), expires_at=NOW - timedelta(minutes=1))
+    before = row.updated_at
+
+    expire_stale_reservations(now=NOW)
+
+    row.refresh_from_db()
+    assert row.updated_at > before
+
+
+def test_release_only_touches_the_given_group() -> None:
+    variant = _variant(stock="5.000")
+    released_group = uuid4()
+    other_group = uuid4()
+    released = _row(released_group, variant=variant, quantity="2.000")
+    other = _row(other_group, variant=variant, quantity="1.000")
+
+    assert release_group(released_group, now=NOW) == 1
+
+    released.refresh_from_db()
+    other.refresh_from_db()
+    assert released.status == StockReservation.Status.RELEASED
+    assert other.status == StockReservation.Status.ACTIVE
+    assert get_available_quantity(variant, now=NOW) == Decimal("4.000")
+
+
+def test_hold_refuses_a_group_with_a_consumed_row() -> None:
+    group = uuid4()
+    active = _checkout(group)
+    consumed = _checkout(group, status=StockReservation.Status.CONSUMED)
+
+    with pytest.raises(ReservationStateError):
+        hold_for_fulfilment(group, now=NOW)
+
+    active.refresh_from_db()
+    consumed.refresh_from_db()
+    assert active.status == StockReservation.Status.ACTIVE
+    assert active.kind == StockReservation.Kind.CHECKOUT_PENDING_PAYMENT
+    assert consumed.status == StockReservation.Status.CONSUMED

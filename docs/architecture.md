@@ -81,11 +81,12 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - Substitutions: keep the original line with status `SUBSTITUTED` and add a new line with a `replaces` link; the substitute is charged at its current selling price with GST recomputed; the customer chooses a substitution preference at checkout (`substitute / refund / call me`).
 - At end of packing the order is finalised: unfulfilled quantities are cancelled, reservations released, and a refund or adjustment made.
 - One order = one invoice.
+- `Order.checkout_group` is unique and adopts the stock-reservation group, so one checkout can create at most one order. Placing a COD order freezes the address and money, writes the order and items, writes `"" → PLACED` and `PLACED → CONFIRMED` log rows and clears the cart in one transaction (D64).
 
 ### Numbering
 - `NumberSeriesCounter` keyed by `(prefix, financial_year)`, incremented inside a locked transaction (`select_for_update`); no reset job.
 - Financial-year label: `start = year if month >= 4 else year - 1`; `label = f"{start % 100:02d}-{(start + 1) % 100:02d}"` (e.g. `26-27`). Tests for Mar 31, Apr 1, Dec 31.
-- Order numbers: `BS/26-27/000001`.
+- Order numbers: `BS/26-27/000001`. `next_number(prefix, when)` locks the counter row inside the order transaction; a blank `ShopSettings.order_number_prefix` falls back to `BS` (D64).
 - Invoice numbers: `INV/26-27/000001`; max 16 characters (GST rule, to be confirmed by CA); sequential and gapless.
 
 ### Invoices and refunds

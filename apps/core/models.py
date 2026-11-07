@@ -209,3 +209,33 @@ class ShopSettings(TimeStampedModel):
         # get_or_create returns a pair (object, created); we only need the object.
         row, _created = cls.objects.get_or_create(pk=SHOP_SETTINGS_PK)
         return row
+
+
+class NumberSeriesCounter(TimeStampedModel):
+    """The last number used for one prefix in one financial year (D14, D64).
+
+    The row is created on first use and then locked with ``select_for_update()``
+    in ``apps/core/numbering.py``, so two orders can never take the same number.
+    The prefix is a parameter, not a constant, so invoices can reuse the table.
+    """
+
+    prefix = models.CharField(max_length=20)
+    # The label looks like "26-27" (see financial_year_label).
+    financial_year = models.CharField(max_length=5)
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            # One counter per prefix and financial year.
+            models.UniqueConstraint(
+                fields=["prefix", "financial_year"],
+                name="numberseries_unique_prefix_year",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(last_number__gte=0),
+                name="numberseries_last_number_gte_0",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.prefix}/{self.financial_year}: {self.last_number}"
