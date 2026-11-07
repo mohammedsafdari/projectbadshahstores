@@ -34,8 +34,10 @@
       {% if not cart.minimum_order_met %}
         <p class="mt-2 text-xs text-gray-600">Minimum order is ₹{{ cart.minimum_order_value|floatformat:"2" }}. Add ₹{{ cart.amount_short_of_minimum|floatformat:"2" }} more.</p>
       {% endif %}
-      {# Checkout arrives in Slice 36; no checkout URL is linked before then. #}
-      <button type="button" disabled class="mt-4 w-full rounded bg-gray-300 px-3 py-2 text-sm font-medium text-gray-600">Checkout (coming soon)</button>
+      {# Checkout is offered only when the same cart rules say it is ready (D66). #}
+      {% if cart.checkout_ready %}
+        <a data-checkout-link href="{% url "checkout" %}" class="mt-4 block w-full rounded bg-brand-500 px-3 py-2 text-center text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Checkout</a>
+      {% endif %}
     </div>
   {% else %}
     <div class="mt-4 rounded border border-gray-200 bg-white p-6">

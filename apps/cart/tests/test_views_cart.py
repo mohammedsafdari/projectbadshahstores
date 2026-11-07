@@ -286,8 +286,7 @@ def test_checkout_is_not_offered_yet() -> None:
 
     html = client.get(reverse("cart_detail")).content.decode()
 
-    assert "Checkout (coming soon)" in html
-    assert "disabled" in html
+    assert "coming soon" not in html
     assert "/checkout/" not in html
 
 

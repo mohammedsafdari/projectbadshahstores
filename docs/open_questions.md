@@ -104,6 +104,9 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 ### Added in Slice 35
 - [ ] Choose the order-number prefix the shop wants on the website (for example `BS`), set in `ShopSettings.order_number_prefix`; a blank prefix uses `BS` — owner; ask again before launch; default in use: `BS/26-27/000001`, with a new counter each financial year (D64)
 
+### Added in Slice 36
+- [ ] Should a customer get an SMS or WhatsApp message when an order is placed? — owner; ask again before Slice 38; default in use: none, the confirmation page only
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1

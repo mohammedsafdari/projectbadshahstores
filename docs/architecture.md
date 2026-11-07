@@ -84,6 +84,7 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - At end of packing the order is finalised: unfulfilled quantities are cancelled, reservations released, and a refund or adjustment made.
 - One order = one invoice.
 - `Order.checkout_group` is unique and adopts the stock-reservation group, so one checkout can create at most one order. Placing a COD order freezes the address and money, writes the order and items, writes `"" → PLACED` and `PLACED → CONFIRMED` log rows and clears the cart in one transaction (D64).
+- Checkout pages (D66): `checkout` at `/checkout/` (GET and POST) and `order_confirmation` at `/checkout/done/<uuid:group>/` (GET). The first GET stores a UUID in `request.session["checkout_group"]` and the form carries it back; a repeated group returns the same order's confirmation instead of a second order, and the confirmation is visible only to the order's owner.
 
 ### Numbering
 - `NumberSeriesCounter` keyed by `(prefix, financial_year)`, incremented inside a locked transaction (`select_for_update`); no reset job.

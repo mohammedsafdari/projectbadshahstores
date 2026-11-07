@@ -385,6 +385,22 @@ def get_user_order(user: User, order_id: int) -> Order:
     return order
 
 
+def get_user_order_by_group(user: User, group: UUID) -> Order:
+    """One order of this customer by its checkout group (D66).
+
+    The confirmation page uses this instead of the id or the order number: the
+    number contains slashes, and the group is already unique on the model.
+    """
+    order = (
+        Order.objects.filter(user=user, checkout_group=group)
+        .prefetch_related("items", "status_logs")
+        .first()
+    )
+    if order is None:
+        raise OrderNotFoundError("Order not found.")
+    return order
+
+
 def list_user_orders(user: User):
     """This customer's orders, newest first (the model's default order)."""
     return Order.objects.filter(user=user)

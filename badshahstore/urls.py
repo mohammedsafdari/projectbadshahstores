@@ -14,6 +14,9 @@ urlpatterns = [
     # The cart prefix must come before the storefront include, because that
     # include starts with the empty pattern and matches every path.
     path("cart/", include("apps.cart.urls")),
+    # Checkout also starts with a fixed prefix, so it must come before the
+    # storefront include for the same reason as the cart.
+    path("checkout/", include("apps.orders.urls")),
     path("delivery/", include("apps.delivery.urls")),
     path("", include("apps.storefront.urls")),
     path("", include("apps.core.urls")),

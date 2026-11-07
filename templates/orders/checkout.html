@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}{{ text.checkout_title }} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+  <h1 class="text-2xl font-bold text-gray-900">{{ text.checkout_heading }}</h1>
+
+  {% if error or form.errors %}
+    <div data-form-errors role="alert" class="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      {% if error %}
+        <p data-checkout-error>{{ error }}</p>
+      {% endif %}
+      {{ form.non_field_errors }}
+      {% for field in form %}
+        {% for message in field.errors %}
+          <p>{{ message }}</p>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" action="{{ checkout_url }}" data-checkout-form class="mt-6 space-y-8">
+    {% csrf_token %}
+    <input type="hidden" name="checkout_group" value="{{ checkout_group }}">
+
+    <section data-addresses>
+      <h2 class="text-lg font-semibold text-gray-900">{{ text.address_heading }}</h2>
+      {% if cards %}
+        <div class="mt-3 space-y-3">
+          {% for card in cards %}
+            <article data-address-id="{{ card.address.pk }}" class="rounded border border-gray-200 bg-white p-4">
+              <div class="flex items-start gap-3">
+                <input type="radio" name="address" value="{{ card.address.pk }}" id="address-{{ card.address.pk }}"
+                       class="mt-1"{% if card.selected %} checked{% endif %}{% if not card.is_served %} disabled{% endif %}>
+                <label for="address-{{ card.address.pk }}" class="min-w-0 flex-1">
+                  <span class="block text-sm font-medium text-gray-900">{{ card.address.recipient_name }}</span>
+                  <span class="block text-xs text-gray-600">{{ card.address.recipient_phone }}</span>
+                  <span class="mt-1 block text-sm text-gray-700">
+                    {{ card.address.line1 }}{% if card.address.line2 %}, {{ card.address.line2 }}{% endif %}{% if card.address.landmark %} ({{ card.address.landmark }}){% endif %}<br>
+                    {{ card.address.city }}, {{ card.address.state }} {{ card.address.pincode }}
+                  </span>
+                </label>
+              </div>
+              {% if not card.is_served %}
+                <p data-unserved-note class="mt-2 text-xs text-red-700">{{ text.unserved_note }}</p>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if not has_served_address %}
+        <p data-no-served-address class="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ text.no_served_address }}</p>
+        <a data-add-address href="{% url "address_add" %}?next={{ checkout_url|urlencode:"" }}" class="mt-2 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">{{ text.add_address_link }}</a>
+      {% endif %}
+    </section>
+
+    <section>
+      <h2 class="text-lg font-semibold text-gray-900">{{ text.cart_heading }}</h2>
+      {% include "orders/_checkout_summary.html" %}
+      <p class="mt-3 text-sm text-gray-700">{{ text.delivery_day_label }}: <span data-delivery-day>{{ promise.label }}</span></p>
+    </section>
+
+    <section>
+      <h2 class="text-lg font-semibold text-gray-900">{{ text.substitution_heading }}</h2>
+      <div class="mt-3 space-y-2">
+        {% for value, label in substitution_choices %}
+          <div class="flex items-center gap-2">
+            <input type="radio" name="substitution_preference" value="{{ value }}" id="substitution-{{ value }}"{% if value == selected_substitution %} checked{% endif %}>
+            <label for="substitution-{{ value }}" class="text-sm text-gray-700">{{ label }}</label>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section>
+      <label for="customer-note" class="block text-sm font-medium text-gray-900">{{ text.note_label }}</label>
+      <p class="mt-1 text-xs text-gray-500">{{ text.note_help }}</p>
+      <textarea id="customer-note" name="customer_note" maxlength="300" rows="3" class="mt-2 w-full rounded border border-gray-300 p-2 text-sm">{{ form.customer_note.value|default:"" }}</textarea>
+    </section>
+
+    <section>
+      <p data-cod-sentence class="text-sm font-medium text-gray-900">{{ cod_sentence }}</p>
+      {% if at_cod_limit %}
+        <p data-cod-limit role="alert" class="mt-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ limit_message }}</p>
+      {% endif %}
+      {% if has_served_address and not at_cod_limit %}
+        <button type="submit" data-place-order class="mt-4 w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.place_order_button }}</button>
+      {% endif %}
+    </section>
+  </form>
+{% endblock content %}
