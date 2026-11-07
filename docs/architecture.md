@@ -86,6 +86,13 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - `Order.checkout_group` is unique and adopts the stock-reservation group, so one checkout can create at most one order. Placing a COD order freezes the address and money, writes the order and items, writes `"" → PLACED` and `PLACED → CONFIRMED` log rows and clears the cart in one transaction (D64).
 - Checkout pages (D66): `checkout` at `/checkout/` (GET and POST) and `order_confirmation` at `/checkout/done/<uuid:group>/` (GET). The first GET stores a UUID in `request.session["checkout_group"]` and the form carries it back; a repeated group returns the same order's confirmation instead of a second order, and the confirmation is visible only to the order's owner.
 
+### Credit (khata)
+- `CreditAccount`: one per user (`OneToOneField`), `credit_limit` and cached `balance` (`DecimalField(12, 2)`), and `is_active`. A suspended account or a user without an account has no available credit.
+- `CreditEntry`: an append-only ledger row per change, with `amount`, `balance_after`, `entry_type`, optional `order`, `payment_mode`, `reference`, `note`, `entry_date` and `created_by`. `save()` on an existing row, `delete()` and queryset update/delete raise `AppendOnlyError`.
+- Sign convention: positive means the customer owes more (`ORDER`), negative means less (`PAYMENT`, `CANCEL_REVERSAL`); `ADJUSTMENT` is either sign but never zero. `balance` is what the customer owes now and `available = max(credit_limit - balance, 0)`.
+- Services in `apps/credit/services.py`: `set_credit_limit`, `set_credit_active`, `available_credit`, `charge_order`, `reverse_order_charge`, `record_payment` and `record_adjustment`. A charge and its reversal are idempotent: partial unique constraints allow one ORDER row and one CANCEL_REVERSAL row per order. `check_credit_integrity()` proves the cached balance, the `balance_after` chain and each ORDER entry against the order total.
+- Lock order: the user row, then stock variants in ascending id, then order rows, then the credit account row last. Limit and status changes write `AuditLog` rows through `record_change`; the admin lets owners and managers record payments and adjustments through the services, and never saves an entry directly.
+
 ### Numbering
 - `NumberSeriesCounter` keyed by `(prefix, financial_year)`, incremented inside a locked transaction (`select_for_update`); no reset job.
 - Financial-year label: `start = year if month >= 4 else year - 1`; `label = f"{start % 100:02d}-{(start + 1) % 100:02d}"` (e.g. `26-27`). Tests for Mar 31, Apr 1, Dec 31.

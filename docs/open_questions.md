@@ -85,7 +85,6 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 29a (Phase 3 answers, D55)
 - [ ] Which billing-software features does the shop use every day (counter billing, purchases, supplier dues, khata for walk-ins, GST return data), and when should an in-store POS replace it? — owner; ask again after Phase 7; default in use: the billing software stays at the counter (D55 amendment)
-- [ ] Who records khata payments, and what starting limit does each credit customer get? — owner; ask again before Slice 37; default in use: staff record payments in the admin and no customer has credit until a limit is set (D55 amendment)
 
 ### Added in Slice 30
 - [ ] OTP policy numbers: codes valid for 5 minutes, 5 wrong tries per challenge, 30 seconds between requests and 5 requests per phone per rolling hour — owner; ask again before launch; default in use: those numbers in `apps/accounts/otp.py` (D59)
@@ -106,6 +105,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 36
 - [ ] Should a customer get an SMS or WhatsApp message when an order is placed? — owner; ask again before Slice 38; default in use: none, the confirmation page only
+
+### Added in Slice 37a
+- [ ] Which customers get credit and at what limit? — owner; before launch; default in use: no customer has credit until the owner sets a limit in the admin
+- [ ] Should customers get payment reminders or a dues list? — owner; ask again before Phase 5; default in use: none
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
