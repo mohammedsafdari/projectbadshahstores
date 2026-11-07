@@ -532,3 +532,45 @@ def test_header_links_to_addresses_when_logged_in() -> None:
     client.force_login(user)
     logged_in_page = client.get(reverse("home")).content.decode()
     assert link in logged_in_page
+
+
+def test_edit_to_an_unserved_pin_code_saves_and_shows_the_notice() -> None:
+    zone = DeliveryZoneFactory()
+    PinCodeZoneFactory(zone=zone, pincode="452012")
+    user = _user()
+    address = _address(user)
+    client = Client()
+    client.force_login(user)
+
+    response = client.post(
+        reverse("address_edit", args=[address.pk]),
+        _form_data(pincode="452099"),
+        follow=True,
+    )
+
+    assert response.status_code == 200
+    address.refresh_from_db()
+    assert address.pincode == "452099"
+    assert any(
+        str(unserved_notice("452099")) in text for text in _message_texts(response.content.decode())
+    )
+
+
+def test_edit_with_make_default_moves_the_default() -> None:
+    user = _user()
+    first = _address(user)
+    second = _address(user, line1="99, New Palasia")
+    client = Client()
+    client.force_login(user)
+
+    response = client.post(
+        reverse("address_edit", args=[second.pk]),
+        _form_data(line1="99, New Palasia", make_default="on"),
+    )
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("address_list")
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.is_default is False
+    assert second.is_default is True

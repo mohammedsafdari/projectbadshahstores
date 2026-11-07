@@ -28,6 +28,7 @@ from apps.orders.presentation import (
     ADDRESS_INVALID,
     ADDRESS_NOT_FOUND_MESSAGE,
     ADDRESS_NOT_SERVED_MESSAGE,
+    GROUP_INVALID_MESSAGE,
     NO_SERVED_ADDRESS,
     UNSERVED_NOTE,
     cod_limit_message,
@@ -125,6 +126,15 @@ def _element_text(html: str, marker: str) -> str:
 def _has_element(html: str, marker: str) -> bool:
     """Whether any opening tag carries this data marker."""
     return re.search(rf"<[a-z0-9]+\b[^>]*\b{re.escape(marker)}\b", html) is not None
+
+
+def _message_text(html: str) -> str:
+    """The text of the first flash message element on the page."""
+    # The base template has no data marker on messages, so the class name is
+    # the only anchor; [^"]* allows the extra tag class (for example "error").
+    match = re.search(r'<li class="message[^"]*">(.*?)</li>', html, re.DOTALL)
+    assert match is not None, "No message on the page."
+    return _strip_tags(match.group(1)).strip()
 
 
 def _inputs(html: str, name: str) -> list[dict[str, object]]:
@@ -603,3 +613,30 @@ def test_checkout_post_holds_stock_for_fulfilment() -> None:
     assert holds[0].quantity == Decimal("2.000")
     assert holds[0].kind == StockReservation.Kind.HELD_FOR_FULFILMENT
     assert holds[0].status == StockReservation.Status.ACTIVE
+
+
+def test_checkout_post_with_a_garbage_group_is_refused_with_the_invalid_group_message() -> None:
+    _user, address, _variant_row, client = _ready_checkout()
+    _group, token = _open_checkout(client)
+
+    response = client.post(reverse("checkout"), _post_data("not-a-uuid", token, address))
+
+    assert response.status_code == 302
+    assert response.url == reverse("checkout")
+    # The message is stored by the POST and rendered by the next page.
+    html = client.get(reverse("checkout")).content.decode()
+    assert _message_text(html) == str(GROUP_INVALID_MESSAGE)
+    assert Order.objects.count() == 0
+    assert StockReservation.objects.count() == 0
+
+
+def test_checkout_page_exactly_at_the_cod_cap_still_shows_submit() -> None:
+    user, _address_row, _variant_row, client = _ready_checkout()
+    # Tie the cap to the cart's own total, so the comparison is exactly equal.
+    summary = build_cart(DbCartStore(user))
+    _set_settings(cod_cap=summary.grand_total)
+
+    html = client.get(reverse("checkout")).content.decode()
+
+    assert _has_element(html, "data-place-order")
+    assert not _has_element(html, "data-cod-limit")
