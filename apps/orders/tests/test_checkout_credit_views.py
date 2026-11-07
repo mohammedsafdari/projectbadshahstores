@@ -294,3 +294,37 @@ def test_confirmation_for_a_cod_order_still_says_pay_cash() -> None:
 
     assert not has_element(html, "data-payment-method")
     assert element_text(html, "data-amount-due") == cod_on_delivery_sentence(Decimal("230.00"))
+
+
+def test_checkout_page_credit_exactly_at_the_available_credit_is_selectable() -> None:
+    _user, _address_row, _variant_row, client = ready_checkout(credit_limit="230.00")
+    set_settings(cod_cap=Decimal("100.00"))
+
+    html = _page(client)
+
+    credit = _payment_radio(html, "CREDIT")
+    assert credit["disabled"] is False
+    assert credit["checked"] is True
+    assert has_element(html, "data-place-order")
+
+
+def test_checkout_page_credit_one_paisa_above_the_available_credit_is_disabled() -> None:
+    _user, _address_row, _variant_row, client = ready_checkout(credit_limit="229.99")
+    set_settings(cod_cap=Decimal("100.00"))
+
+    html = _page(client)
+
+    assert _payment_radio(html, "CREDIT")["disabled"] is True
+    assert _payment_radio(html, "COD")["disabled"] is True
+    assert not has_element(html, "data-place-order")
+
+
+def test_checkout_page_cod_exactly_at_the_cod_cap_is_selectable_for_a_credit_customer() -> None:
+    _user, _address_row, _variant_row, client = ready_checkout(credit_limit="1000.00")
+    set_settings(cod_cap=Decimal("230.00"))
+
+    html = _page(client)
+
+    cod = _payment_radio(html, "COD")
+    assert cod["disabled"] is False
+    assert cod["checked"] is True

@@ -168,3 +168,13 @@ def test_integrity_ignores_cod_orders_without_entries() -> None:
     )
 
     assert check_credit_integrity() == []
+
+
+def test_integrity_ignores_a_cancelled_credit_order_that_was_never_charged() -> None:
+    _order(
+        payment_method=Order.PaymentMethod.CREDIT,
+        status=Order.Status.CANCELLED,
+        cancelled_at=NOW,
+    )
+
+    assert check_credit_integrity() == []
