@@ -37,8 +37,8 @@ ALLOWED_TRANSITIONS: dict[str, tuple[str, ...]] = {
     PARTIALLY_REFUNDED: (),
 }
 
-# Payment and refund states exist in the table for Phase 4, but a COD order
-# never moves through them (D64).
+# Payment and refund states exist in the table for Phase 4, but a COD or
+# credit order never moves through them (D64, D68).
 COD_ONLY_BLOCKED: tuple[str, ...] = (
     PAYMENT_PENDING,
     PAID,

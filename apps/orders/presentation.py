@@ -69,6 +69,14 @@ ADDRESS_REQUIRED = _("Choose a delivery address.")
 ADDRESS_INVALID = _("Choose a delivery address.")
 SUBSTITUTION_INVALID = _("Choose how we should handle an item that is not available.")
 NOTE_TOO_LONG = _("Keep the note to 300 characters or fewer.")
+PAYMENT_METHOD_INVALID = _("Choose cash on delivery or credit.")
+CREDIT_UNAVAILABLE_MESSAGE = _("Credit is not available for this account.")
+
+# The customer's choice of how to pay (D66, D68).
+PAYMENT_METHOD_LABELS = {
+    Order.PaymentMethod.COD: _("Cash on delivery"),
+    Order.PaymentMethod.CREDIT: _("Credit (khata)"),
+}
 
 # The customer's choice when an item is out of stock (D64).
 SUBSTITUTION_LABELS = {
@@ -121,6 +129,55 @@ def cod_limit_message(cap: Decimal) -> str:
         )
         % {"cap": money(cap)}
     )
+
+
+def available_credit_sentence(available: Decimal) -> str:
+    """How much credit the customer may still use."""
+    return str(_("Available credit: %(amount)s") % {"amount": money(available)})
+
+
+def credit_checkout_sentence(grand_total: Decimal) -> str:
+    """The sentence next to the credit radio on the checkout page."""
+    return str(
+        _("%(amount)s will be added to your khata balance. Nothing to pay on delivery.")
+        % {"amount": money(grand_total)}
+    )
+
+
+def credit_limit_message(available: Decimal) -> str:
+    """Why credit cannot be used for this order."""
+    return str(
+        _("Your available credit %(amount)s is below this order.") % {"amount": money(available)}
+    )
+
+
+def credit_refused_message(available: Decimal) -> str:
+    """The checkout error when the charge is refused for the limit."""
+    return str(
+        _(
+            "Your available credit %(amount)s is below this order. "
+            "Choose cash on delivery or call the shop."
+        )
+        % {"amount": money(available)}
+    )
+
+
+def credit_confirmation_sentence(amount: Decimal) -> str:
+    """The confirmation sentence for an order paid on credit."""
+    return str(
+        _("Added to your khata: %(amount)s. Nothing to pay on delivery.")
+        % {"amount": money(amount)}
+    )
+
+
+def payment_method_label(value: str) -> str:
+    """The plain label for one payment method."""
+    # A value read from the form is a plain str, so compare it with each
+    # enum member's text instead of using a dict keyed by the enum.
+    for choice, label in PAYMENT_METHOD_LABELS.items():
+        if str(choice) == value:
+            return str(label)
+    return str(PAYMENT_METHOD_LABELS[Order.PaymentMethod.COD])
 
 
 def delivery_day_text(day: date) -> str:
@@ -188,6 +245,8 @@ def page_text() -> dict[str, str]:
         "status_label": str(STATUS_LABEL),
         "items_heading": str(ITEMS_HEADING),
         "payment_heading": str(PAYMENT_HEADING),
+        "payment_method_cod": payment_method_label(Order.PaymentMethod.COD),
+        "payment_method_credit": payment_method_label(Order.PaymentMethod.CREDIT),
         "shipping_heading": str(SHIPPING_HEADING),
         "note_heading": str(NOTE_HEADING),
     }

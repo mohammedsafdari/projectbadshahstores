@@ -77,20 +77,22 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 ### Orders
 - `Order`: `user` required; no `is_active`. Address and price snapshots on the order.
 - `amount_due_on_delivery` recalculated after substitutions or partial fulfilment; replaces any `cod_amount` field.
-- Status machine: `PLACED, PAYMENT_PENDING, PAID, CONFIRMED, PACKING, OUT_FOR_DELIVERY, DELIVERED`, plus `CANCELLED, PAYMENT_FAILED, REFUND_PENDING, REFUNDED, PARTIALLY_REFUNDED`. COD skips the payment states.
+- Status machine: `PLACED, PAYMENT_PENDING, PAID, CONFIRMED, PACKING, OUT_FOR_DELIVERY, DELIVERED`, plus `CANCELLED, PAYMENT_FAILED, REFUND_PENDING, REFUNDED, PARTIALLY_REFUNDED`. COD and credit both skip the payment states.
+- `payment_method` is `COD` or `CREDIT`; a credit order stores `0.00` as `amount_due_on_delivery`.
 - Every transition logged in `OrderStatusLog`.
 - `OrderItem`: `quantity_ordered`, `quantity_fulfilled`, `item_status`, snapshots of price/GST/HSN/name.
 - Substitutions: keep the original line with status `SUBSTITUTED` and add a new line with a `replaces` link; the substitute is charged at its current selling price with GST recomputed; the customer chooses a substitution preference at checkout (`substitute / refund / call me`).
 - At end of packing the order is finalised: unfulfilled quantities are cancelled, reservations released, and a refund or adjustment made.
 - One order = one invoice.
-- `Order.checkout_group` is unique and adopts the stock-reservation group, so one checkout can create at most one order. Placing a COD order freezes the address and money, writes the order and items, writes `"" → PLACED` and `PLACED → CONFIRMED` log rows and clears the cart in one transaction (D64).
-- Checkout pages (D66): `checkout` at `/checkout/` (GET and POST) and `order_confirmation` at `/checkout/done/<uuid:group>/` (GET). The first GET stores a UUID in `request.session["checkout_group"]` and the form carries it back; a repeated group returns the same order's confirmation instead of a second order, and the confirmation is visible only to the order's owner.
+- `Order.checkout_group` is unique and adopts the stock-reservation group, so one checkout can create at most one order. Placing a COD or credit order freezes the address and money, writes the order and items, writes `"" → PLACED` and `PLACED → CONFIRMED` log rows and clears the cart in one transaction (D64).
+- A credit order is charged to the customer's khata in the same transaction; cancelling it before delivery reverses the charge, and a COD cancel writes no credit row (D68).
+- Checkout pages (D66): `checkout` at `/checkout/` (GET and POST) and `order_confirmation` at `/checkout/done/<uuid:group>/` (GET). The first GET stores a UUID in `request.session["checkout_group"]` and the form carries it back; a repeated group returns the same order's confirmation instead of a second order, and the confirmation is visible only to the order's owner. Credit is offered only to an active account, and the fixed lock order is the user row, then variants ascending, then order rows, then the credit account last (D67, D68).
 
 ### Credit (khata)
 - `CreditAccount`: one per user (`OneToOneField`), `credit_limit` and cached `balance` (`DecimalField(12, 2)`), and `is_active`. A suspended account or a user without an account has no available credit.
 - `CreditEntry`: an append-only ledger row per change, with `amount`, `balance_after`, `entry_type`, optional `order`, `payment_mode`, `reference`, `note`, `entry_date` and `created_by`. `save()` on an existing row, `delete()` and queryset update/delete raise `AppendOnlyError`.
 - Sign convention: positive means the customer owes more (`ORDER`), negative means less (`PAYMENT`, `CANCEL_REVERSAL`); `ADJUSTMENT` is either sign but never zero. `balance` is what the customer owes now and `available = max(credit_limit - balance, 0)`.
-- Services in `apps/credit/services.py`: `set_credit_limit`, `set_credit_active`, `available_credit`, `charge_order`, `reverse_order_charge`, `record_payment` and `record_adjustment`. A charge and its reversal are idempotent: partial unique constraints allow one ORDER row and one CANCEL_REVERSAL row per order. `check_credit_integrity()` proves the cached balance, the `balance_after` chain and each ORDER entry against the order total.
+- Services in `apps/credit/services.py`: `set_credit_limit`, `set_credit_active`, `available_credit`, `charge_order`, `reverse_order_charge`, `record_payment` and `record_adjustment`. A charge and its reversal are idempotent: partial unique constraints allow one ORDER row and one CANCEL_REVERSAL row per order. `check_credit_integrity()` proves the cached balance, the `balance_after` chain and each ORDER entry against the order total; it also reports `credit_order_without_charge`, `cancelled_credit_order_not_reversed` and `charge_on_non_credit_order` (D68).
 - Lock order: the user row, then stock variants in ascending id, then order rows, then the credit account row last. Limit and status changes write `AuditLog` rows through `record_change`; the admin lets owners and managers record payments and adjustments through the services, and never saves an entry directly.
 
 ### Numbering

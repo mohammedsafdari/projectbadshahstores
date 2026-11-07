@@ -17,6 +17,7 @@ from apps.credit.services import (
     record_payment,
 )
 from apps.credit.tests.factories import CreditAccountFactory
+from apps.orders.models import Order
 from apps.orders.tests.factories import OrderFactory
 from tests.factories import UserFactory
 
@@ -31,6 +32,7 @@ def _charge(user, total: str = "230.00"):
     amount = Decimal(total)
     order = OrderFactory(
         user=user,
+        payment_method=Order.PaymentMethod.CREDIT,
         item_total=amount - Decimal("30.00"),
         delivery_fee=Decimal("30.00"),
         grand_total=amount,
@@ -105,7 +107,7 @@ def test_integrity_reports_an_order_entry_that_differs_from_the_order_total() ->
         credit_limit=Decimal("1000.00"),
         balance=Decimal("100.00"),
     )
-    order = OrderFactory(user=user)
+    order = OrderFactory(user=user, payment_method=Order.PaymentMethod.CREDIT)
     # A wrong amount written straight into the ledger: the cached balance and
     # the chain still agree, but the order's frozen total does not.
     CreditEntry.objects.create(

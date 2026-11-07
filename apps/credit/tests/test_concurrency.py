@@ -74,15 +74,16 @@ def _account(user: User, *, limit: str = "1000.00", balance: str = "0.00"):
 
 
 def _order(user: User, total: str) -> Order:
-    """An order whose grand total matches the factory's money constraint."""
+    """A credit order whose grand total matches the factory's money constraint."""
     amount = Decimal(total)
     fee = Decimal("30.00")
     return OrderFactory(
         user=user,
+        payment_method=Order.PaymentMethod.CREDIT,
         item_total=amount - fee,
         delivery_fee=fee,
         grand_total=amount,
-        amount_due_on_delivery=amount,
+        amount_due_on_delivery=Decimal("0.00"),
     )
 
 

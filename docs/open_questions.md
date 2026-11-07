@@ -110,6 +110,9 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Which customers get credit and at what limit? — owner; before launch; default in use: no customer has credit until the owner sets a limit in the admin
 - [ ] Should customers get payment reminders or a dues list? — owner; ask again before Phase 5; default in use: none
 
+### Added in Slice 37b
+- [ ] Should a credit customer be able to pay part of an order on credit and the rest in cash? — owner; ask again before Phase 5; default in use: no, all or nothing
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1

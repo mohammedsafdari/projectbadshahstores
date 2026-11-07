@@ -35,8 +35,8 @@ class Order(TimeStampedModel):
         PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED", "Partially refunded"
 
     class PaymentMethod(models.TextChoices):
-        # Slice 37 adds credit and Phase 4 adds online payments.
         COD = "COD", "Cash on delivery"
+        CREDIT = "CREDIT", "Credit (khata)"
 
     class SubstitutionPreference(models.TextChoices):
         SUBSTITUTE = "SUBSTITUTE", "Substitute"

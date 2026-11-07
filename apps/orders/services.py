@@ -5,8 +5,9 @@ locks the row it changes with ``select_for_update()`` and writes each row with
 ``save(update_fields=[..., "updated_at"])``. Queryset ``update()`` is never
 used, so no write skips the model and ``updated_at`` always moves.
 
-The lock order in ``place_order`` is fixed: the user row, then the variants in
-ascending ``pk`` order (inside ``reserve_stock``), then the new rows. No other
+The lock order in ``place_order`` is fixed (D67): the user row, then the
+variants in ascending ``pk`` order (inside ``reserve_stock``), then the order
+rows, and the credit account row LAST (inside ``charge_order``). No other
 function locks in a different order.
 """
 
@@ -27,6 +28,12 @@ from apps.cart.stores import DbCartStore
 from apps.catalog.models import ProductVariant
 from apps.core.numbering import next_number
 from apps.core.services import get_shop_settings
+from apps.credit.services import (
+    CreditLimitExceededError,
+    CreditNotAvailableError,
+    charge_order,
+    reverse_order_charge,
+)
 from apps.delivery.services import address_is_served, get_delivery_promise
 from apps.inventory.reservations import ReservationLine, release_group, reserve_stock
 from apps.orders.models import Order, OrderItem, OrderStatusLog
@@ -42,7 +49,7 @@ class OrderNotFoundError(OrderError):
 
 
 class InvalidTransitionError(OrderError):
-    """The requested status move is unknown, illegal or blocked for COD."""
+    """The requested status move is unknown, illegal or blocked for COD or credit."""
 
 
 class CancelReasonRequiredError(OrderError):
@@ -75,6 +82,18 @@ class CartNotReadyError(OrderError):
 
 class CodLimitExceededError(OrderError):
     """The order total is above the shop-wide COD cap."""
+
+
+class InvalidPaymentMethodError(OrderError):
+    """The payment method is not COD or CREDIT."""
+
+
+class OrderCreditUnavailableError(OrderError):
+    """The customer has no active credit account (D68)."""
+
+
+class OrderCreditLimitExceededError(OrderError):
+    """The order total is above the customer's available credit (D68)."""
 
 
 @dataclass(frozen=True)
@@ -139,8 +158,15 @@ def _apply_transition(
         raise InvalidTransitionError(f"The order is already {to_status}.")
     if not can_transition(order.status, to_status):
         raise InvalidTransitionError(f"Cannot move an order from {order.status} to {to_status}.")
-    if order.payment_method == Order.PaymentMethod.COD and to_status in COD_ONLY_BLOCKED:
-        raise InvalidTransitionError(f"A COD order cannot move to {to_status}.")
+    if (
+        order.payment_method
+        in (
+            Order.PaymentMethod.COD,
+            Order.PaymentMethod.CREDIT,
+        )
+        and to_status in COD_ONLY_BLOCKED
+    ):
+        raise InvalidTransitionError(f"A COD or credit order cannot move to {to_status}.")
     if to_status == CANCELLED and require_cancel_reason and not reason.strip():
         raise CancelReasonRequiredError("A staff cancellation needs a reason.")
 
@@ -169,6 +195,9 @@ def _apply_transition(
         # Idempotent: a CONSUMED row stays consumed and an unknown group is 0.
         release_group(order.checkout_group, now=now)
         _cancel_pending_items(order)
+        # Give the credit back for a cancelled credit order (D68). This does
+        # nothing for a COD order that was never charged.
+        reverse_order_charge(order, actor=actor, now=now)
     return order
 
 
@@ -242,12 +271,13 @@ def place_order(
     customer_note: str = "",
     now: datetime | None = None,
 ) -> PlacedOrder:
-    """Create a COD order, reserve its stock and confirm it in one transaction.
+    """Create a COD or credit order, reserve its stock and confirm it.
 
     Re-submitting the same ``checkout_group`` by the same customer returns the
     existing order with ``created=False``; another customer gets
     ``CheckoutGroupInUseError``. The user row is locked first, so two identical
-    submissions queue instead of racing.
+    submissions queue instead of racing. A credit order is charged to the
+    customer's khata in the same transaction (D68).
     """
     resolved_now = now if now is not None else timezone.now()
     with transaction.atomic():
@@ -260,6 +290,14 @@ def place_order(
             if existing.user_id == user.pk:
                 return PlacedOrder(order=existing, created=False)
             raise CheckoutGroupInUseError("This checkout has already been used.")
+
+        # Only COD and credit exist in Phase 3 (D68). Checked before any other
+        # read or write, so an unknown value can never create a row.
+        if payment_method not in (
+            Order.PaymentMethod.COD,
+            Order.PaymentMethod.CREDIT,
+        ):
+            raise InvalidPaymentMethodError("Choose cash on delivery or credit.")
 
         try:
             address: Address = get_address(user, address_id)
@@ -322,7 +360,12 @@ def place_order(
             delivery_fee=summary.delivery_fee,
             grand_total=summary.grand_total,
             savings_total=summary.savings_total,
-            amount_due_on_delivery=summary.grand_total,
+            # A credit order has nothing to collect on delivery (D68).
+            amount_due_on_delivery=(
+                summary.grand_total
+                if payment_method == Order.PaymentMethod.COD
+                else Decimal("0.00")
+            ),
             promised_delivery_date=promise.day,
             delivery_is_same_day=promise.is_same_day,
             substitution_preference=substitution_preference,
@@ -346,6 +389,20 @@ def place_order(
                 quantity_fulfilled=Decimal("0.000"),
                 line_total=line.line_total,
             )
+
+        # The khata charge comes after the items and before the first log row,
+        # so a refused charge rolls everything back (D68).
+        if payment_method == Order.PaymentMethod.CREDIT:
+            try:
+                charge_order(order, actor=user)
+            except CreditNotAvailableError:
+                raise OrderCreditUnavailableError(
+                    "Credit is not available for this account."
+                ) from None
+            except CreditLimitExceededError:
+                raise OrderCreditLimitExceededError(
+                    "The order total is above the available credit."
+                ) from None
 
         OrderStatusLog.objects.create(
             order=order,
