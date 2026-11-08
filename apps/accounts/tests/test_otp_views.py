@@ -158,17 +158,22 @@ def test_verify_without_a_session_phone_redirects_to_login() -> None:
     assert response["Location"] == reverse("account_login")
 
 
-def test_a_staff_account_cannot_log_in_with_an_otp() -> None:
-    User.objects.create_user(phone=PHONE, password="ok", is_staff=True)
+def test_a_staff_phone_logs_in_to_its_own_customer_account_by_otp() -> None:
+    # A staff account and a customer account are separate rows (D72), so the
+    # staff phone gets its own customer account and the staff row is untouched.
+    staff = User.objects.create_user(phone=PHONE, password="ok", is_staff=True)
     client = Client()
     _start(client)
 
     response = _verify(client, _code())
 
-    assert response.status_code == 200
-    assert "That code is not valid. Please try again." in response.content.decode()
-    assert "_auth_user_id" not in client.session
-    assert User.objects.filter(phone=PHONE).count() == 1
+    assert response.status_code == 302
+    customer = User.objects.get(phone=PHONE, is_staff=False)
+    assert customer.is_superuser is False
+    assert client.session["_auth_user_id"] == str(customer.pk)
+    staff.refresh_from_db()
+    assert staff.has_usable_password() is True
+    assert staff.phone_verified_at is None
 
 
 def test_an_inactive_account_cannot_log_in_with_an_otp() -> None:

@@ -26,8 +26,9 @@ class UserManager(BaseUserManager["User"]):
     password is optional and defaults to unusable.
     create_superuser REQUIRES a password and promotes the account to admin
     (is_staff, is_superuser, role OWNER).
-    get_by_natural_key normalises the input so admin login with "98765 43210"
-    works.
+    get_by_natural_key is what Django's /admin/ login uses: it normalises the
+    input so admin login with "98765 43210" works, and it finds staff accounts
+    only (D72). Customers use their own password login at /account/login/.
     """
 
     def _normalise_email(self, email: str | None) -> str | None:
@@ -64,8 +65,11 @@ class UserManager(BaseUserManager["User"]):
         try:
             normalised = normalise_phone(phone)
         except ValueError:
-            raise self.model.DoesNotExist(f"No active user found for phone {phone!r}") from None
-        return self.get(is_active=True, phone=normalised)
+            # No phone in the message: an exception must not print one.
+            raise self.model.DoesNotExist("No active staff user found.") from None
+        # Staff only: the admin login must never find a customer account, even
+        # when a staff account shares the same phone (D72).
+        return self.get(is_active=True, phone=normalised, is_staff=True)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -120,21 +124,28 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Meta:
         verbose_name = "user"
         verbose_name_plural = "users"
+        # Two account spaces share the tables (D72): a customer account
+        # (is_staff=False) and a staff account (is_staff=True) may use the same
+        # phone and the same email, but within one space each active value is
+        # still unique. Inactive rows never block a new active one.
         constraints = [
             models.UniqueConstraint(
-                fields=["phone"],
+                fields=["phone", "is_staff"],
                 condition=models.Q(is_active=True),
-                name="accounts_user_phone_active_unique",
+                name="accounts_user_phone_staff_active_unique",
             ),
             models.UniqueConstraint(
-                fields=["email"],
+                fields=["email", "is_staff"],
                 condition=models.Q(is_active=True, email__isnull=False),
-                name="accounts_user_email_active_unique",
+                name="accounts_user_email_staff_active_unique",
             ),
         ]
 
     def __str__(self):
-        return self.phone
+        # The admin lists and drop-downs may show both rows for one phone, so a
+        # staff account says so (D72).
+        suffix = " (staff)" if self.is_staff else ""
+        return f"{self.phone}{suffix}"
 
     def save(self, *args, **kwargs):
         # Normalise on every save path, not only through the manager.

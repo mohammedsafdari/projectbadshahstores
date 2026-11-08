@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}{{ text.signup_title }} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+<div class="mx-auto max-w-md">
+  <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">{{ text.signup_heading }}</h1>
+
+  {% if messages %}
+  <ul class="mt-4 space-y-2">
+    {% for message in messages %}
+    <li class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ message }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if form.non_field_errors %}
+  <div class="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2">
+    {% for error in form.non_field_errors %}
+    <p data-field-error class="text-sm text-red-700">{{ error }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="{% url "account_signup" %}" data-signup-form class="mt-6 space-y-4">
+    {% csrf_token %}
+    {% if next_url %}
+    <input type="hidden" name="next" value="{{ next_url }}">
+    {% endif %}
+    <div>
+      <label for="id_phone" class="block text-sm font-medium text-gray-700">{{ form.phone.label }}</label>
+      {{ form.phone }}
+      {% for error in form.phone.errors %}
+      <p data-field-error class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    <div>
+      <label for="id_full_name" class="block text-sm font-medium text-gray-700">{{ form.full_name.label }}</label>
+      {{ form.full_name }}
+      {% for error in form.full_name.errors %}
+      <p data-field-error class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    <div>
+      <label for="id_email" class="block text-sm font-medium text-gray-700">{{ form.email.label }}</label>
+      {{ form.email }}
+      {% for error in form.email.errors %}
+      <p data-field-error class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    <div>
+      <label for="id_password1" class="block text-sm font-medium text-gray-700">{{ form.password1.label }}</label>
+      {{ form.password1 }}
+      {% for error in form.password1.errors %}
+      <p data-field-error class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    <div>
+      <label for="id_password2" class="block text-sm font-medium text-gray-700">{{ form.password2.label }}</label>
+      {{ form.password2 }}
+      {% for error in form.password2.errors %}
+      <p data-field-error class="mt-1 text-sm text-red-600">{{ error }}</p>
+      {% endfor %}
+    </div>
+    <button type="submit" class="w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+      {{ text.signup_button }}
+    </button>
+  </form>
+
+  <p class="mt-6 text-sm text-gray-600">
+    <a data-login-link class="text-brand-600 hover:text-brand-700" href="{% url "account_login" %}">{{ text.login_link }}</a>
+  </p>
+</div>
+{% endblock content %}

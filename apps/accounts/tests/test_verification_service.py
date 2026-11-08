@@ -270,15 +270,19 @@ def test_otp_login_of_a_verified_account_keeps_the_password() -> None:
     assert user.email_verified_at is not None
 
 
-def test_otp_login_still_refuses_staff_accounts() -> None:
-    User.objects.create_user(phone=PHONE, password="Secret123", is_staff=True)
+def test_otp_login_for_a_staff_phone_never_touches_the_staff_account() -> None:
+    # D72: the staff row belongs to /admin/. The shop login creates a separate
+    # customer account and leaves the staff password and flags alone.
+    staff = User.objects.create_user(phone=PHONE, password="Secret123", is_staff=True)
     client = Client()
     _start(client)
 
     response = _verify(client, _last_sms_code())
 
-    assert response.status_code == 200
-    assert "That code is not valid. Please try again." in response.content.decode()
-    assert "_auth_user_id" not in client.session
-    user = User.objects.get(phone=PHONE)
-    assert user.phone_verified_at is None
+    assert response.status_code == 302
+    staff.refresh_from_db()
+    assert staff.check_password("Secret123") is True
+    assert staff.is_staff is True
+    assert staff.phone_verified_at is None
+    customer = User.objects.get(phone=PHONE, is_staff=False)
+    assert client.session["_auth_user_id"] == str(customer.pk)

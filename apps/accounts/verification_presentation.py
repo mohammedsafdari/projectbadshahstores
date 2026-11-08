@@ -27,7 +27,8 @@ CODE_ERROR_MESSAGE = _("That code did not work. Ask for a new one.")
 WAIT_MESSAGE = _("Please wait a little before asking for another code.")
 NO_EMAIL_MESSAGE = _("There is no email address on your account yet.")
 PASSWORD_RESET_FOR_SAFETY_MESSAGE = _(
-    "For your safety we reset the password on this account. You can set a new one later."
+    "For your safety we reset the password and removed the email address on this account, "
+    "because its mobile number had not been verified. You can set them again later."
 )
 
 BANNER_HEADING = _("Please verify your details so we can deliver your order.")

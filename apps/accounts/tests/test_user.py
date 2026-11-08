@@ -182,7 +182,9 @@ class TestEmailUniqueness:
 
 class TestGetByNaturalKey:
     def test_finds_active_user_with_spaced_phone(self):
-        user = User.objects.create_user(phone="9876543210", password="ignore")
+        # The natural key is what the /admin/ login uses, so it finds staff
+        # accounts only (D72).
+        user = User.objects.create_user(phone="9876543210", password="ignore", is_staff=True)
         found = User.objects.get_by_natural_key("98765 43210")
         assert found.pk == user.pk
         assert found.phone == "+919876543210"
@@ -196,13 +198,14 @@ class TestGetByNaturalKey:
             User.objects.get_by_natural_key("")
 
     def test_inactive_user_not_found(self):
-        user = User.objects.create_user(phone="9876543210", password="ignore")
+        user = User.objects.create_user(phone="9876543210", password="ignore", is_staff=True)
         user.is_active = False
         user.save()
         with pytest.raises(User.DoesNotExist):
             User.objects.get_by_natural_key("98765 43210")
 
     def test_various_invalid_shapes_raise_doesnotexist(self):
+        User.objects.create_user(phone="9876543210", password="ignore", is_staff=True)
         for bad in ["12345", "5876543210", "", "abc"]:
             with pytest.raises(User.DoesNotExist):
                 User.objects.get_by_natural_key(bad)

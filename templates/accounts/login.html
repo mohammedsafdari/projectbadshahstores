@@ -1,37 +1,75 @@
 {% extends "base.html" %}
 
-{% block title %}Log in — Badshah Store{% endblock title %}
+{% block title %}{{ text.login_title }} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
 
 {% block content %}
 <div class="mx-auto max-w-md">
-  <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">Log in</h1>
-  <p class="mt-2 text-sm text-gray-600">
-    We will send a 6-digit code to your mobile number.
-  </p>
+  <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">{{ text.login_heading }}</h1>
 
   {% if messages %}
   <ul class="mt-4 space-y-2">
     {% for message in messages %}
-    <li class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ message }}</li>
+    <li data-login-error class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ message }}</li>
     {% endfor %}
   </ul>
   {% endif %}
 
-  <form method="post" action="{% url "account_login" %}" class="mt-6 space-y-4">
-    {% csrf_token %}
-    {% if request.GET.next %}
-    <input type="hidden" name="next" value="{{ request.GET.next }}">
-    {% endif %}
-    <div>
-      <label for="id_phone" class="block text-sm font-medium text-gray-700">{{ form.phone.label }}</label>
-      {{ form.phone }}
-      {% for error in form.phone.errors %}
-      <p class="mt-1 text-sm text-red-600">{{ error }}</p>
-      {% endfor %}
-    </div>
-    <button type="submit" class="w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-      Send code
-    </button>
-  </form>
+  <section class="mt-6">
+    <h2 class="text-lg font-semibold text-gray-900">{{ text.password_login_heading }}</h2>
+    <form method="post" action="{% url "account_login" %}" data-password-login-form class="mt-4 space-y-4">
+      {% csrf_token %}
+      <input type="hidden" name="method" value="password">
+      {% if next_url %}
+      <input type="hidden" name="next" value="{{ next_url }}">
+      {% endif %}
+      <div>
+        <label for="id_identifier" class="block text-sm font-medium text-gray-700">{{ text.identifier_label }}</label>
+        {{ password_form.identifier }}
+        {% for error in password_form.identifier.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+      </div>
+      <div>
+        <label for="id_password" class="block text-sm font-medium text-gray-700">{{ text.password_label }}</label>
+        {{ password_form.password }}
+        {% for error in password_form.password.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+      </div>
+      <button type="submit" class="w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+        {{ text.password_login_button }}
+      </button>
+    </form>
+  </section>
+
+  <section class="mt-8">
+    <h2 class="text-lg font-semibold text-gray-900">{{ text.otp_login_heading }}</h2>
+    <p class="mt-2 text-sm text-gray-600">{{ text.otp_hint }}</p>
+    <form method="post" action="{% url "account_login" %}" data-otp-login-form class="mt-4 space-y-4">
+      {% csrf_token %}
+      <input type="hidden" name="method" value="otp">
+      {% if next_url %}
+      <input type="hidden" name="next" value="{{ next_url }}">
+      {% endif %}
+      <div>
+        <label for="id_phone" class="block text-sm font-medium text-gray-700">{{ form.phone.label }}</label>
+        {{ form.phone }}
+        {% for error in form.phone.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+      </div>
+      <button type="submit" class="w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+        {{ text.send_code_button }}
+      </button>
+    </form>
+  </section>
+
+  <p class="mt-6 text-sm text-gray-600">
+    <a data-signup-link class="text-brand-600 hover:text-brand-700" href="{% url "account_signup" %}">{{ text.signup_link }}</a>
+  </p>
 </div>
 {% endblock content %}

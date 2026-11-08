@@ -2,7 +2,6 @@
 
 from django import forms
 from django.contrib import admin
-from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm as AuthUserChangeForm
 from django.contrib.auth.forms import UserCreationForm as AuthUserCreationForm
@@ -29,6 +28,15 @@ class UserChangeForm(AuthUserChangeForm):
             return None
         return email.strip().lower()
 
+    def clean(self):
+        # The uniqueness check runs here, not inside clean_phone, because the
+        # account space (is_staff) is only reliable once every field is clean.
+        # Two accounts with one phone may exist when one is staff and one is a
+        # customer (D72).
+        cleaned = super().clean()
+        self._check_duplicates(cleaned)
+        return cleaned
+
     def _clean_phone(self, raw_phone):
         if raw_phone is None:
             return raw_phone
@@ -36,13 +44,26 @@ class UserChangeForm(AuthUserChangeForm):
             normalised = normalise_phone(raw_phone)
         except ValueError as exc:
             raise forms.ValidationError(str(exc)) from exc
-        User = get_user_model()
-        query = User.objects.filter(phone=normalised, is_active=True)
-        if self.instance and self.instance.pk:
-            query = query.exclude(pk=self.instance.pk)
-        if query.exists():
-            raise forms.ValidationError("A user with this phone number already exists.")
         return normalised
+
+    def _check_duplicates(self, cleaned):
+        # Only the same account space is compared: a staff account and a
+        # customer account may share a phone and an email (D72).
+        is_staff = bool(cleaned.get("is_staff", self.instance.is_staff))
+        phone = cleaned.get("phone")
+        email = cleaned.get("email")
+        if phone:
+            query = User.objects.filter(phone=phone, is_active=True, is_staff=is_staff)
+            if self.instance and self.instance.pk:
+                query = query.exclude(pk=self.instance.pk)
+            if query.exists():
+                self.add_error("phone", "A user with this phone number already exists.")
+        if email:
+            query = User.objects.filter(email=email, is_active=True, is_staff=is_staff)
+            if self.instance and self.instance.pk:
+                query = query.exclude(pk=self.instance.pk)
+            if query.exists():
+                self.add_error("email", "A user with this email address already exists.")
 
 
 class UserAddForm(AuthUserCreationForm):
@@ -71,19 +92,28 @@ class UserAddForm(AuthUserCreationForm):
         email = email.strip().lower()
         if not email:
             return None
-        User = get_user_model()
-        if User.objects.filter(email=email, is_active=True).exists():
-            raise forms.ValidationError("A user with this email address already exists.")
         return email
+
+    def clean(self):
+        # Same reason as UserChangeForm: a staff account may share a phone or
+        # an email with a customer account, so the duplicate check must know
+        # the account space (D72).
+        # clean() can be None in django-stubs, so fall back to an empty dict.
+        cleaned = super().clean() or {}
+        is_staff = bool(cleaned.get("is_staff"))
+        phone = cleaned.get("phone")
+        email = cleaned.get("email")
+        if phone and User.objects.filter(phone=phone, is_active=True, is_staff=is_staff).exists():
+            self.add_error("phone", "A user with this phone number already exists.")
+        if email and User.objects.filter(email=email, is_active=True, is_staff=is_staff).exists():
+            self.add_error("email", "A user with this email address already exists.")
+        return cleaned
 
     def _clean_phone(self, raw_phone):
         try:
             normalised = normalise_phone(raw_phone)
         except ValueError as exc:
             raise forms.ValidationError(str(exc)) from exc
-        User = get_user_model()
-        if User.objects.filter(phone=normalised, is_active=True).exists():
-            raise forms.ValidationError("A user with this phone number already exists.")
         return normalised
 
 

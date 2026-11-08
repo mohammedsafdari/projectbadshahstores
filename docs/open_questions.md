@@ -120,8 +120,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Should the customer get the cancel message when staff cancel an order? — owner; ask again before Phase 5; default in use: yes (D69)
 
 ### Added in Slice 38e
-- [ ] How staff and superusers may use the shop login (OTP and/or password) while /admin keeps its own separate sign-in — owner; decide before Slice 38f; default in use: staff stay refused on the shop pages
+- [x] How staff and superusers may use the shop login (OTP and/or password) while /admin keeps its own separate sign-in — answered (D72, 8 November 2026): separate accounts; a staff phone gets its own customer row and /admin keeps the staff-only natural key — owner
 - [ ] Real SMTP provider and sender address for verification emails (D71) — owner; ask again before launch; default in use: console email in development
+
+### Added in Slice 38f
+- [ ] Per-IP limit and bot protection for sign-up and login — owner; ask again before launch; default in use: none
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

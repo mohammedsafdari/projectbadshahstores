@@ -6,6 +6,7 @@ from apps.accounts import address_views, verification_views, views
 
 urlpatterns = [
     path("login/", views.login_view, name="account_login"),
+    path("signup/", views.signup_view, name="account_signup"),
     path("verify/", views.verify_view, name="account_verify"),
     path("logout/", views.logout_view, name="account_logout"),
     path("verify-phone/", verification_views.verify_phone, name="account_verify_phone"),

@@ -77,18 +77,21 @@ def claim_account_by_otp_login(user: User) -> bool:
     """Prove the phone on an OTP login and take over an unverified account.
 
     If the phone was never verified, the account is taken over: the phone is
-    marked verified, the password is cleared and any email verification is
-    dropped, because somebody may have signed up with another person's number.
-    Returns True only when a usable password was cleared, so the view can tell
-    the customer. A second OTP login does nothing and returns False.
+    marked verified, the password is cleared and the email address (and its
+    verification) is removed, because somebody may have signed up with another
+    person's number or address. Returns True when a usable password was cleared
+    or an email address was removed, so the view can tell the customer. A second
+    OTP login does nothing and returns False.
     """
     if user.phone_verified_at is not None:
         return False
     had_usable_password = user.has_usable_password()
+    had_email = bool(user.email)
     user.phone_verified_at = timezone.now()
     user.set_unusable_password()
+    user.email = None
     user.email_verified_at = None
-    user.save(update_fields=["phone_verified_at", "password", "email_verified_at"])
+    user.save(update_fields=["phone_verified_at", "password", "email", "email_verified_at"])
     # The id only: never the phone or the email address.
     logger.info("OTP login took over an unverified account: user_id=%s", user.pk)
-    return had_usable_password
+    return had_usable_password or had_email

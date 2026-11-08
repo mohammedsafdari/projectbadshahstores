@@ -1,6 +1,11 @@
-"""Forms for phone login, code verification and the address book (D59, D65)."""
+"""Forms for phone login, code verification, passwords and the address book.
+
+Code login, password login and sign-up keep their text checks here (D59, D65,
+D72); the rules that need the database live in services.
+"""
 
 from django import forms
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.translation import gettext_lazy as _
 
@@ -24,7 +29,19 @@ from apps.accounts.address_presentation import (
     STATE_LABEL,
     STATE_REQUIRED,
 )
-from apps.accounts.models import PINCODE_VALIDATOR, Address
+from apps.accounts.auth_presentation import (
+    EMAIL_INVALID_MESSAGE,
+    EMAIL_LABEL,
+    EMAIL_REQUIRED_MESSAGE,
+    FULL_NAME_LABEL,
+    IDENTIFIER_LABEL,
+    NAME_REQUIRED_MESSAGE,
+    PASSWORD1_LABEL,
+    PASSWORD2_LABEL,
+    PASSWORD_LABEL,
+    PASSWORDS_DIFFER_MESSAGE,
+)
+from apps.accounts.models import PINCODE_VALIDATOR, Address, User
 from apps.accounts.verification_presentation import CODE_LABEL
 from apps.core.phone import normalise_phone
 
@@ -40,7 +57,7 @@ class PhoneLoginForm(forms.Form):
     """Collect a mobile number and hand the normalised value to the view."""
 
     phone = forms.CharField(
-        label=_("Mobile number"),
+        label=PHONE_LABEL,
         max_length=16,
         widget=forms.TextInput(
             attrs={
@@ -59,7 +76,116 @@ class PhoneLoginForm(forms.Form):
         try:
             return normalise_phone(self.cleaned_data["phone"])
         except ValueError as exc:
-            raise forms.ValidationError(_("Enter a valid Indian mobile number.")) from exc
+            raise forms.ValidationError(PHONE_ERROR) from exc
+
+
+class PasswordLoginForm(forms.Form):
+    """Collect an identifier and a password for the customer password login (D72).
+
+    The identifier is a phone number or an email address. The form does not
+    decide which: `apps.accounts.passwords` reads the ``@`` and normalises.
+    """
+
+    identifier = forms.CharField(
+        label=IDENTIFIER_LABEL,
+        max_length=254,
+        widget=forms.TextInput(
+            attrs={
+                "autocomplete": "username",
+                "class": INPUT_CLASSES,
+            }
+        ),
+    )
+    password = forms.CharField(
+        label=PASSWORD_LABEL,
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "current-password",
+                "class": INPUT_CLASSES,
+            }
+        ),
+    )
+
+
+class SignupForm(forms.Form):
+    """Collect the five values a new customer account needs (D72).
+
+    It is a plain Form: the service creates the account and a duplicate is
+    reported with one generic sentence, so the form never runs a database
+    uniqueness check of its own.
+    """
+
+    phone = forms.CharField(
+        label=PHONE_LABEL,
+        max_length=16,
+        widget=forms.TextInput(
+            attrs={
+                "autocomplete": "tel",
+                "inputmode": "tel",
+                "placeholder": "98765 43210",
+                "class": INPUT_CLASSES,
+            }
+        ),
+    )
+    full_name = forms.CharField(
+        label=FULL_NAME_LABEL,
+        max_length=255,
+        strip=True,
+        error_messages={"required": NAME_REQUIRED_MESSAGE},
+        widget=forms.TextInput(attrs={"autocomplete": "name", "class": INPUT_CLASSES}),
+    )
+    email = forms.EmailField(
+        label=EMAIL_LABEL,
+        max_length=254,
+        error_messages={
+            "required": EMAIL_REQUIRED_MESSAGE,
+            "invalid": EMAIL_INVALID_MESSAGE,
+        },
+        widget=forms.EmailInput(attrs={"autocomplete": "email", "class": INPUT_CLASSES}),
+    )
+    password1 = forms.CharField(
+        label=PASSWORD1_LABEL,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
+    )
+    password2 = forms.CharField(
+        label=PASSWORD2_LABEL,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
+    )
+
+    def clean_phone(self) -> str:
+        # Same normalisation as the phone login: one shape for every later step.
+        try:
+            return normalise_phone(self.cleaned_data["phone"])
+        except ValueError as exc:
+            raise forms.ValidationError(PHONE_ERROR) from exc
+
+    def clean_email(self) -> str:
+        # Email addresses are compared lowercased and without spaces; the model
+        # save does the same, but the form checks the cleaned value first.
+        return self.cleaned_data["email"].strip().lower()
+
+    def clean(self) -> dict:
+        # clean() can be None in django-stubs, so fall back to an empty dict.
+        cleaned = super().clean() or {}
+        password1 = cleaned.get("password1")
+        password2 = cleaned.get("password2")
+        if not password1 or not password2:
+            return cleaned
+        if password1 != password2:
+            self.add_error("password2", PASSWORDS_DIFFER_MESSAGE)
+            return cleaned
+        # Django's own validators (D72): the unsaved user gives the similarity
+        # check its phone, email and name. The messages are shown as they are.
+        candidate = User(
+            phone=cleaned.get("phone", ""),
+            email=cleaned.get("email") or None,
+            full_name=cleaned.get("full_name", ""),
+        )
+        try:
+            validate_password(password1, user=candidate)
+        except DjangoValidationError as exc:
+            self.add_error("password1", exc)
+        return cleaned
 
 
 class OtpVerifyForm(forms.Form):
