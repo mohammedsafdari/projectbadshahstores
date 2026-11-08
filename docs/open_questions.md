@@ -4,6 +4,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 
 ## Shop and delivery area
 - [ ] Shop full address (Saifee Nagar, Indore), phone, email — [TO BE FILLED] — owner
+- [ ] Shop WhatsApp number for the order page button (`ShopSettings.whatsapp_number`) — owner; ask again before launch; default in use: blank, the button is hidden
 - [ ] Delivery origin address used for pin-code-based serviceability — owner
 
 ## Tax and compliance

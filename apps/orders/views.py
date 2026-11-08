@@ -31,11 +31,13 @@ from apps.credit.models import CreditAccount
 from apps.credit.services import available_credit
 from apps.delivery.services import address_is_served, get_delivery_promise
 from apps.inventory.reservations import ReservationShortfallError
-from apps.orders.forms import CheckoutForm
+from apps.orders.forms import CancelOrderForm, CheckoutForm
 from apps.orders.models import Order
 from apps.orders.presentation import (
     ADDRESS_NOT_FOUND_MESSAGE,
     ADDRESS_NOT_SERVED_MESSAGE,
+    ALREADY_CANCELLED_MESSAGE,
+    CANCEL_NOT_POSSIBLE_MESSAGE,
     CART_CHANGED_MESSAGE,
     CART_NOT_READY_MESSAGE,
     CREDIT_UNAVAILABLE_MESSAGE,
@@ -43,7 +45,9 @@ from apps.orders.presentation import (
     GROUP_INVALID_MESSAGE,
     GROUP_REFUSED_MESSAGE,
     NO_ADDRESS_MESSAGE,
+    ORDER_CANCELLED_MESSAGE,
     available_credit_sentence,
+    cancel_question,
     cart_quantity,
     cod_limit_message,
     cod_on_delivery_sentence,
@@ -52,6 +56,7 @@ from apps.orders.presentation import (
     credit_confirmation_sentence,
     credit_limit_message,
     credit_refused_message,
+    credit_returned_sentence,
     delivery_day_text,
     item_count_text,
     item_quantity,
@@ -62,18 +67,24 @@ from apps.orders.presentation import (
     payment_method_label,
     status_sentence,
     substitution_label,
+    timeline_label,
+    timeline_time_text,
+    whatsapp_href,
 )
 from apps.orders.services import (
+    CUSTOMER_CANCELLABLE,
     ORDER_LIST_PAGE_SIZE,
     AddressNotServedError,
     CartNotReadyError,
     CheckoutGroupInUseError,
     CodLimitExceededError,
     EmptyCartError,
+    InvalidTransitionError,
     OrderAddressNotFoundError,
     OrderCreditLimitExceededError,
     OrderCreditUnavailableError,
     OrderNotFoundError,
+    cancel_order_by_customer,
     get_user_order_by_group,
     list_user_order_rows,
     place_order,
@@ -393,16 +404,12 @@ def checkout(request: HttpRequest) -> HttpResponse:
     return _checkout_get(request, user)
 
 
-@login_required(login_url=LOGIN_URL)
-@never_cache
-def order_confirmation(request: HttpRequest, group: UUID) -> HttpResponse:
-    """The customer's own confirmation page, found by checkout group (D66)."""
-    user = _current_user(request)
-    try:
-        order = get_user_order_by_group(user, group)
-    except OrderNotFoundError:
-        raise Http404("Order not found.") from None
+def _order_page_context(order: Order) -> dict[str, object]:
+    """The values the confirmation and detail pages share (D66, D70).
 
+    Keeping one helper means the two pages cannot drift: the confirmation page
+    adds its own title text and the detail page adds its timeline and actions.
+    """
     # The same line shape the checkout page uses, from the frozen item copies.
     lines = [
         {
@@ -413,25 +420,153 @@ def order_confirmation(request: HttpRequest, group: UUID) -> HttpResponse:
         for item in order.items.all()
     ]
     is_credit = order.payment_method == Order.PaymentMethod.CREDIT
+    return {
+        "order": order,
+        "summary": order,
+        "lines": lines,
+        "status_sentence": status_sentence(order.status),
+        "delivery_day": delivery_day_text(order.promised_delivery_date),
+        "substitution_choice": substitution_label(order.substitution_preference),
+        "cod_sentence": cod_on_delivery_sentence(order.amount_due_on_delivery),
+        "is_credit": is_credit,
+        "payment_method": payment_method_label(order.payment_method),
+        "credit_sentence": (credit_confirmation_sentence(order.grand_total) if is_credit else ""),
+    }
+
+
+@login_required(login_url=LOGIN_URL)
+@never_cache
+def order_confirmation(request: HttpRequest, group: UUID) -> HttpResponse:
+    """The customer's own confirmation page, found by checkout group (D66)."""
+    user = _current_user(request)
+    try:
+        order = get_user_order_by_group(user, group)
+    except OrderNotFoundError:
+        raise Http404("Order not found.") from None
+
+    # The ** spreads the shared keys into this page's own context dict.
     return render(
         request,
         "orders/order_confirmation.html",
         {
             "text": page_text(),
-            "order": order,
-            "summary": order,
-            "lines": lines,
-            "status_sentence": status_sentence(order.status),
-            "delivery_day": delivery_day_text(order.promised_delivery_date),
-            "substitution_choice": substitution_label(order.substitution_preference),
-            "cod_sentence": cod_on_delivery_sentence(order.amount_due_on_delivery),
-            "is_credit": is_credit,
-            "payment_method": payment_method_label(order.payment_method),
-            "credit_sentence": (
-                credit_confirmation_sentence(order.grand_total) if is_credit else ""
-            ),
+            **_order_page_context(order),
+            "detail_url": reverse("order_detail", args=[order.checkout_group]),
         },
     )
+
+
+@login_required(login_url=LOGIN_URL)
+@require_http_methods(["GET"])
+@never_cache
+def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
+    """One order with its progress timeline and actions (D70)."""
+    user = _current_user(request)
+    try:
+        order = get_user_order_by_group(user, group)
+    except OrderNotFoundError:
+        raise Http404("Order not found.") from None
+
+    # The prefetched logs arrive oldest first (the model's own order), and the
+    # timeline never shows the log note, the actor or the internal reason.
+    timeline = [
+        {
+            "label": timeline_label(log.to_status),
+            "time_text": timeline_time_text(log.created_at),
+        }
+        for log in order.status_logs.all()
+    ]
+    cancelled_credit = (
+        order.status == Order.Status.CANCELLED
+        and order.payment_method == Order.PaymentMethod.CREDIT
+    )
+    # The ** spreads the shared keys into this page's own context dict.
+    return render(
+        request,
+        "orders/order_detail.html",
+        {
+            "text": page_text(),
+            **_order_page_context(order),
+            "timeline": timeline,
+            "placed_on": order_date_text(order.created_at),
+            "can_cancel": order.status in CUSTOMER_CANCELLABLE,
+            "cancel_url": reverse("order_cancel", args=[order.checkout_group]),
+            "whatsapp_href": whatsapp_href(get_shop_settings().whatsapp_number, order.order_number),
+            "credit_returned_text": (
+                credit_returned_sentence(order.grand_total) if cancelled_credit else ""
+            ),
+            "orders_url": reverse("order_list"),
+        },
+    )
+
+
+def _render_cancel(request: HttpRequest, order: Order, form: CancelOrderForm) -> HttpResponse:
+    """Show the cancel page, with a form error when the reason was too long."""
+    return render(
+        request,
+        "orders/order_cancel.html",
+        {
+            "text": page_text(),
+            "order": order,
+            "form": form,
+            "cancel_question": cancel_question(order.order_number),
+            "cancel_url": reverse("order_cancel", args=[order.checkout_group]),
+            "detail_url": reverse("order_detail", args=[order.checkout_group]),
+        },
+    )
+
+
+def _redirect_already_cancelled(request: HttpRequest, order: Order) -> HttpResponse:
+    """Send an already-cancelled order back to its detail page."""
+    messages.info(request, ALREADY_CANCELLED_MESSAGE)
+    return redirect("order_detail", group=order.checkout_group)
+
+
+def _redirect_cannot_cancel(request: HttpRequest, order: Order) -> HttpResponse:
+    """Send an order that is past packing back to its detail page."""
+    messages.error(request, CANCEL_NOT_POSSIBLE_MESSAGE)
+    return redirect("order_detail", group=order.checkout_group)
+
+
+@login_required(login_url=LOGIN_URL)
+@require_http_methods(["GET", "POST"])
+@never_cache
+def order_cancel(request: HttpRequest, group: UUID) -> HttpResponse:
+    """Ask before cancelling, then call the existing cancel service (D70)."""
+    user = _current_user(request)
+    try:
+        order = get_user_order_by_group(user, group)
+    except OrderNotFoundError:
+        raise Http404("Order not found.") from None
+
+    # These two checks come before the form, so a second POST after a success
+    # hits the already-cancelled branch and can never reverse a credit twice.
+    if order.status == Order.Status.CANCELLED:
+        return _redirect_already_cancelled(request, order)
+    if order.status not in CUSTOMER_CANCELLABLE:
+        return _redirect_cannot_cancel(request, order)
+
+    if request.method == "GET":
+        return _render_cancel(request, order, CancelOrderForm())
+
+    form = CancelOrderForm(request.POST)
+    if not form.is_valid():
+        return _render_cancel(request, order, form)
+
+    try:
+        cancel_order_by_customer(
+            user,
+            order.pk,
+            reason=form.cleaned_data["reason"],
+        )
+    except OrderNotFoundError:
+        raise Http404("Order not found.") from None
+    except InvalidTransitionError:
+        # Staff may have moved the order between the checks above and the lock.
+        return _redirect_cannot_cancel(request, order)
+
+    messages.success(request, ORDER_CANCELLED_MESSAGE)
+    return redirect("order_detail", group=order.checkout_group)
 
 
 @login_required(login_url=LOGIN_URL)
@@ -453,7 +588,7 @@ def order_list(request: HttpRequest) -> HttpResponse:
             # The item count is an annotation, which mypy cannot see on the model.
             "items_text": item_count_text(cast(Any, order).item_count),
             "date_text": order_date_text(order.created_at),
-            "url": reverse("order_confirmation", args=[order.checkout_group]),
+            "url": reverse("order_detail", args=[order.checkout_group]),
         }
         for order in page_obj
     ]

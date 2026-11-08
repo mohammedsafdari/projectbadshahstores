@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import quote
 
 from django.utils import timezone
 from django.utils.formats import date_format
@@ -17,6 +18,7 @@ from django.utils.translation import ngettext
 
 from apps.cart.presentation import format_quantity
 from apps.cart.services import CartLine
+from apps.core.phone import normalise_phone
 from apps.orders.models import Order, OrderItem
 
 CHECKOUT_TITLE = _("Checkout")
@@ -82,6 +84,25 @@ VIEW_ORDER_LINK = _("View order")
 PREVIOUS_LINK = _("Previous")
 NEXT_LINK = _("Next")
 
+ORDER_DETAIL_TITLE = _("Order details")
+ORDER_DETAIL_HEADING = _("Order details")
+TIMELINE_HEADING = _("Order progress")
+BACK_TO_ORDERS_LINK = _("All my orders")
+VIEW_THIS_ORDER_LINK = _("View this order")
+CANCEL_ORDER_LINK = _("Cancel this order")
+CANCEL_TITLE = _("Cancel order")
+CANCEL_HEADING = _("Cancel this order?")
+CANCEL_HELP = _("You can cancel until we start packing.")
+CANCEL_REASON_LABEL = _("Reason (optional)")
+CANCEL_CONFIRM_BUTTON = _("Yes, cancel my order")
+KEEP_ORDER_LINK = _("No, keep my order")
+CANCEL_REASON_TOO_LONG = _("Keep the reason to 200 characters or fewer.")
+ORDER_CANCELLED_MESSAGE = _("Your order has been cancelled.")
+CANCEL_NOT_POSSIBLE_MESSAGE = _("This order can no longer be cancelled. Please contact us.")
+ALREADY_CANCELLED_MESSAGE = _("This order is already cancelled.")
+WHATSAPP_BUTTON = _("Message us on WhatsApp")
+WHATSAPP_MESSAGE = _("Hello, I have a question about my order %(order_number)s.")
+
 # The customer's choice of how to pay (D66, D68).
 PAYMENT_METHOD_LABELS = {
     Order.PaymentMethod.COD: _("Cash on delivery"),
@@ -110,6 +131,22 @@ STATUS_SENTENCES = {
     Order.Status.REFUND_PENDING: _("Your refund is being processed."),
     Order.Status.REFUNDED: _("Your refund has been paid."),
     Order.Status.PARTIALLY_REFUNDED: _("Part of your order has been refunded."),
+}
+
+# A short customer label for each step on the order progress timeline (D70).
+TIMELINE_LABELS = {
+    Order.Status.PLACED: _("Order placed"),
+    Order.Status.PAYMENT_PENDING: _("Waiting for payment"),
+    Order.Status.PAID: _("Payment received"),
+    Order.Status.CONFIRMED: _("Order confirmed"),
+    Order.Status.PACKING: _("Packing your order"),
+    Order.Status.OUT_FOR_DELIVERY: _("Out for delivery"),
+    Order.Status.DELIVERED: _("Delivered"),
+    Order.Status.CANCELLED: _("Order cancelled"),
+    Order.Status.PAYMENT_FAILED: _("Payment failed"),
+    Order.Status.REFUND_PENDING: _("Refund in progress"),
+    Order.Status.REFUNDED: _("Refunded"),
+    Order.Status.PARTIALLY_REFUNDED: _("Partly refunded"),
 }
 
 
@@ -180,6 +217,11 @@ def credit_confirmation_sentence(amount: Decimal) -> str:
     )
 
 
+def credit_returned_sentence(amount: Decimal) -> str:
+    """The detail sentence for a cancelled credit order (D70)."""
+    return str(_("%(amount)s was returned to your khata.") % {"amount": money(amount)})
+
+
 def payment_method_label(value: str) -> str:
     """The plain label for one payment method."""
     # A value read from the form is a plain str, so compare it with each
@@ -217,6 +259,31 @@ def page_label(number: int, total: int) -> str:
     return str(_("Page %(number)d of %(total)d") % {"number": number, "total": total})
 
 
+def cancel_question(order_number: str) -> str:
+    """The question the cancel page asks before it changes anything."""
+    return str(
+        _("Are you sure you want to cancel order %(order_number)s?")
+        % {"order_number": order_number}
+    )
+
+
+def whatsapp_href(number: str, order_number: str) -> str:
+    """A plain wa.me link with the order number already in the message.
+
+    An empty or invalid number returns an empty string, so the page can hide
+    the button instead of printing a broken link.
+    """
+    if not number.strip():
+        return ""
+    try:
+        # normalise_phone returns "+91XXXXXXXXXX"; wa.me wants the digits only.
+        digits = normalise_phone(number).removeprefix("+")
+    except ValueError:
+        return ""
+    message = str(WHATSAPP_MESSAGE % {"order_number": order_number})
+    return f"https://wa.me/{digits}?text={quote(message, safe='')}"
+
+
 def substitution_label(value: str) -> str:
     """The plain label for one substitution choice."""
     # A value read from the form is a plain str, so compare it with each
@@ -234,6 +301,20 @@ def status_sentence(status: str) -> str:
         if str(choice) == status:
             return str(sentence)
     return str(_("Your order is being processed."))
+
+
+def timeline_label(status: str) -> str:
+    """The short customer label for one step on the order timeline."""
+    for choice, label in TIMELINE_LABELS.items():
+        if str(choice) == status:
+            return str(label)
+    return status_sentence(status)
+
+
+def timeline_time_text(moment: datetime) -> str:
+    """The date and time of one timeline step, in the shop time zone."""
+    local = timezone.localtime(moment)
+    return date_format(local, "j M Y, H:i")
 
 
 def cart_quantity(line: CartLine) -> str:
@@ -284,4 +365,17 @@ def page_text() -> dict[str, str]:
         "view_order_link": str(VIEW_ORDER_LINK),
         "previous_link": str(PREVIOUS_LINK),
         "next_link": str(NEXT_LINK),
+        "order_detail_title": str(ORDER_DETAIL_TITLE),
+        "order_detail_heading": str(ORDER_DETAIL_HEADING),
+        "timeline_heading": str(TIMELINE_HEADING),
+        "back_to_orders_link": str(BACK_TO_ORDERS_LINK),
+        "view_this_order_link": str(VIEW_THIS_ORDER_LINK),
+        "cancel_order_link": str(CANCEL_ORDER_LINK),
+        "cancel_title": str(CANCEL_TITLE),
+        "cancel_heading": str(CANCEL_HEADING),
+        "cancel_help": str(CANCEL_HELP),
+        "cancel_reason_label": str(CANCEL_REASON_LABEL),
+        "cancel_confirm_button": str(CANCEL_CONFIRM_BUTTON),
+        "keep_order_link": str(KEEP_ORDER_LINK),
+        "whatsapp_button": str(WHATSAPP_BUTTON),
     }

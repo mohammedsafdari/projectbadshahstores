@@ -124,6 +124,7 @@ AUDITED_SHOP_SETTINGS_FIELDS: tuple[str, ...] = (
     "shop_name",
     "address",
     "phone",
+    "whatsapp_number",
     "email",
     "gstin",
     "fssai_number",

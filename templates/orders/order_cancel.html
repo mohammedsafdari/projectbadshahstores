@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{{ text.cancel_title }} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+  <h1 class="text-2xl font-bold text-gray-900">{{ text.cancel_heading }}</h1>
+  <p class="mt-2 text-sm text-gray-700">{{ text.cancel_help }}</p>
+  <p data-cancel-question class="mt-4 text-sm font-medium text-gray-900">{{ cancel_question }}</p>
+
+  <form method="post" action="{{ cancel_url }}" class="mt-4 rounded border border-gray-200 bg-white p-4">
+    {% csrf_token %}
+    <label for="cancel-reason" class="block text-sm font-medium text-gray-900">{{ text.cancel_reason_label }}</label>
+    <textarea id="cancel-reason" name="reason" maxlength="200" rows="3" class="mt-2 w-full rounded border border-gray-300 p-2 text-sm">{{ form.reason.value|default:"" }}</textarea>
+    {% if form.reason.errors %}
+      <div data-reason-error role="alert" class="mt-2 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        {% for message in form.reason.errors %}
+          <p>{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <button type="submit" data-cancel-confirm class="mt-4 w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.cancel_confirm_button }}</button>
+  </form>
+
+  <a data-keep-order href="{{ detail_url }}" class="mt-4 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">{{ text.keep_order_link }}</a>
+{% endblock content %}

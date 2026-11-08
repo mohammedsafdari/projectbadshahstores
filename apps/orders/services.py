@@ -63,6 +63,10 @@ STATUS_EVENTS: dict[str, str] = {
     DELIVERED: EVENT_DELIVERED,
 }
 
+# A customer may cancel only before packing starts (D70, Slice 38d). The cancel
+# page and the service both read this one rule, so they cannot disagree.
+CUSTOMER_CANCELLABLE = (Order.Status.PLACED, Order.Status.CONFIRMED)
+
 
 class OrderError(ValueError):
     """Base error for every order service refusal."""
@@ -289,7 +293,7 @@ def cancel_order_by_customer(
         order = Order.objects.select_for_update().filter(pk=order_id, user=user).first()
         if order is None:
             raise OrderNotFoundError("Order not found.")
-        if order.status not in (Order.Status.PLACED, Order.Status.CONFIRMED):
+        if order.status not in CUSTOMER_CANCELLABLE:
             raise InvalidTransitionError("The customer can no longer cancel this order.")
         return _apply_transition(
             order,

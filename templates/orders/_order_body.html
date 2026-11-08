@@ -1,0 +1,39 @@
+{# The sections below the order top card, shared by the confirmation and detail
+   pages. The view passes `order`, `lines`, `summary` and the payment values. #}
+<section class="mt-6">
+  <h2 class="text-lg font-semibold text-gray-900">{{ text.items_heading }}</h2>
+  {% include "orders/_checkout_summary.html" %}
+</section>
+
+<section class="mt-6">
+  <h2 class="text-lg font-semibold text-gray-900">{{ text.payment_heading }}</h2>
+  {% if is_credit %}
+    <p data-payment-method class="mt-2 text-sm font-medium text-gray-900">{{ payment_method }}</p>
+    <p data-amount-due class="mt-1 text-sm text-gray-700">{{ credit_sentence }}</p>
+  {% else %}
+    <p data-amount-due class="mt-2 text-sm font-medium text-gray-900">{{ cod_sentence }}</p>
+  {% endif %}
+</section>
+
+<section class="mt-6">
+  <h2 class="text-lg font-semibold text-gray-900">{{ text.shipping_heading }}</h2>
+  <address data-ship-address class="mt-2 text-sm not-italic text-gray-700">
+    {{ order.ship_name }}<br>
+    {{ order.ship_phone }}<br>
+    {{ order.ship_line1 }}{% if order.ship_line2 %}, {{ order.ship_line2 }}{% endif %}{% if order.ship_landmark %} ({{ order.ship_landmark }}){% endif %}<br>
+    {{ order.ship_city }}, {{ order.ship_state }} {{ order.ship_pincode }}
+    {% if order.ship_label %}<br>{{ order.ship_label }}{% endif %}
+  </address>
+</section>
+
+<section class="mt-6">
+  <h2 class="text-lg font-semibold text-gray-900">{{ text.substitution_heading }}</h2>
+  <p data-substitution class="mt-2 text-sm text-gray-700">{{ substitution_choice }}</p>
+</section>
+
+{% if order.customer_note %}
+  <section class="mt-6">
+    <h2 class="text-lg font-semibold text-gray-900">{{ text.note_heading }}</h2>
+    <p data-note class="mt-2 text-sm text-gray-700">{{ order.customer_note }}</p>
+  </section>
+{% endif %}

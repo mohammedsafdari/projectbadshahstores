@@ -12,6 +12,7 @@ from apps.orders.models import Order
 from apps.orders.presentation import (
     ADDRESS_INVALID,
     ADDRESS_REQUIRED,
+    CANCEL_REASON_TOO_LONG,
     NOTE_TOO_LONG,
     PAYMENT_METHOD_INVALID,
     SUBSTITUTION_INVALID,
@@ -59,3 +60,14 @@ class CheckoutForm(forms.Form):
         # A missing choice is the same as the default, rather than an error.
         choice = self.cleaned_data["substitution_preference"]
         return choice or Order.SubstitutionPreference.CALL_ME
+
+
+class CancelOrderForm(forms.Form):
+    """The optional reason on the customer cancel page (D70)."""
+
+    reason = forms.CharField(
+        max_length=200,
+        required=False,
+        strip=True,
+        error_messages={"max_length": CANCEL_REASON_TOO_LONG},
+    )

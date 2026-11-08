@@ -9,6 +9,7 @@ from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.orders.models import Order
 from apps.orders.presentation import (
@@ -125,7 +126,7 @@ def test_order_list_row_shows_number_status_total_payment_and_item_count() -> No
     assert _element_text(html, "data-order-items") == item_count_text(2)
 
 
-def test_order_list_row_links_to_the_confirmation_page() -> None:
+def test_order_list_row_links_to_the_order_detail_page() -> None:
     user = UserFactory()
     order = OrderFactory(user=user)
 
@@ -133,9 +134,34 @@ def test_order_list_row_links_to_the_confirmation_page() -> None:
     client.force_login(user)
     html = _order_list_html(client)
 
-    expected = reverse("order_confirmation", args=[order.checkout_group])
+    expected = reverse("order_detail", args=[order.checkout_group])
     assert f'href="{expected}"' in _element_tag(html, "data-order-link")
     assert _element_text(html, "data-order-link") == str(VIEW_ORDER_LINK)
+
+
+def test_order_list_row_status_follows_the_order_status() -> None:
+    user = UserFactory()
+    cancelled = OrderFactory(
+        user=user,
+        status=Order.Status.CANCELLED,
+        cancelled_at=timezone.now(),
+    )
+    delivered = OrderFactory(
+        user=user,
+        status=Order.Status.DELIVERED,
+        delivered_at=timezone.now(),
+    )
+
+    client = Client()
+    client.force_login(user)
+    html = _order_list_html(client)
+
+    status_texts = _element_texts(html, "data-order-status")
+    assert status_texts == [
+        status_sentence(delivered.status),
+        status_sentence(cancelled.status),
+    ]
+    assert status_sentence(Order.Status.PLACED) not in status_texts
 
 
 def test_order_list_paginates_ten_per_page() -> None:

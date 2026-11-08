@@ -133,6 +133,8 @@ class ShopSettings(TimeStampedModel):
     shop_name = models.CharField(max_length=200, blank=True, default="")
     address = models.TextField(blank=True, default="")
     phone = models.CharField(max_length=20, blank=True, default="")
+    # The shop's WhatsApp number; blank means the order page button is hidden.
+    whatsapp_number = models.CharField(max_length=20, blank=True, default="")
     email = models.EmailField(blank=True, default="")
     gstin = models.CharField(max_length=15, blank=True, default="")
     fssai_number = models.CharField(max_length=14, blank=True, default="")

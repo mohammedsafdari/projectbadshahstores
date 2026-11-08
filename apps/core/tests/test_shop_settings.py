@@ -65,6 +65,7 @@ def _change_data(row: ShopSettings, **overrides: Any) -> dict[str, Any]:
         "shop_name": row.shop_name,
         "address": row.address,
         "phone": row.phone,
+        "whatsapp_number": row.whatsapp_number,
         "email": row.email,
         "gstin": row.gstin,
         "fssai_number": row.fssai_number,
