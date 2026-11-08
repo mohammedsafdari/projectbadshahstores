@@ -286,3 +286,13 @@ def test_otp_login_for_a_staff_phone_never_touches_the_staff_account() -> None:
     assert staff.phone_verified_at is None
     customer = User.objects.get(phone=PHONE, is_staff=False)
     assert client.session["_auth_user_id"] == str(customer.pk)
+
+
+def test_otp_login_of_an_account_with_nothing_to_remove_shows_no_safety_message() -> None:
+    client = Client()
+    _start(client)
+
+    response = _verify(client, _last_sms_code())
+
+    stored = [str(message) for message in get_messages(response.wsgi_request)]
+    assert str(PASSWORD_RESET_FOR_SAFETY_MESSAGE) not in stored

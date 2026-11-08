@@ -176,3 +176,69 @@ def test_get_search_backend_uses_setting(settings) -> None:
     assert backend.search("anything") == [SearchHit(product_id=1, score=1.0)]
 ```
 .NET comparison: `builder.ConfigureAppConfiguration` in an integration test, but scoped to a single test.
+
+## `transaction.on_commit` with a nested function
+
+`transaction.on_commit(fn)` runs `fn` only after the database transaction commits, so a
+rolled-back order never sends a message. Use a nested `def` when the callback needs several
+values: a `lambda` looks its variables up when it runs, so a lambda made inside a loop would see
+the loop's last value. `apps/orders/services.py`:
+```python
+def _register_notices(order_id: int, events: tuple[str, ...]) -> None:
+    """Send these order events after the current transaction commits (D69)."""
+
+    # Do not use a bare lambda inside a loop here: a lambda looks up its
+    # variables when it runs, so every callback would send the loop's last
+    # event. A nested function binds the whole tuple now, which avoids that.
+    def send_notices() -> None:
+        for event in events:
+            notify_order_event(order_id, event)
+
+    transaction.on_commit(send_notices)
+```
+.NET comparison: `TransactionScope.TransactionCompleted` plus a local function, instead of a
+closure that captures a loop variable by reference.
+
+## `functools.cache` for a value built once
+
+`@functools.cache` remembers the first result of a function that takes no arguments, so an
+expensive value is made once per process and reused. Here it keeps one real password hash so an
+unknown login still pays the hashing cost. `apps/accounts/passwords.py`:
+```python
+@functools.cache
+def _dummy_password_hash() -> str:
+    """A real encoded password, made once, for identifiers that find nobody."""
+
+    # functools.cache remembers the first result, so the hash is made on the
+    # first unknown login and reused afterwards.
+    return make_password("dummy-password-for-timing")
+```
+.NET comparison: a `static readonly Lazy<string>` field, but with no field declaration.
+
+## `cache.add` then `cache.incr` for a counter that expires
+
+`cache.add(key, 0, seconds)` writes the key only when it is missing, and `cache.incr(key)` adds
+one. Together they start a fixed window at the first failure: later failures do not extend it.
+`apps/accounts/passwords.py`:
+```python
+def _record_failure(key: str) -> None:
+    """Count one wrong try and start the fifteen-minute window if needed."""
+    # add() only sets the key when it is missing, so the lock starts at the
+    # first failure and the later failures do not extend it.
+    cache.add(key, 0, LOGIN_LOCK_SECONDS)
+    cache.incr(key)
+```
+.NET comparison: `IMemoryCache.GetOrCreate` with an absolute expiration, plus an atomic increment.
+
+## `Paginator.get_page` and a bad page number
+
+`Paginator(...).get_page(value)` always returns a real page: a missing, non-numeric, zero or
+too-large page number is clamped to the first or last page instead of raising. That is why the
+order list needs no `try/except`. `apps/orders/views.py`:
+```python
+    # get_page turns a bad or too-large page number into a valid page by itself.
+    page_obj = Paginator(list_user_order_rows(user), ORDER_LIST_PAGE_SIZE).get_page(
+        request.GET.get("page")
+    )
+```
+.NET comparison: `Skip`/`Take` with the page number clamped by hand; here the clamp is built in.

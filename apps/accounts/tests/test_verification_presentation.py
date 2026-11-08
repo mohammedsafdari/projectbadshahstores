@@ -72,6 +72,18 @@ def test_pending_verifications_is_empty_when_the_customer_is_ready() -> None:
     assert pending_verifications(user) == []
 
 
+def test_pending_verifications_skips_the_email_when_the_account_has_none() -> None:
+    user = SimpleNamespace(
+        phone_verified_at=None,
+        email=None,
+        email_verified_at=None,
+    )
+
+    items = pending_verifications(user)
+
+    assert [item["kind"] for item in items] == ["phone"]
+
+
 def test_verification_text_has_the_new_sentences() -> None:
     text = verification_text()
 

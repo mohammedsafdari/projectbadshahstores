@@ -32,7 +32,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] POS export format for stock/price sync — unknown; planned as one-way CSV import with validation report, plus CSV stock-count adjustment flow — owner (from your billing software); a sample export of about 10 rows is needed by Slice 20 (CSV import); default in use: the website ledger is primary and the billing export is a one-way import
 - [ ] Product/variant seed data: categories, brands, own-brand products at launch — owner/phase-2 data entry
 - [ ] Please give the FSSAI licence number; it goes into the `SHOP_FSSAI_LICENCE` setting and must be set in production before launch — owner; ask again before Phase 7; default in use: not shown
-- [ ] Should the filter panel show how many products each brand has, and offer non-vegetarian and 'not applicable' diet choices once the real catalogue has them? — owner; low priority; ask again before Phase 3; default in use: no counts, Vegetarian only (D51) (asked at Slice 28: owner chose the default)
+- [ ] Should the filter panel show how many products each brand has, and offer non-vegetarian and 'not applicable' diet choices once the real catalogue has them? — owner; low priority; ask again before launch (Phase 7); default in use: no counts, Vegetarian only (D51) (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] Own-brand products: which products are own-brand, and are they FSSAI-licensed — owner/CA
 - [ ] Per-variant HSN/GST rate values — entered at data entry; confirm mapping with CA — CA/owner
 - [ ] Can we use manufacturer or brand photos for third-party products, or must we shoot our own? — owner (brand permission, copyright); needed before launch; default in use: the owner uploads their own photos
@@ -69,18 +69,18 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 22 (seed catalogue, D49)
 - [ ] GST conflict in the billing item master: the tax columns say 5% on every row, the HSN text carries 5, 12 or 18. The seed uses 5% and marks it unconfirmed — CA/owner; ask again before Phase 5; default in use: 5% from the tax columns, no rate built into the code
-- [ ] 15 billing rows are not loaded (2 with MRP 0, 12 with selling rate above MRP, 1 with a 5-digit HSN); they are listed in `apps/catalog/seed_data/nestle_review.csv`. Please read the real MRP and HSN from the packs — owner; ask again before Phase 3; default in use: not loaded (asked at Slice 28: owner chose the default)
-- [ ] Export of the rest of the shop (staples, spices, tea, own-brand, about 45 items) in the same billing format — owner; ask again before Phase 3; default in use: `demo.csv` with `DEMO-` SKUs and provisional HSN/GST, loaded only with `--demo` (asked at Slice 28: owner chose the default)
-- [ ] The rest of the category tree beyond the five starter categories (chocolates-confectionery, noodles-soups, milk-dairy, tea-coffee, spices-masalas); slugs become URLs — owner; ask again before Phase 3; default in use: the five starter categories (asked at Slice 28: owner chose the default)
-- [ ] Pack weights in grams for KitKat, Munch and Milkybar rows (the billing names carry price points such as "10/"), so unit prices and grouping work — owner; low priority; ask again before Phase 3; default in use: unit PACKET, pack size 1 (asked at Slice 28: owner chose the default)
-- [ ] Are the two 1 kg Everyday milk powder rows (03302 at 600 and 03304 at 500) the same pack? — owner; low priority; ask again before Phase 3; default in use: 03302 is not loaded (MRP problem and bad HSN) (asked at Slice 28: owner chose the default)
+- [ ] 15 billing rows are not loaded (2 with MRP 0, 12 with selling rate above MRP, 1 with a 5-digit HSN); they are listed in `apps/catalog/seed_data/nestle_review.csv`. Please read the real MRP and HSN from the packs — owner; ask again before launch (Phase 7); default in use: not loaded (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
+- [ ] Export of the rest of the shop (staples, spices, tea, own-brand, about 45 items) in the same billing format — owner; ask again before launch (Phase 7); default in use: `demo.csv` with `DEMO-` SKUs and provisional HSN/GST, loaded only with `--demo` (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
+- [ ] The rest of the category tree beyond the five starter categories (chocolates-confectionery, noodles-soups, milk-dairy, tea-coffee, spices-masalas); slugs become URLs — owner; ask again before launch (Phase 7); default in use: the five starter categories (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
+- [ ] Pack weights in grams for KitKat, Munch and Milkybar rows (the billing names carry price points such as "10/"), so unit prices and grouping work — owner; low priority; ask again before launch (Phase 7); default in use: unit PACKET, pack size 1 (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
+- [ ] Are the two 1 kg Everyday milk powder rows (03302 at 600 and 03304 at 500) the same pack? — owner; low priority; ask again before launch (Phase 7); default in use: 03302 is not loaded (MRP problem and bad HSN) (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] How to enter real purchase rates (cost price) without committing them to the public repository (a private CSV import) — owner/developer; ask again before Phase 5 reports; default in use: cost_price blank in every committed seed file
 - [ ] Billing stock is unusable (45 of 55 rows negative, none positive). A physical count is needed before launch to start the ledger — owner; ask again before Phase 3; default in use: the website ledger starts from received stock and counts (D43)
-- [ ] Check diet type (veg mark) on the packs of all 33 real products — owner; low priority; ask again before Phase 3; default in use: VEG on every real row (asked at Slice 28: owner chose the default)
-- [ ] Product names with price points ("KitKat ₹10 pack") go stale when an MRP changes; decide on a naming rule once pack weights are known — owner; low priority; ask again before Phase 3; default in use: price point in the name (asked at Slice 28: owner chose the default)
+- [ ] Check diet type (veg mark) on the packs of all 33 real products — owner; low priority; ask again before launch (Phase 7); default in use: VEG on every real row (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
+- [ ] Product names with price points ("KitKat ₹10 pack") go stale when an MRP changes; decide on a naming rule once pack weights are known — owner; low priority; ask again before launch (Phase 7); default in use: price point in the name (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 
 ### Added in Slice 26 (search, D53)
-- [ ] Who fills `search_keywords` with Hinglish spellings (for example "aata" for atta) for the real products? — owner; low priority; ask again before Phase 3; default in use: blank except the demo rows (asked at Slice 28: owner chose the default)
+- [ ] Who fills `search_keywords` with Hinglish spellings (for example "aata" for atta) for the real products? — owner; low priority; ask again before launch (Phase 7); default in use: blank except the demo rows (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] Should we log the search words customers type, so a missing product becomes visible to the owner? — owner/developer; ask again before Phase 6; default in use: no logging (D53)
   - Slice 27 default: suggestions are not logged either
 
@@ -104,9 +104,6 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 ### Added in Slice 35
 - [ ] Choose the order-number prefix the shop wants on the website (for example `BS`), set in `ShopSettings.order_number_prefix`; a blank prefix uses `BS` — owner; ask again before launch; default in use: `BS/26-27/000001`, with a new counter each financial year (D64)
 
-### Added in Slice 36
-- [x] Should a customer get an SMS or WhatsApp message when an order is placed? — answered (D69, 8 November 2026): console and email now; real SMS stays off until MSG91 and DLT are ready — owner
-
 ### Added in Slice 37a
 - [ ] Which customers get credit and at what limit? — owner; before launch; default in use: no customer has credit until the owner sets a limit in the admin
 - [ ] Should customers get payment reminders or a dues list? — owner; ask again before Phase 5; default in use: none
@@ -125,6 +122,9 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 38f
 - [ ] Per-IP limit and bot protection for sign-up and login — owner; ask again before launch; default in use: none
+
+### Added in Slice 38g
+- [ ] Orders and verification state for staff in Phase 5 (see docs/phase5_minimum.md) — owner; ask again before Phase 5; default in use: as listed in that file
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

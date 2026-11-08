@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ text.account_title }} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+<div class="mx-auto max-w-md">
+  <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">{{ text.account_heading }}</h1>
+  <p data-account-name class="mt-2 text-lg font-medium text-gray-900">{{ account_name }}</p>
+
+  <dl class="mt-6 space-y-3 text-sm">
+    <div>
+      <dt class="font-medium text-gray-700">Mobile number</dt>
+      <dd class="text-gray-900">
+        <span data-account-phone>{{ masked_phone }}</span>
+        <span data-phone-status class="ml-2 text-gray-600">{% if phone_verified %}{{ text.verified_mark }}{% else %}{{ text.not_verified_mark }}{% endif %}</span>
+      </dd>
+    </div>
+    {% if has_email %}
+    <div>
+      <dt class="font-medium text-gray-700">Email address</dt>
+      <dd class="text-gray-900">
+        <span data-account-email>{{ masked_email }}</span>
+        <span data-email-status class="ml-2 text-gray-600">{% if email_verified %}{{ text.verified_mark }}{% else %}{{ text.not_verified_mark }}{% endif %}</span>
+      </dd>
+    </div>
+    {% endif %}
+  </dl>
+
+  <ul class="mt-8 space-y-3 text-sm">
+    <li><a data-account-link data-link-kind="orders" class="text-brand-600 hover:text-brand-700" href="{{ orders_url }}">My orders</a></li>
+    <li><a data-account-link data-link-kind="addresses" class="text-brand-600 hover:text-brand-700" href="{{ addresses_url }}">Addresses</a></li>
+    {% if show_verify_phone %}
+    <li><a data-account-link data-link-kind="verify-phone" class="text-brand-600 hover:text-brand-700" href="{{ verify_phone_url }}">{{ verify_phone_label }}</a></li>
+    {% endif %}
+    {% if show_verify_email %}
+    <li><a data-account-link data-link-kind="verify-email" class="text-brand-600 hover:text-brand-700" href="{{ verify_email_url }}">{{ verify_email_label }}</a></li>
+    {% endif %}
+    <li><a data-account-link data-link-kind="password" class="text-brand-600 hover:text-brand-700" href="{{ password_url }}">{{ password_link }}</a></li>
+    <li><a data-account-link data-link-kind="email" class="text-brand-600 hover:text-brand-700" href="{{ email_url }}">{{ email_link }}</a></li>
+  </ul>
+</div>
+{% endblock content %}

@@ -121,9 +121,14 @@ def _cache_key(identifier: str, user: User | None) -> str:
     the key shape does not reveal who has an account.
     """
     if user is not None:
-        return f"{CACHE_KEY_PREFIX}:user:{user.pk}"
+        return _user_cache_key(user)
     digest = hashlib.sha256(identifier.strip().lower().encode()).hexdigest()
     return f"{CACHE_KEY_PREFIX}:text:{digest}"
+
+
+def _user_cache_key(user: User) -> str:
+    """The one counter key shared by a customer's phone and email (D72)."""
+    return f"{CACHE_KEY_PREFIX}:user:{user.pk}"
 
 
 @functools.cache
@@ -144,6 +149,25 @@ def _record_failure(key: str) -> None:
     # first failure and the later failures do not extend it.
     cache.add(key, 0, LOGIN_LOCK_SECONDS)
     cache.incr(key)
+
+
+def clear_login_failures(user: User) -> None:
+    """Forget this customer's wrong-password count (D73).
+
+    A successful reset or password change proves the owner of the account, so
+    the old failures must not keep the account locked.
+    """
+    cache.delete(_user_cache_key(user))
+
+
+def login_locked(user: User) -> bool:
+    """Whether this customer has used up the five wrong tries (D72)."""
+    return cache.get(_user_cache_key(user), 0) >= LOGIN_MAX_FAILURES
+
+
+def record_login_failure(user: User) -> None:
+    """Count one wrong current-password try on an account page (D73)."""
+    _record_failure(_user_cache_key(user))
 
 
 def authenticate_customer_password(identifier: str, password: str) -> PasswordLoginResult:

@@ -199,3 +199,25 @@ def test_verify_code_closes_other_unused_challenges_of_the_same_purpose_only() -
     assert newer.consumed_at is not None
     # A code for another purpose is never closed by this verification.
     assert login.consumed_at is None
+
+
+def test_hourly_limit_is_counted_per_purpose() -> None:
+    now = timezone.now()
+    # Five login challenges inside the rolling hour, spaced past the resend
+    # rule so the hourly count is the only limit left.
+    for index in range(5):
+        OtpChallenge.objects.create(
+            phone=PHONE,
+            purpose=OtpChallenge.Purpose.LOGIN,
+            code_hmac=_code_hmac(PHONE, OtpChallenge.Purpose.LOGIN, f"{index:06d}"),
+            created_at=now - timedelta(minutes=index + 1),
+            expires_at=now + timedelta(minutes=5),
+        )
+
+    login = request_code(PHONE)
+    phone = request_code(PHONE, purpose=OtpChallenge.Purpose.PHONE_VERIFY)
+
+    assert login.sent is False
+    assert login.reason == "too_many_requests"
+    # The phone-verification purpose has its own count, so it still sends.
+    assert phone.sent is True

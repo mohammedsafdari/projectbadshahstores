@@ -73,6 +73,21 @@ def confirm_email_code(user: User, code: str) -> bool:
     return True
 
 
+def invalidate_email_codes(user: User) -> int:
+    """Close every unused email code for this account and return the count.
+
+    A code asked for before an email change must never verify the new address
+    (D71 limit, closed by D73). Challenges stay keyed by the account's phone,
+    so one queryset update closes them all.
+    """
+    updated = OtpChallenge.objects.filter(
+        phone=user.phone,
+        purpose=OtpChallenge.Purpose.EMAIL_VERIFY,
+        consumed_at__isnull=True,
+    ).update(consumed_at=timezone.now())
+    return updated
+
+
 def claim_account_by_otp_login(user: User) -> bool:
     """Prove the phone on an OTP login and take over an unverified account.
 

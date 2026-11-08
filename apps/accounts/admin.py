@@ -7,6 +7,7 @@ from django.contrib.auth.forms import UserChangeForm as AuthUserChangeForm
 from django.contrib.auth.forms import UserCreationForm as AuthUserCreationForm
 
 from apps.accounts.models import User
+from apps.accounts.verification import invalidate_email_codes
 from apps.core.phone import normalise_phone
 
 
@@ -197,4 +198,7 @@ class UserAdmin(BaseUserAdmin):
             obj.phone_verified_at = None
         if "email" in form.changed_data:
             obj.email_verified_at = None
+            # A code asked for before the change must not verify the new
+            # address (D71 limit, closed by D73).
+            invalidate_email_codes(obj)
         super().save_model(request, obj, form, change)

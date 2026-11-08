@@ -71,5 +71,8 @@
   <p class="mt-6 text-sm text-gray-600">
     <a data-signup-link class="text-brand-600 hover:text-brand-700" href="{% url "account_signup" %}">{{ text.signup_link }}</a>
   </p>
+  <p class="mt-2 text-sm text-gray-600">
+    <a data-forgot-password-link class="text-brand-600 hover:text-brand-700" href="{% url "account_forgot_password" %}">{{ text.forgot_link }}</a>
+  </p>
 </div>
 {% endblock content %}

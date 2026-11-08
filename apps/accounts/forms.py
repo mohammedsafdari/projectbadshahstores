@@ -30,12 +30,15 @@ from apps.accounts.address_presentation import (
     STATE_REQUIRED,
 )
 from apps.accounts.auth_presentation import (
+    CURRENT_PASSWORD_LABEL,
     EMAIL_INVALID_MESSAGE,
     EMAIL_LABEL,
     EMAIL_REQUIRED_MESSAGE,
     FULL_NAME_LABEL,
     IDENTIFIER_LABEL,
     NAME_REQUIRED_MESSAGE,
+    NEW_PASSWORD1_LABEL,
+    NEW_PASSWORD2_LABEL,
     PASSWORD1_LABEL,
     PASSWORD2_LABEL,
     PASSWORD_LABEL,
@@ -186,6 +189,164 @@ class SignupForm(forms.Form):
         except DjangoValidationError as exc:
             self.add_error("password1", exc)
         return cleaned
+
+
+class ForgotPasswordForm(forms.Form):
+    """Collect a phone number or an email address for a reset code (D73)."""
+
+    identifier = forms.CharField(
+        label=IDENTIFIER_LABEL,
+        max_length=254,
+        widget=forms.TextInput(
+            attrs={
+                "autocomplete": "username",
+                "autofocus": True,
+                "class": INPUT_CLASSES,
+            }
+        ),
+    )
+
+
+class ResetPasswordForm(forms.Form):
+    """The code and the two new passwords of the reset page (D73).
+
+    ``user`` is optional and only feeds Django's similarity validator; the
+    service is what actually changes the password.
+    """
+
+    code = forms.CharField(
+        label=CODE_LABEL,
+        max_length=6,
+        widget=forms.TextInput(
+            attrs={
+                "autocomplete": "one-time-code",
+                "inputmode": "numeric",
+                "pattern": "[0-9]*",
+                "placeholder": "123456",
+                "autofocus": True,
+                "class": INPUT_CLASSES,
+            }
+        ),
+    )
+    new_password1 = forms.CharField(
+        label=NEW_PASSWORD1_LABEL,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
+    )
+    new_password2 = forms.CharField(
+        label=NEW_PASSWORD2_LABEL,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
+    )
+
+    def __init__(self, *args, user: User | None = None, **kwargs):
+        # The calling view passes the found customer so the similarity check
+        # can compare the new password with the phone, email and name.
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_code(self) -> str:
+        code = self.cleaned_data["code"].strip()
+        if len(code) != 6 or not code.isdigit():
+            raise forms.ValidationError(_("Enter the 6-digit code."))
+        return code
+
+    def clean(self) -> dict:
+        cleaned = super().clean() or {}
+        password1 = cleaned.get("new_password1")
+        password2 = cleaned.get("new_password2")
+        if not password1 or not password2:
+            return cleaned
+        if password1 != password2:
+            self.add_error("new_password2", PASSWORDS_DIFFER_MESSAGE)
+            return cleaned
+        try:
+            validate_password(password1, user=self.user)
+        except DjangoValidationError as exc:
+            self.add_error("new_password1", exc)
+        return cleaned
+
+
+class ChangePasswordForm(forms.Form):
+    """Set or change the password of the logged-in customer (D73).
+
+    The current password is only asked for when the account already has a
+    usable one, so an OTP-only customer sets a first password without it.
+    """
+
+    current_password = forms.CharField(
+        label=CURRENT_PASSWORD_LABEL,
+        widget=forms.PasswordInput(
+            attrs={"autocomplete": "current-password", "class": INPUT_CLASSES}
+        ),
+    )
+    new_password1 = forms.CharField(
+        label=NEW_PASSWORD1_LABEL,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
+    )
+    new_password2 = forms.CharField(
+        label=NEW_PASSWORD2_LABEL,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
+    )
+
+    def __init__(
+        self,
+        *args,
+        user: User | None = None,
+        require_current: bool = False,
+        **kwargs,
+    ):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        # Removing the field, not merely hiding it, keeps the input off the
+        # page and out of the POST for an OTP-only customer.
+        if not require_current:
+            self.fields.pop("current_password", None)
+
+    def clean(self) -> dict:
+        cleaned = super().clean() or {}
+        password1 = cleaned.get("new_password1")
+        password2 = cleaned.get("new_password2")
+        if not password1 or not password2:
+            return cleaned
+        if password1 != password2:
+            self.add_error("new_password2", PASSWORDS_DIFFER_MESSAGE)
+            return cleaned
+        try:
+            validate_password(password1, user=self.user)
+        except DjangoValidationError as exc:
+            self.add_error("new_password1", exc)
+        return cleaned
+
+
+class ChangeEmailForm(forms.Form):
+    """Add or change the email address of the logged-in customer (D73).
+
+    The current password is asked for only when the account has a usable one.
+    """
+
+    email = forms.EmailField(
+        label=EMAIL_LABEL,
+        max_length=254,
+        error_messages={
+            "required": EMAIL_REQUIRED_MESSAGE,
+            "invalid": EMAIL_INVALID_MESSAGE,
+        },
+        widget=forms.EmailInput(attrs={"autocomplete": "email", "class": INPUT_CLASSES}),
+    )
+    current_password = forms.CharField(
+        label=CURRENT_PASSWORD_LABEL,
+        widget=forms.PasswordInput(
+            attrs={"autocomplete": "current-password", "class": INPUT_CLASSES}
+        ),
+    )
+
+    def __init__(self, *args, require_current: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not require_current:
+            self.fields.pop("current_password", None)
+
+    def clean_email(self) -> str:
+        # Stored lowercased and without spaces, like every other email here.
+        return self.cleaned_data["email"].strip().lower()
 
 
 class OtpVerifyForm(forms.Form):

@@ -292,3 +292,24 @@ def test_pages_never_show_the_full_phone_or_email() -> None:
 
     assert PHONE not in phone_html
     assert EMAIL not in email_html
+
+
+def test_email_page_is_not_cached() -> None:
+    user = UserFactory(email=EMAIL, email_verified_at=None)
+    client = Client()
+    client.force_login(user)
+
+    response = client.get(_email_path())
+
+    assert "no-store" in response["Cache-Control"]
+
+
+def test_verified_phone_page_posting_send_sends_no_code() -> None:
+    user = UserFactory(phone=PHONE)
+    client = Client()
+    client.force_login(user)
+
+    response = client.post(_phone_path(), {"action": "send"})
+
+    assert response.status_code == 200
+    assert SENT == []
