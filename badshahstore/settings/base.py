@@ -232,6 +232,13 @@ AUTHENTICATION_BACKENDS = ["apps.accounts.backends.ActiveUserModelBackend"]
 # send_otp(phone, code); the console backend is for development only.
 SMS_BACKEND = env("SMS_BACKEND", default="apps.notifications.sms.ConsoleSmsBackend")
 
+# Order messages (D69): off until a real SMS or SMTP backend is set up.
+ORDER_SMS_ENABLED = env.bool("ORDER_SMS_ENABLED", default=False)
+# Order messages (D69): off until a real SMS or SMTP backend is set up.
+ORDER_EMAIL_ENABLED = env.bool("ORDER_EMAIL_ENABLED", default=False)
+# The From address on every order email; the console backend prints it in dev.
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Badshah Stores <noreply@localhost>")
+
 # auth.W004 warns when USERNAME_FIELD is not unique in the database. For this
 # project the phone username is unique only among active users (deactivated
 # accounts may be re-activated with their original phone), so the conditional

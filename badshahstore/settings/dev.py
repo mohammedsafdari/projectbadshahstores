@@ -28,4 +28,9 @@ SECRET_KEY = env(
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
+# Order messages print to the console in development, never to a real phone or
+# inbox (D69). base.py defaults both switches to off.
+ORDER_SMS_ENABLED = True
+ORDER_EMAIL_ENABLED = True
+
 LOGIN_URL = "/accounts/login/"

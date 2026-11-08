@@ -104,7 +104,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Choose the order-number prefix the shop wants on the website (for example `BS`), set in `ShopSettings.order_number_prefix`; a blank prefix uses `BS` — owner; ask again before launch; default in use: `BS/26-27/000001`, with a new counter each financial year (D64)
 
 ### Added in Slice 36
-- [ ] Should a customer get an SMS or WhatsApp message when an order is placed? — owner; ask again before Slice 38; default in use: none, the confirmation page only
+- [x] Should a customer get an SMS or WhatsApp message when an order is placed? — answered (D69, 8 November 2026): console and email now; real SMS stays off until MSG91 and DLT are ready — owner
 
 ### Added in Slice 37a
 - [ ] Which customers get credit and at what limit? — owner; before launch; default in use: no customer has credit until the owner sets a limit in the admin
@@ -112,6 +112,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 37b
 - [ ] Should a credit customer be able to pay part of an order on credit and the rest in cash? — owner; ask again before Phase 5; default in use: no, all or nothing
+
+### Added in Slice 38
+- [ ] DLT templates for the six order message texts (D69) — owner; ask again before real SMS; default in use: the console SMS backend
+- [ ] Real SMTP provider and sender address for order emails — owner; ask again before launch; default in use: console email in development, off in production
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

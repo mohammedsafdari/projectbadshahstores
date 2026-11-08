@@ -18,11 +18,17 @@ DEFAULT_SMS_BACKEND = "apps.notifications.sms.ConsoleSmsBackend"
 
 
 class SmsBackend(ABC):
-    """What the OTP service needs from an SMS provider."""
+    """What the project needs from an SMS provider."""
 
     @abstractmethod
     def send_otp(self, phone: str, code: str) -> None:
         """Send one login code to one phone number."""
+
+    # Deliberately not abstract: a backend written for login codes only still
+    # works, and order notices fail cleanly if it cannot send free text (D69).
+    def send_message(self, phone: str, text: str) -> None:
+        """Send one free-text message, such as an order notice."""
+        raise NotImplementedError("This SMS backend cannot send free text.")
 
 
 class ConsoleSmsBackend(SmsBackend):
@@ -40,6 +46,15 @@ class ConsoleSmsBackend(SmsBackend):
                 "Set SMS_BACKEND to a real SMS backend in production."
             )
         print(f"[DEV SMS] to {_mask_phone(phone)}: code {code}")
+
+    def send_message(self, phone: str, text: str) -> None:
+        """Print a free-text order message, in development only (D69)."""
+        if not settings.DEBUG:
+            raise ImproperlyConfigured(
+                "ConsoleSmsBackend is for development only. "
+                "Set SMS_BACKEND to a real SMS backend in production."
+            )
+        print(f"[DEV SMS] to {_mask_phone(phone)}: {text}")
 
 
 def _mask_phone(phone: str) -> str:
