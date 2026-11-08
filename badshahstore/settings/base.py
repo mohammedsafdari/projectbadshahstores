@@ -234,7 +234,6 @@ SMS_BACKEND = env("SMS_BACKEND", default="apps.notifications.sms.ConsoleSmsBacke
 
 # Order messages (D69): off until a real SMS or SMTP backend is set up.
 ORDER_SMS_ENABLED = env.bool("ORDER_SMS_ENABLED", default=False)
-# Order messages (D69): off until a real SMS or SMTP backend is set up.
 ORDER_EMAIL_ENABLED = env.bool("ORDER_EMAIL_ENABLED", default=False)
 # The From address on every order email; the console backend prints it in dev.
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Badshah Stores <noreply@localhost>")

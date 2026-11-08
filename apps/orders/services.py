@@ -8,7 +8,8 @@ used, so no write skips the model and ``updated_at`` always moves.
 The lock order in ``place_order`` is fixed (D67): the user row, then the
 variants in ascending ``pk`` order (inside ``reserve_stock``), then the order
 rows, and the credit account row LAST (inside ``charge_order``). No other
-function locks in a different order.
+function locks in a different order. Messages are registered with
+``transaction.on_commit`` and never block an order (D69).
 """
 
 from __future__ import annotations
@@ -36,8 +37,30 @@ from apps.credit.services import (
 )
 from apps.delivery.services import address_is_served, get_delivery_promise
 from apps.inventory.reservations import ReservationLine, release_group, reserve_stock
+from apps.notifications.messages import (
+    EVENT_CANCELLED,
+    EVENT_DELIVERED,
+    EVENT_OUT_FOR_DELIVERY,
+    EVENT_PLACED,
+    EVENT_STAFF_NEW_ORDER,
+)
+from apps.notifications.order_notices import notify_order_event
 from apps.orders.models import Order, OrderItem, OrderStatusLog
-from apps.orders.state import CANCELLED, COD_ONLY_BLOCKED, DELIVERED, can_transition
+from apps.orders.state import (
+    CANCELLED,
+    COD_ONLY_BLOCKED,
+    DELIVERED,
+    OUT_FOR_DELIVERY,
+    can_transition,
+)
+
+# The status moves that tell the customer something (D69). Every other move,
+# including CONFIRMED and PACKING, sends nothing.
+STATUS_EVENTS: dict[str, str] = {
+    CANCELLED: EVENT_CANCELLED,
+    OUT_FOR_DELIVERY: EVENT_OUT_FOR_DELIVERY,
+    DELIVERED: EVENT_DELIVERED,
+}
 
 
 class OrderError(ValueError):
@@ -102,6 +125,19 @@ class PlacedOrder:
 
     order: Order
     created: bool
+
+
+def _register_notices(order_id: int, events: tuple[str, ...]) -> None:
+    """Send these order events after the current transaction commits (D69)."""
+
+    # Do not use a bare lambda inside a loop here: a lambda looks up its
+    # variables when it runs, so every callback would send the loop's last
+    # event. A nested function binds the whole tuple now, which avoids that.
+    def send_notices() -> None:
+        for event in events:
+            notify_order_event(order_id, event)
+
+    transaction.on_commit(send_notices)
 
 
 def _pack_label(variant: ProductVariant) -> str:
@@ -198,6 +234,10 @@ def _apply_transition(
         # Give the credit back for a cancelled credit order (D68). This does
         # nothing for a COD order that was never charged.
         reverse_order_charge(order, actor=actor, now=now)
+
+    event = STATUS_EVENTS.get(to_status)
+    if event is not None:
+        _register_notices(order.pk, (event,))
     return order
 
 
@@ -423,6 +463,8 @@ def place_order(
 
         # Only after the order and its stock hold exist is the cart cleared.
         clear_cart(store)
+        # Messages go out only after the transaction commits (D69).
+        _register_notices(order.pk, (EVENT_PLACED, EVENT_STAFF_NEW_ORDER))
         return PlacedOrder(order=order, created=True)
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import patch
 
 import pytest
 from django.conf import settings as django_settings
@@ -228,3 +229,92 @@ def test_order_channels_are_off_by_default_in_test_settings() -> None:
     # switch anything on for this test.
     assert django_settings.ORDER_SMS_ENABLED is False
     assert django_settings.ORDER_EMAIL_ENABLED is False
+
+
+def test_staff_new_order_sends_no_email_when_order_email_is_disabled(settings, mailoutbox) -> None:
+    settings.ORDER_EMAIL_ENABLED = False
+    set_settings(email=SHOP_EMAIL)
+    order = _order_with_user()
+
+    notify_order_event(order.pk, EVENT_STAFF_NEW_ORDER)
+
+    assert mailoutbox == []
+
+
+def test_customer_without_an_email_address_causes_no_error_log(
+    settings, mailoutbox, caplog
+) -> None:
+    settings.ORDER_EMAIL_ENABLED = True
+    order = _order_with_user(email=None)
+
+    with caplog.at_level(logging.ERROR):
+        notify_order_event(order.pk, EVENT_PLACED)
+
+    assert RecordingSmsBackend.messages == []
+    assert mailoutbox == []
+    # A list comprehension keeps only ERROR records; a blank address is not one.
+    assert [record for record in caplog.records if record.levelno >= logging.ERROR] == []
+
+
+def test_unknown_event_sends_nothing_and_logs_a_warning(settings, mailoutbox, caplog) -> None:
+    settings.ORDER_SMS_ENABLED = True
+    settings.SMS_BACKEND = RECORDING_BACKEND
+    settings.ORDER_EMAIL_ENABLED = True
+    order = _order_with_user(email=CUSTOMER_EMAIL)
+
+    with caplog.at_level(logging.WARNING):
+        notify_order_event(order.pk, "ORDER_TELEPORTED")
+
+    assert RecordingSmsBackend.messages == []
+    assert mailoutbox == []
+    assert "event=ORDER_TELEPORTED" in caplog.text
+    assert f"order_id={order.pk}" in caplog.text
+
+
+def test_blank_account_name_falls_back_to_the_ship_name(settings, mailoutbox) -> None:
+    settings.ORDER_EMAIL_ENABLED = True
+    order = _order_with_user(email=CUSTOMER_EMAIL, full_name="")
+
+    notify_order_event(order.pk, EVENT_PLACED)
+
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].body.startswith(f"Hello {order.ship_name},")
+
+
+def test_staff_email_failure_is_swallowed_and_logged(settings, caplog) -> None:
+    settings.ORDER_EMAIL_ENABLED = True
+    set_settings(email=SHOP_EMAIL)
+    order = _order_with_user()
+
+    # Both context managers stay active for the call and the log capture.
+    with (
+        patch("apps.notifications.order_notices.send_mail", side_effect=RuntimeError),
+        caplog.at_level(logging.ERROR),
+    ):
+        notify_order_event(order.pk, EVENT_STAFF_NEW_ORDER)
+
+    assert "channel=staff_email" in caplog.text
+
+
+def test_staff_new_order_does_not_call_send_mail_when_shop_email_is_blank(settings) -> None:
+    settings.ORDER_EMAIL_ENABLED = True
+    order = _order_with_user()
+
+    with patch("apps.notifications.order_notices.send_mail") as send_mail_mock:
+        notify_order_event(order.pk, EVENT_STAFF_NEW_ORDER)
+
+    send_mail_mock.assert_not_called()
+
+
+def test_failure_while_loading_the_order_is_swallowed_and_logged(settings, caplog) -> None:
+    settings.ORDER_EMAIL_ENABLED = True
+    order = _order_with_user(email=CUSTOMER_EMAIL)
+
+    # Both context managers stay active for the call and the log capture.
+    with (
+        patch("apps.notifications.order_notices.build_notice", side_effect=RuntimeError),
+        caplog.at_level(logging.ERROR),
+    ):
+        notify_order_event(order.pk, EVENT_PLACED)
+
+    assert "channel=load" in caplog.text

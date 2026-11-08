@@ -48,18 +48,28 @@ def notify_order_event(order_id: int, event: str) -> None:
 
     Every channel has its own try/except because an order must never fail
     because a message did, and one broken channel must not stop the next.
+    Loading the order and building the notice share the same guard, so even a
+    database error or a bad field cannot escape.
     Call it after the database commit (Slice 38b), so a rolled-back order
     never sends a message.
     """
-    # select_related("user") reads the customer in the same query. There is no
-    # lock and no write: sending a message changes nothing in the database.
-    order = Order.objects.select_related("user").filter(pk=order_id).first()
-    if order is None or (event not in CUSTOMER_EVENTS and event != EVENT_STAFF_NEW_ORDER):
-        # Only the event and the id: never a phone number or a message text.
-        logger.warning("Order notice skipped: event=%s order_id=%s", event, order_id)
-        return
+    try:
+        # select_related("user") reads the customer in the same query. There is
+        # no lock and no write: sending a message changes nothing in the database.
+        order = Order.objects.select_related("user").filter(pk=order_id).first()
+        if order is None or (event not in CUSTOMER_EVENTS and event != EVENT_STAFF_NEW_ORDER):
+            # Only the event and the id: never a phone number or a message text.
+            logger.warning("Order notice skipped: event=%s order_id=%s", event, order_id)
+            return
 
-    notice = build_notice(order)
+        notice = build_notice(order)
+    except Exception:
+        logger.exception(
+            "Order notice failed: event=%s order_id=%s channel=load",
+            event,
+            order_id,
+        )
+        return
     if event == EVENT_STAFF_NEW_ORDER:
         _send_staff_email(notice, order.pk)
         return

@@ -116,6 +116,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 ### Added in Slice 38
 - [ ] DLT templates for the six order message texts (D69) — owner; ask again before real SMS; default in use: the console SMS backend
 - [ ] Real SMTP provider and sender address for order emails — owner; ask again before launch; default in use: console email in development, off in production
+- [ ] Should the customer get the cancel message when staff cancel an order? — owner; ask again before Phase 5; default in use: yes (D69)
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
