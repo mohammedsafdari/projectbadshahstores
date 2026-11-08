@@ -410,3 +410,15 @@ def test_confirmation_page_links_to_the_order_detail() -> None:
     tag = _element_tag(html, "data-view-order-link")
     assert f'href="{_detail_path(order)}"' in tag
     assert _element_text(html, "data-view-order-link") == str(VIEW_THIS_ORDER_LINK)
+
+
+def test_detail_of_a_live_credit_order_has_no_credit_returned_sentence() -> None:
+    user = UserFactory()
+    order = OrderFactory(user=user, payment_method=Order.PaymentMethod.CREDIT)
+    client = Client()
+    client.force_login(user)
+
+    html = client.get(_detail_path(order)).content.decode()
+
+    # "Credit returned" belongs only to a cancelled credit order.
+    assert not _has_element(html, "data-credit-returned")

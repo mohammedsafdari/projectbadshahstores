@@ -98,6 +98,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     # null=True is intentional: the unique-when-set constraint needs NULL, not "".
     email = models.EmailField("email address", null=True, blank=True)  # noqa: DJ001
     full_name = models.CharField("full name", max_length=255, blank=True)
+    # Set when the customer proves the phone or the email with a code (D71).
+    phone_verified_at = models.DateTimeField("phone verified at", null=True, blank=True)
+    email_verified_at = models.DateTimeField("email verified at", null=True, blank=True)
     role = models.CharField(
         "role",
         max_length=10,
@@ -150,6 +153,16 @@ class User(AbstractBaseUser, PermissionsMixin):
             normalise_phone(self.phone)
         except ValueError as exc:
             raise ValidationError({"phone": str(exc)}) from exc
+
+    @property
+    def is_ready_for_delivery(self) -> bool:
+        """True once the phone, and the email when there is one, are verified (D71)."""
+        if self.phone_verified_at is None:
+            return False
+        # An OTP-only customer has no email address, so there is nothing else to prove.
+        if not self.email:
+            return True
+        return self.email_verified_at is not None
 
 
 # A pin code is exactly six digits and cannot start with 0 (D57).
@@ -207,15 +220,19 @@ class Address(TimeStampedModel, ArchivableModel):
 
 
 class OtpChallenge(models.Model):
-    """One pending phone login code (D59).
+    """One pending one-time code (D59, D71).
 
     Only an HMAC of the code is stored, never the code itself. ``purpose``
-    exists so other flows (for example a phone change) can reuse the table
-    later; only LOGIN is used today.
+    keeps codes for different flows apart; a code for one purpose can never
+    confirm another.
     """
 
     class Purpose(models.TextChoices):
         LOGIN = "LOGIN", "Login"
+        PHONE_VERIFY = "PHONE_VERIFY", "Phone verification"
+        EMAIL_VERIFY = "EMAIL_VERIFY", "Email verification"
+        # Used by the password reset flow in Slice 38f.
+        PASSWORD_RESET = "PASSWORD_RESET", "Password reset"
 
     phone = models.CharField(max_length=16)
     purpose = models.CharField(max_length=20, choices=Purpose, default=Purpose.LOGIN)

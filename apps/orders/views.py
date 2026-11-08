@@ -24,6 +24,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.accounts.models import Address, User
 from apps.accounts.services import list_addresses
+from apps.accounts.verification_presentation import BANNER_HEADING, pending_verifications
 from apps.cart.services import CartSummary, build_cart
 from apps.cart.stores import DbCartStore
 from apps.core.services import get_shop_settings
@@ -452,6 +453,9 @@ def order_confirmation(request: HttpRequest, group: UUID) -> HttpResponse:
             "text": page_text(),
             **_order_page_context(order),
             "detail_url": reverse("order_detail", args=[order.checkout_group]),
+            # The banner lists only what the customer still has to verify (D71).
+            "verification_items": pending_verifications(user),
+            "verification_heading": str(BANNER_HEADING),
         },
     )
 
@@ -496,6 +500,8 @@ def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
                 credit_returned_sentence(order.grand_total) if cancelled_credit else ""
             ),
             "orders_url": reverse("order_list"),
+            "verification_items": pending_verifications(user),
+            "verification_heading": str(BANNER_HEADING),
         },
     )
 

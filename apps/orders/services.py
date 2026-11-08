@@ -124,6 +124,10 @@ class OrderCreditLimitExceededError(OrderError):
     """The order total is above the customer's available credit (D68)."""
 
 
+class CustomerNotVerifiedError(OrderError):
+    """The customer has not verified the phone or the email yet (D71)."""
+
+
 @dataclass(frozen=True)
 class PlacedOrder:
     """What ``place_order`` returns: the order and whether it was just created."""
@@ -208,6 +212,12 @@ def _apply_transition(
         and to_status in COD_ONLY_BLOCKED
     ):
         raise InvalidTransitionError(f"A COD or credit order cannot move to {to_status}.")
+    # The delivery gate (D71): nobody goes out until the phone, and the email
+    # when there is one, are verified. It refuses before any write or notice.
+    if to_status == OUT_FOR_DELIVERY and not order.user.is_ready_for_delivery:
+        raise CustomerNotVerifiedError(
+            "The customer must verify the phone and email before the first delivery."
+        )
     if to_status == CANCELLED and require_cancel_reason and not reason.strip():
         raise CancelReasonRequiredError("A staff cancellation needs a reason.")
 

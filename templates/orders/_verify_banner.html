@@ -1,0 +1,15 @@
+{# The verification banner on the order detail and confirmation pages (D71).
+   The view passes `verification_items` and `verification_heading`; the banner
+   is printed only while something is still unverified. #}
+{% if verification_items %}
+  <div data-verify-banner class="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+    <p class="font-medium">{{ verification_heading }}</p>
+    <ul class="mt-2 list-disc space-y-1 pl-5">
+      {% for item in verification_items %}
+        <li>
+          <a data-verify-link data-verify-kind="{{ item.kind }}" href="{{ item.url }}" class="font-medium text-brand-600 hover:text-brand-700">{{ item.label }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

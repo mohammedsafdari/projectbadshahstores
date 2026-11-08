@@ -25,6 +25,7 @@ from apps.accounts.address_presentation import (
     STATE_REQUIRED,
 )
 from apps.accounts.models import PINCODE_VALIDATOR, Address
+from apps.accounts.verification_presentation import CODE_LABEL
 from apps.core.phone import normalise_phone
 
 # One style for every text input, so the pages look the same.
@@ -83,6 +84,35 @@ class OtpVerifyForm(forms.Form):
         code = self.cleaned_data["code"].strip()
         if len(code) != 6 or not code.isdigit():
             raise forms.ValidationError(_("Enter the 6-digit code from the SMS."))
+        return code
+
+
+class VerificationCodeForm(forms.Form):
+    """Collect the six digits of a phone or email verification code (D71).
+
+    A blank value and letters are refused by the same rule the login form uses,
+    because a verification code has the same shape.
+    """
+
+    code = forms.CharField(
+        label=CODE_LABEL,
+        max_length=6,
+        widget=forms.TextInput(
+            attrs={
+                "autocomplete": "one-time-code",
+                "inputmode": "numeric",
+                "pattern": "[0-9]*",
+                "placeholder": "123456",
+                "autofocus": True,
+                "class": INPUT_CLASSES,
+            }
+        ),
+    )
+
+    def clean_code(self) -> str:
+        code = self.cleaned_data["code"].strip()
+        if len(code) != 6 or not code.isdigit():
+            raise forms.ValidationError(_("Enter the 6-digit code."))
         return code
 
 

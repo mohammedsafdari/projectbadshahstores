@@ -23,7 +23,11 @@ from apps.orders.presentation import (
     ORDER_CANCELLED_MESSAGE,
     cancel_question,
 )
-from apps.orders.services import cancel_order_by_customer, transition_order
+from apps.orders.services import (
+    InvalidTransitionError,
+    cancel_order_by_customer,
+    transition_order,
+)
 from apps.orders.state import PACKING
 from apps.orders.tests.checkout_helpers import (
     NOW,
@@ -345,4 +349,33 @@ def test_cancel_get_for_a_staff_moved_order_after_page_opened_is_handled() -> No
 
     order.refresh_from_db()
     assert order.status == PACKING
+    assert str(CANCEL_NOT_POSSIBLE_MESSAGE) in response.content.decode()
+
+
+def test_cancel_page_is_not_cached() -> None:
+    user, order = _cod_order()
+    client = Client()
+    client.force_login(user)
+
+    response = client.get(_cancel_path(order))
+
+    assert "no-store" in response["Cache-Control"]
+
+
+def test_cancel_post_handles_a_staff_move_between_the_check_and_the_lock() -> None:
+    user, order = _cod_order()
+    client = Client()
+    client.force_login(user)
+
+    # The order passes the page's own checks, but the service then finds that
+    # staff moved it. The view must show the message instead of a 500.
+    with patch(
+        "apps.orders.views.cancel_order_by_customer",
+        side_effect=InvalidTransitionError,
+    ):
+        response = client.post(_cancel_path(order), {"reason": ""}, follow=True)
+
+    order.refresh_from_db()
+    assert order.status == Order.Status.CONFIRMED
+    assert response.redirect_chain[-1][0].endswith(_detail_path(order))
     assert str(CANCEL_NOT_POSSIBLE_MESSAGE) in response.content.decode()

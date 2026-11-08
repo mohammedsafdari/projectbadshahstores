@@ -18,6 +18,8 @@ from django.views.decorators.http import require_POST
 from apps.accounts.forms import OtpVerifyForm, PhoneLoginForm
 from apps.accounts.models import User
 from apps.accounts.otp import request_code, verify_code
+from apps.accounts.verification import claim_account_by_otp_login
+from apps.accounts.verification_presentation import PASSWORD_RESET_FOR_SAFETY_MESSAGE
 from apps.cart.services import merge_guest_cart
 from apps.cart.stores import clear_guest_cart, read_guest_items
 
@@ -108,6 +110,10 @@ def verify_view(request: HttpRequest) -> HttpResponse:
             if result.ok and result.phone is not None:
                 user = _customer_for_login(result.phone)
                 if user is not None:
+                    # An OTP login proves the phone, and an account that was
+                    # never verified is taken over here (D71). The flag says a
+                    # usable password was cleared, so the customer is told.
+                    claimed = claim_account_by_otp_login(user)
                     # Read the guest cart before login(): logging in changes
                     # the session key, and the merge needs the guest quantities
                     # as they were before that (D59, D60).
@@ -115,6 +121,8 @@ def verify_view(request: HttpRequest) -> HttpResponse:
                     # Django's login() cycles the session key, so a code used
                     # before login cannot keep the old session (D59).
                     login(request, user)
+                    if claimed:
+                        messages.info(request, PASSWORD_RESET_FOR_SAFETY_MESSAGE)
                     request.session.pop(SESSION_PHONE_KEY, None)
                     merge = merge_guest_cart(user, guest_items)
                     clear_guest_cart(request.session)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -98,15 +99,21 @@ def lock_phone_for_otp(phone: str) -> None:
         cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [f"otp:{normalised}"])
 
 
-def request_code(phone: str) -> OtpRequestResult:
-    """Create a challenge and send one SMS, or refuse without sending.
+def request_code(
+    phone: str,
+    *,
+    purpose: str = OtpChallenge.Purpose.LOGIN,
+    send: Callable[[str], None] | None = None,
+) -> OtpRequestResult:
+    """Create a challenge and deliver one code, or refuse without sending.
 
     Known and unknown phones follow the same path, so the caller cannot use
-    this to discover who has an account (D59).
+    this to discover who has an account (D59). ``purpose`` keeps codes for
+    different flows apart (D71), and ``send`` lets the caller deliver the code
+    another way, for example by email; the default sends the SMS.
     """
     normalised = normalise_phone(phone)
     now = timezone.now()
-    purpose = OtpChallenge.Purpose.LOGIN
 
     with transaction.atomic():
         # Hold the phone lock before the resend check, so two requests at the
@@ -157,20 +164,28 @@ def request_code(phone: str) -> OtpRequestResult:
         )
 
     # Send after the transaction commits, so a slow SMS provider never holds a
-    # database lock open.
-    get_sms_backend().send_otp(normalised, code)
+    # database lock open. A custom sender replaces the SMS call completely.
+    if send is not None:
+        send(code)
+    else:
+        get_sms_backend().send_otp(normalised, code)
     return OtpRequestResult(phone=normalised, sent=True, reason=REASON_OK)
 
 
-def verify_code(phone: str, code: str) -> OtpVerifyResult:
+def verify_code(
+    phone: str,
+    code: str,
+    *,
+    purpose: str = OtpChallenge.Purpose.LOGIN,
+) -> OtpVerifyResult:
     """Check one code against the newest unused challenge for this phone.
 
     The challenge row is locked with ``select_for_update()`` so two wrong tries
     at the same moment are both counted, instead of one overwriting the other.
+    Only a challenge of the same ``purpose`` is ever checked (D71).
     """
     normalised = normalise_phone(phone)
     now = timezone.now()
-    purpose = OtpChallenge.Purpose.LOGIN
 
     with transaction.atomic():
         # The phone lock serialises verification with a new request for the

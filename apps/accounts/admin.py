@@ -112,7 +112,10 @@ class UserAdmin(BaseUserAdmin):
                 )
             },
         ),
-        ("Important dates", {"fields": ("created_at", "updated_at")}),
+        (
+            "Important dates",
+            {"fields": ("created_at", "updated_at", "phone_verified_at", "email_verified_at")},
+        ),
     )
 
     add_fieldsets = (
@@ -136,7 +139,7 @@ class UserAdmin(BaseUserAdmin):
         ),
     )
 
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "phone_verified_at", "email_verified_at")
 
     def get_readonly_fields(self, request, obj=None):
         if request.user.is_superuser:
@@ -156,3 +159,12 @@ class UserAdmin(BaseUserAdmin):
                 add_fieldsets.append((label, {**options, "fields": fields}))
             return add_fieldsets
         return super().get_fieldsets(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        # A changed contact detail must be verified again (D71). The verified
+        # times are read-only, so the form can never set them directly.
+        if "phone" in form.changed_data:
+            obj.phone_verified_at = None
+        if "email" in form.changed_data:
+            obj.email_verified_at = None
+        super().save_model(request, obj, form, change)

@@ -14,10 +14,12 @@ class RecordingSmsBackend(SmsBackend):
     """
 
     messages: list[tuple[str, str]] = []
+    # One-time codes are recorded separately from free text (D71), so a test
+    # can read the code the OTP service generated.
+    codes: list[tuple[str, str]] = []
 
     def send_otp(self, phone: str, code: str) -> None:
-        """Do nothing: order notices never send login codes."""
-        return
+        RecordingSmsBackend.codes.append((phone, code))
 
     def send_message(self, phone: str, text: str) -> None:
         RecordingSmsBackend.messages.append((phone, text))

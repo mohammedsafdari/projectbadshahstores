@@ -35,8 +35,10 @@ def notice_environment():
     # at the end, even when the test fails.
     reset_settings()
     RecordingSmsBackend.messages.clear()
+    RecordingSmsBackend.codes.clear()
     yield
     RecordingSmsBackend.messages.clear()
+    RecordingSmsBackend.codes.clear()
     clear_settings()
 
 
@@ -213,6 +215,7 @@ def test_each_customer_event_sends_its_own_text(settings) -> None:
 
     for event in CUSTOMER_EVENTS:
         RecordingSmsBackend.messages.clear()
+        RecordingSmsBackend.codes.clear()
         notify_order_event(order.pk, event)
 
         assert RecordingSmsBackend.messages == [

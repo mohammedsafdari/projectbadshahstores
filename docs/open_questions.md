@@ -119,6 +119,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Real SMTP provider and sender address for order emails — owner; ask again before launch; default in use: console email in development, off in production
 - [ ] Should the customer get the cancel message when staff cancel an order? — owner; ask again before Phase 5; default in use: yes (D69)
 
+### Added in Slice 38e
+- [ ] How staff and superusers may use the shop login (OTP and/or password) while /admin keeps its own separate sign-in — owner; decide before Slice 38f; default in use: staff stay refused on the shop pages
+- [ ] Real SMTP provider and sender address for verification emails (D71) — owner; ask again before launch; default in use: console email in development
+
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch
 - [ ] Staff 2FA before launch — recommended, owner; not built in Phase 1
