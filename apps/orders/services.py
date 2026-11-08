@@ -20,6 +20,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.accounts.models import Address, User
@@ -503,3 +504,18 @@ def get_user_order_by_group(user: User, group: UUID) -> Order:
 def list_user_orders(user: User):
     """This customer's orders, newest first (the model's default order)."""
     return Order.objects.filter(user=user)
+
+
+# The "My orders" page shows ten orders at a time (D70).
+ORDER_LIST_PAGE_SIZE = 10
+
+
+def list_user_order_rows(user: User):
+    """This customer's orders, newest first, each with its item count (D70).
+
+    The count is annotated into the same query, so the page needs one order
+    query whatever the number of rows (no per-row query).
+    """
+    # The aggregate annotation adds GROUP BY, and Django drops Meta.ordering
+    # on such a query, so the model's newest-first order is applied again here.
+    return list_user_orders(user).annotate(item_count=Count("items")).order_by("-created_at", "-pk")

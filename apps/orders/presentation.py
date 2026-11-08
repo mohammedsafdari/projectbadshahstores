@@ -7,12 +7,13 @@ that need a value (an amount, a day, a status).
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.utils import timezone
 from django.utils.formats import date_format
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
 
 from apps.cart.presentation import format_quantity
 from apps.cart.services import CartLine
@@ -71,6 +72,15 @@ SUBSTITUTION_INVALID = _("Choose how we should handle an item that is not availa
 NOTE_TOO_LONG = _("Keep the note to 300 characters or fewer.")
 PAYMENT_METHOD_INVALID = _("Choose cash on delivery or credit.")
 CREDIT_UNAVAILABLE_MESSAGE = _("Credit is not available for this account.")
+
+MY_ORDERS_TITLE = _("My orders")
+MY_ORDERS_HEADING = _("My orders")
+NO_ORDERS_MESSAGE = _("You have not placed an order yet.")
+START_SHOPPING_LINK = _("Start shopping")
+PLACED_ON_LABEL = _("Placed on")
+VIEW_ORDER_LINK = _("View order")
+PREVIOUS_LINK = _("Previous")
+NEXT_LINK = _("Next")
 
 # The customer's choice of how to pay (D66, D68).
 PAYMENT_METHOD_LABELS = {
@@ -190,6 +200,23 @@ def delivery_day_text(day: date) -> str:
     return date_format(day, "j F Y")
 
 
+def order_date_text(moment: datetime) -> str:
+    """The date an order was placed, read in the shop time zone."""
+    # A stored time is UTC; 20:00 UTC on 7 Nov is already 8 Nov in India.
+    local = timezone.localtime(moment)
+    return date_format(local, "j M Y")
+
+
+def item_count_text(count: int) -> str:
+    """How many items one order holds, singular or plural."""
+    return str(ngettext("%(count)d item", "%(count)d items", count) % {"count": count})
+
+
+def page_label(number: int, total: int) -> str:
+    """The pagination label, for example Page 2 of 5."""
+    return str(_("Page %(number)d of %(total)d") % {"number": number, "total": total})
+
+
 def substitution_label(value: str) -> str:
     """The plain label for one substitution choice."""
     # A value read from the form is a plain str, so compare it with each
@@ -249,4 +276,12 @@ def page_text() -> dict[str, str]:
         "payment_method_credit": payment_method_label(Order.PaymentMethod.CREDIT),
         "shipping_heading": str(SHIPPING_HEADING),
         "note_heading": str(NOTE_HEADING),
+        "my_orders_title": str(MY_ORDERS_TITLE),
+        "my_orders_heading": str(MY_ORDERS_HEADING),
+        "no_orders_message": str(NO_ORDERS_MESSAGE),
+        "start_shopping_link": str(START_SHOPPING_LINK),
+        "placed_on_label": str(PLACED_ON_LABEL),
+        "view_order_link": str(VIEW_ORDER_LINK),
+        "previous_link": str(PREVIOUS_LINK),
+        "next_link": str(NEXT_LINK),
     }

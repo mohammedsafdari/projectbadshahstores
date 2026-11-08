@@ -8,12 +8,13 @@ place. The rules themselves stay in ``apps.orders.services``.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import cast
+from typing import Any, cast
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
@@ -52,13 +53,18 @@ from apps.orders.presentation import (
     credit_limit_message,
     credit_refused_message,
     delivery_day_text,
+    item_count_text,
     item_quantity,
+    money,
+    order_date_text,
+    page_label,
     page_text,
     payment_method_label,
     status_sentence,
     substitution_label,
 )
 from apps.orders.services import (
+    ORDER_LIST_PAGE_SIZE,
     AddressNotServedError,
     CartNotReadyError,
     CheckoutGroupInUseError,
@@ -69,6 +75,7 @@ from apps.orders.services import (
     OrderCreditUnavailableError,
     OrderNotFoundError,
     get_user_order_by_group,
+    list_user_order_rows,
     place_order,
 )
 
@@ -422,6 +429,45 @@ def order_confirmation(request: HttpRequest, group: UUID) -> HttpResponse:
             "payment_method": payment_method_label(order.payment_method),
             "credit_sentence": (
                 credit_confirmation_sentence(order.grand_total) if is_credit else ""
+            ),
+        },
+    )
+
+
+@login_required(login_url=LOGIN_URL)
+@require_http_methods(["GET"])
+@never_cache
+def order_list(request: HttpRequest) -> HttpResponse:
+    """The customer's own orders, newest first, ten per page (D70)."""
+    user = _current_user(request)
+    # get_page turns a bad or too-large page number into a valid page by itself.
+    page_obj = Paginator(list_user_order_rows(user), ORDER_LIST_PAGE_SIZE).get_page(
+        request.GET.get("page")
+    )
+    rows = [
+        {
+            "order": order,
+            "status_text": status_sentence(order.status),
+            "total_text": money(order.grand_total),
+            "payment_text": payment_method_label(order.payment_method),
+            # The item count is an annotation, which mypy cannot see on the model.
+            "items_text": item_count_text(cast(Any, order).item_count),
+            "date_text": order_date_text(order.created_at),
+            "url": reverse("order_confirmation", args=[order.checkout_group]),
+        }
+        for order in page_obj
+    ]
+    return render(
+        request,
+        "orders/order_list.html",
+        {
+            "text": page_text(),
+            "rows": rows,
+            "page_obj": page_obj,
+            "page_text_label": (
+                page_label(page_obj.number, page_obj.paginator.num_pages)
+                if page_obj.paginator.num_pages > 1
+                else ""
             ),
         },
     )
