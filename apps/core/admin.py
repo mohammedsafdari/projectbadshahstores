@@ -73,14 +73,14 @@ class AuditLogAdmin(admin.ModelAdmin):
         return format_changes(obj.changes)
 
     # With change permission off, Django shows the entry as read-only and
-    # removes the bulk "delete selected" action. Users with the view
-    # permission can still open and read the entry.
+    # removes the bulk "delete selected" action. The role capability alone
+    # decides who may read the log (D75 amendment); Django model permissions no
+    # longer take part.
     def has_view_permission(self, request, obj=None):
-        # The role capability is checked as well as Django's own view
-        # permission (D75); an active superuser passes through has_capability.
-        return has_capability(request.user, Capability.AUDIT_READ) and super().has_view_permission(
-            request, obj
-        )
+        return has_capability(request.user, Capability.AUDIT_READ)
+
+    def has_module_permission(self, request):
+        return has_capability(request.user, Capability.AUDIT_READ)
 
     def has_add_permission(self, request):
         return False

@@ -32,14 +32,15 @@ def _superuser() -> User:
     return User.objects.create_superuser(phone="+919876543210", password="ok")
 
 
-def _staff(*codenames: str) -> User:
+def _staff(*codenames: str, role: str = User.ROLE_MANAGER) -> User:
     # A manager's default capabilities include STOCK_WRITE (D75), so the
-    # positive tests still reach the page while the permission checks stay.
+    # positive tests still reach the page; a MEMBER is used where the test
+    # needs a staff user without the capability.
     user = User.objects.create_user(
         phone="+919876543220",
         password="ok",
         is_staff=True,
-        role=User.ROLE_MANAGER,
+        role=role,
     )
     for codename in codenames:
         user.user_permissions.add(Permission.objects.get(codename=codename))
@@ -87,13 +88,13 @@ def test_page_200_for_staff_with_view_and_add_permissions() -> None:
 
 def test_page_403_for_staff_with_only_view_permission() -> None:
     variant = ProductVariantFactory()
-    client = _client_for(_staff(VIEW_STOCK))
+    client = _client_for(_staff(VIEW_STOCK, role=User.ROLE_MEMBER))
     assert client.get(_url(variant)).status_code == 403
 
 
 def test_page_403_for_staff_with_only_add_movement_permission() -> None:
     variant = ProductVariantFactory()
-    client = _client_for(_staff(ADD_MOVEMENT))
+    client = _client_for(_staff(ADD_MOVEMENT, role=User.ROLE_MEMBER))
     assert client.get(_url(variant)).status_code == 403
 
 
@@ -111,7 +112,7 @@ def test_page_redirects_anonymous_user_to_login() -> None:
 
 def test_post_by_view_only_staff_is_403_and_writes_nothing() -> None:
     variant = ProductVariantFactory()
-    client = _client_for(_staff(VIEW_STOCK))
+    client = _client_for(_staff(VIEW_STOCK, role=User.ROLE_MEMBER))
     response = client.post(_url(variant), data={"quantity": "5"})
     assert response.status_code == 403
     assert InventoryMovement.objects.count() == 0
@@ -218,6 +219,6 @@ def test_stock_screen_shows_receive_link_to_user_who_may_receive() -> None:
 
 def test_stock_screen_hides_receive_link_from_view_only_staff() -> None:
     variant = ProductVariantFactory()
-    response = _client_for(_staff(VIEW_STOCK)).get(reverse(CHANGELIST))
+    response = _client_for(_staff(VIEW_STOCK, role=User.ROLE_MEMBER)).get(reverse(CHANGELIST))
     assert response.status_code == 200
     assert _url(variant) not in response.content.decode("utf-8", "replace")

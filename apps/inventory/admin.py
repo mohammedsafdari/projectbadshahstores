@@ -30,21 +30,32 @@ from .services import (
     record_damage,
 )
 
-# Who may use the stock action pages (ADR D45, point 5). Superusers pass.
-STOCK_WRITE_PERMISSION = "inventory.add_inventorymovement"
-
 # Reading the movement history needs its own permission (ADR D45, point 2).
 HISTORY_PERMISSION = "inventory.view_inventorymovement"
 
-# (url name suffix, link text, permission needed) for the Actions column on the
-# Stock screen. "history" is not a page of this admin: see ``_action_url``.
+# (url name suffix, link text, right needed) for the Actions column on the Stock
+# screen. The four write pages use the STOCK_WRITE capability (D75); "history"
+# is not a page of this admin and keeps its Django view permission: see
+# ``_action_url``.
 STOCK_ACTIONS = (
-    ("receive", "Receive", STOCK_WRITE_PERMISSION),
-    ("adjust", "Adjust", STOCK_WRITE_PERMISSION),
-    ("count", "Count", STOCK_WRITE_PERMISSION),
-    ("damage", "Damage", STOCK_WRITE_PERMISSION),
+    ("receive", "Receive", Capability.STOCK_WRITE),
+    ("adjust", "Adjust", Capability.STOCK_WRITE),
+    ("count", "Count", Capability.STOCK_WRITE),
+    ("damage", "Damage", Capability.STOCK_WRITE),
     ("history", "History", HISTORY_PERMISSION),
 )
+
+
+def _allowed(user: Any, right: str) -> bool:
+    """True when this user holds a right from :data:`STOCK_ACTIONS`.
+
+    The tuple mixes a capability with a Django permission, so a value listed in
+    ``Capability.values`` goes through the matrix and anything else stays a
+    Django permission check.
+    """
+    if right in Capability.values:
+        return has_capability(user, right)
+    return user.has_perm(right)
 
 
 def _history_url(variant_pk: int) -> str:
@@ -191,13 +202,26 @@ class StockItemAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         return False
 
+    def has_view_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        # A capability holder may open the list without Django's own view
+        # permission (D75 amendment); the Django permission still works too.
+        return has_capability(request.user, Capability.STOCK_WRITE) or super().has_view_permission(
+            request, obj
+        )
+
+    def has_module_permission(self, request: HttpRequest) -> bool:
+        # Django's own default here is "any permission in the app", which would
+        # also show the Stock menu to someone with only movement rights. Keep
+        # the menu in step with the list: STOCK_WRITE or the Stock view.
+        return has_capability(request.user, Capability.STOCK_WRITE) or super().has_view_permission(
+            request
+        )
+
     def get_list_display(self, request: HttpRequest) -> list[str | Callable[[Any], str | bool]]:
         columns = list(super().get_list_display(request))
         # Each link is shown only to a user who may open the page behind it.
         links = [
-            (name, label)
-            for name, label, permission in STOCK_ACTIONS
-            if request.user.has_perm(permission)
+            (name, label) for name, label, right in STOCK_ACTIONS if _allowed(request.user, right)
         ]
         if links:
             columns.append(self._actions_column(links))
@@ -294,11 +318,9 @@ class StockItemAdmin(admin.ModelAdmin):
         user = request.user
         if not isinstance(user, User):
             raise PermissionDenied
-        if not (
-            self.has_view_permission(request)
-            and user.has_perm(STOCK_WRITE_PERMISSION)
-            and has_capability(user, Capability.STOCK_WRITE)
-        ):
+        # The matrix alone decides who may write stock (D75 amendment); an
+        # active superuser or OWNER passes inside has_capability.
+        if not has_capability(user, Capability.STOCK_WRITE):
             raise PermissionDenied
 
         obj = self.get_object(request, unquote(object_id))

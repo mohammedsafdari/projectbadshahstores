@@ -302,3 +302,7 @@ base = cast(Any, super())
 return has_capability(request.user, Capability.EXPORT_CSV) or base.has_view_permission(request, obj)
 ```
 .NET comparison: a cast to a base interface where the compiler cannot see the inheritance.
+
+Slice 39b: `right in Capability.values` checks whether a string is one of a `TextChoices` class's values,
+so one tuple can hold either a capability or a Django permission name (`apps/inventory/admin.py`, `_allowed`).
+.NET comparison: `Enum.IsDefined` before choosing which check to run.

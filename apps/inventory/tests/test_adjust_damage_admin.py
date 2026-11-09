@@ -34,14 +34,15 @@ def _superuser() -> User:
     return User.objects.create_superuser(phone="+919876543210", password="ok")
 
 
-def _staff(*codenames: str) -> User:
+def _staff(*codenames: str, role: str = User.ROLE_MANAGER) -> User:
     # A manager's default capabilities include STOCK_WRITE (D75), so the
-    # positive tests still reach the page while the permission checks stay.
+    # positive tests still reach the page; a MEMBER is used where the test
+    # needs a staff user without the capability.
     user = User.objects.create_user(
         phone="+919876543220",
         password="ok",
         is_staff=True,
-        role=User.ROLE_MANAGER,
+        role=role,
     )
     for codename in codenames:
         user.user_permissions.add(Permission.objects.get(codename=codename))
@@ -83,13 +84,15 @@ def test_page_200_for_staff_with_view_and_add_permissions(page: str) -> None:
 @both_pages
 def test_page_403_for_staff_with_only_view_permission(page: str) -> None:
     variant = _stocked_variant()
-    assert _client_for(_staff(VIEW_STOCK)).get(_url(page, variant)).status_code == 403
+    client = _client_for(_staff(VIEW_STOCK, role=User.ROLE_MEMBER))
+    assert client.get(_url(page, variant)).status_code == 403
 
 
 @both_pages
 def test_page_403_for_staff_with_only_add_movement_permission(page: str) -> None:
     variant = _stocked_variant()
-    assert _client_for(_staff(ADD_MOVEMENT)).get(_url(page, variant)).status_code == 403
+    client = _client_for(_staff(ADD_MOVEMENT, role=User.ROLE_MEMBER))
+    assert client.get(_url(page, variant)).status_code == 403
 
 
 @both_pages
@@ -111,7 +114,8 @@ def test_post_by_view_only_staff_is_403_and_writes_nothing(page: str) -> None:
     variant = _stocked_variant()
     before = InventoryMovement.objects.count()
     data = {"quantity_change": "1", "quantity": "1", "reason": "test"}
-    response = _client_for(_staff(VIEW_STOCK)).post(_url(page, variant), data=data)
+    client = _client_for(_staff(VIEW_STOCK, role=User.ROLE_MEMBER))
+    response = client.post(_url(page, variant), data=data)
     assert response.status_code == 403
     assert InventoryMovement.objects.count() == before
 
@@ -307,6 +311,6 @@ def test_stock_screen_shows_the_link_to_a_user_who_may_write_stock(page: str) ->
 @both_pages
 def test_stock_screen_hides_the_link_from_view_only_staff(page: str) -> None:
     variant = _stocked_variant()
-    response = _client_for(_staff(VIEW_STOCK)).get(reverse(CHANGELIST))
+    response = _client_for(_staff(VIEW_STOCK, role=User.ROLE_MEMBER)).get(reverse(CHANGELIST))
     assert response.status_code == 200
     assert _url(page, variant) not in response.content.decode("utf-8", "replace")

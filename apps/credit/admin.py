@@ -127,19 +127,17 @@ class CreditAccountAdmin(admin.ModelAdmin):
         obj.pk = account.pk
 
     def has_view_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return has_capability(request.user, Capability.VIEW_CREDIT_DUES) and (
-            super().has_view_permission(request, obj)
-        )
+        # The matrix alone decides who may read the ledger (D75 amendment).
+        return has_capability(request.user, Capability.VIEW_CREDIT_DUES)
+
+    def has_module_permission(self, request: HttpRequest) -> bool:
+        return has_capability(request.user, Capability.VIEW_CREDIT_DUES)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
-        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT) and (
-            super().has_add_permission(request)
-        )
+        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT)
 
     def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT) and (
-            super().has_change_permission(request, obj)
-        )
+        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT)
 
     def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         # Accounts are suspended with ``is_active``, never deleted.
@@ -264,14 +262,13 @@ class CreditEntryAdmin(admin.ModelAdmin):
         obj.pk = entry.pk
 
     def has_view_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return has_capability(request.user, Capability.VIEW_CREDIT_DUES) and (
-            super().has_view_permission(request, obj)
-        )
+        return has_capability(request.user, Capability.VIEW_CREDIT_DUES)
+
+    def has_module_permission(self, request: HttpRequest) -> bool:
+        return has_capability(request.user, Capability.VIEW_CREDIT_DUES)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
-        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT) and (
-            super().has_add_permission(request)
-        )
+        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT)
 
     def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         # Existing entries are append-only history.
