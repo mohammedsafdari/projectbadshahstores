@@ -30,9 +30,11 @@ from apps.cart.stores import DbCartStore
 from apps.catalog.models import ProductVariant
 from apps.core.numbering import next_number
 from apps.core.services import get_shop_settings
+from apps.credit.models import CreditAccount
 from apps.credit.services import (
     CreditLimitExceededError,
     CreditNotAvailableError,
+    available_credit,
     charge_order,
     reverse_order_charge,
 )
@@ -354,6 +356,17 @@ def place_order(
         ):
             raise InvalidPaymentMethodError("Choose cash on delivery or credit.")
 
+        # A credit request needs an active khata with something left in it
+        # (D74). The amount actually charged is decided from the cart total
+        # further down, so the cash part can be split off.
+        available = Decimal("0.00")
+        if payment_method == Order.PaymentMethod.CREDIT:
+            if not CreditAccount.objects.filter(user=user, is_active=True).exists():
+                raise OrderCreditUnavailableError("Credit is not available for this account.")
+            available = available_credit(user)
+            if available <= Decimal("0.00"):
+                raise OrderCreditLimitExceededError("There is no credit left on this account.")
+
         try:
             address: Address = get_address(user, address_id)
         except AddressNotFound:
@@ -371,7 +384,17 @@ def place_order(
             raise CartNotReadyError(_checkout_block_reason(summary))
 
         settings = get_shop_settings()
-        if payment_method == Order.PaymentMethod.COD and summary.grand_total > settings.cod_cap:
+        credit_applied = Decimal("0.00")
+        if payment_method == Order.PaymentMethod.CREDIT:
+            # Use as much of the available credit as the order needs; the rest
+            # is paid in cash at the door (D74).
+            credit_applied = min(available, summary.grand_total)
+            cash_due = summary.grand_total - credit_applied
+            if cash_due > settings.cod_cap:
+                raise CodLimitExceededError(
+                    "The cash part of this order is above the cash-on-delivery limit."
+                )
+        elif summary.grand_total > settings.cod_cap:
             raise CodLimitExceededError("The total is above the cash-on-delivery limit.")
 
         lines = [
@@ -415,12 +438,9 @@ def place_order(
             delivery_fee=summary.delivery_fee,
             grand_total=summary.grand_total,
             savings_total=summary.savings_total,
-            # A credit order has nothing to collect on delivery (D68).
-            amount_due_on_delivery=(
-                summary.grand_total
-                if payment_method == Order.PaymentMethod.COD
-                else Decimal("0.00")
-            ),
+            credit_applied=credit_applied,
+            # Whatever the credit part does not cover is collected at the door.
+            amount_due_on_delivery=summary.grand_total - credit_applied,
             promised_delivery_date=promise.day,
             delivery_is_same_day=promise.is_same_day,
             substitution_preference=substitution_preference,
@@ -446,8 +466,8 @@ def place_order(
             )
 
         # The khata charge comes after the items and before the first log row,
-        # so a refused charge rolls everything back (D68).
-        if payment_method == Order.PaymentMethod.CREDIT:
+        # so a refused charge rolls everything back (D74).
+        if credit_applied > Decimal("0.00"):
             try:
                 charge_order(order, actor=user)
             except CreditNotAvailableError:
@@ -456,7 +476,7 @@ def place_order(
                 ) from None
             except CreditLimitExceededError:
                 raise OrderCreditLimitExceededError(
-                    "The order total is above the available credit."
+                    "There is no credit left on this account."
                 ) from None
 
         OrderStatusLog.objects.create(

@@ -17,6 +17,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 
+from apps.accounts.capabilities import Capability, has_capability
 from apps.accounts.models import User
 
 from .models import CreditAccount, CreditEntry
@@ -28,16 +29,6 @@ from .services import (
     set_credit_active,
     set_credit_limit,
 )
-
-# Only these roles may read or write credit data (D67 point 13).
-CREDIT_ROLES = (User.ROLE_OWNER, User.ROLE_MANAGER)
-
-
-def _credit_role_allowed(user: Any) -> bool:
-    """True for an active superuser, or an active staff OWNER or MANAGER."""
-    if not isinstance(user, User):
-        return False
-    return user.is_active and user.is_staff and (user.is_superuser or user.role in CREDIT_ROLES)
 
 
 def _audit_actor(request: HttpRequest) -> User | None:
@@ -136,13 +127,19 @@ class CreditAccountAdmin(admin.ModelAdmin):
         obj.pk = account.pk
 
     def has_view_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return _credit_role_allowed(request.user) and super().has_view_permission(request, obj)
+        return has_capability(request.user, Capability.VIEW_CREDIT_DUES) and (
+            super().has_view_permission(request, obj)
+        )
 
     def has_add_permission(self, request: HttpRequest) -> bool:
-        return _credit_role_allowed(request.user) and super().has_add_permission(request)
+        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT) and (
+            super().has_add_permission(request)
+        )
 
     def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return _credit_role_allowed(request.user) and super().has_change_permission(request, obj)
+        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT) and (
+            super().has_change_permission(request, obj)
+        )
 
     def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         # Accounts are suspended with ``is_active``, never deleted.
@@ -267,10 +264,14 @@ class CreditEntryAdmin(admin.ModelAdmin):
         obj.pk = entry.pk
 
     def has_view_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return _credit_role_allowed(request.user) and super().has_view_permission(request, obj)
+        return has_capability(request.user, Capability.VIEW_CREDIT_DUES) and (
+            super().has_view_permission(request, obj)
+        )
 
     def has_add_permission(self, request: HttpRequest) -> bool:
-        return _credit_role_allowed(request.user) and super().has_add_permission(request)
+        return has_capability(request.user, Capability.RECORD_CREDIT_PAYMENT) and (
+            super().has_add_permission(request)
+        )
 
     def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         # Existing entries are append-only history.

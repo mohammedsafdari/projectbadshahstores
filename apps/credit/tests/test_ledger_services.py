@@ -48,15 +48,17 @@ def _account(
 
 
 def _order(user: User, total: str = "230.00") -> Order:
-    """An order whose grand total matches the factory's money constraint."""
+    """A credit order whose credit part matches the factory's money constraint."""
     amount = Decimal(total)
     fee = Decimal("30.00")
     return OrderFactory(
         user=user,
+        payment_method=Order.PaymentMethod.CREDIT,
         item_total=amount - fee,
         delivery_fee=fee,
         grand_total=amount,
-        amount_due_on_delivery=amount,
+        credit_applied=amount,
+        amount_due_on_delivery=Decimal("0.00"),
     )
 
 
@@ -181,7 +183,7 @@ def test_charge_order_twice_for_the_same_order_returns_the_same_entry() -> None:
     assert account.updated_at == updated
 
 
-def test_charge_order_uses_the_orders_grand_total() -> None:
+def test_charge_order_uses_the_orders_credit_applied() -> None:
     user = UserFactory()
     _account(user)
     order = _order(user, total="500.00")
@@ -189,6 +191,36 @@ def test_charge_order_uses_the_orders_grand_total() -> None:
     entry = charge_order(order, now=NOW)
 
     assert entry.amount == Decimal("500.00")
+
+
+def test_charge_order_charges_only_the_credit_part_of_a_split_order() -> None:
+    user = UserFactory()
+    account = _account(user)
+    order = OrderFactory(
+        user=user,
+        payment_method=Order.PaymentMethod.CREDIT,
+        credit_applied=Decimal("100.00"),
+        amount_due_on_delivery=Decimal("130.00"),
+    )
+
+    entry = charge_order(order, now=NOW)
+
+    assert entry.amount == Decimal("100.00")
+    account.refresh_from_db()
+    assert account.balance == Decimal("100.00")
+
+
+def test_charge_order_refuses_a_zero_credit_part_and_writes_nothing() -> None:
+    user = UserFactory()
+    account = _account(user)
+    order = OrderFactory(user=user, payment_method=Order.PaymentMethod.COD)
+
+    with pytest.raises(InvalidCreditAmountError):
+        charge_order(order, now=NOW)
+
+    assert CreditEntry.objects.filter(account=account).count() == 0
+    account.refresh_from_db()
+    assert account.balance == Decimal("0.00")
 
 
 # ---------------------------------------------------------------------------

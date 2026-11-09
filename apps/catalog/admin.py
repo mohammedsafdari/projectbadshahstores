@@ -4,7 +4,7 @@ import base64
 import hashlib
 import os
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
@@ -16,6 +16,7 @@ from django.urls import URLPattern, path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
+from apps.accounts.capabilities import Capability, has_capability
 from apps.catalog.audit import (
     audit_actor,
     record_variant_change,
@@ -158,7 +159,18 @@ class VariantCsvExportPermissionMixin:
     """
 
     def has_export_permission(self, request: HttpRequest) -> bool:
-        return request.user.has_perm("catalog.view_productvariant")
+        # An active superuser or OWNER passes; manager and packer defaults are
+        # in ``capabilities.DEFAULTS`` (D75). The file still includes cost price.
+        return has_capability(request.user, Capability.EXPORT_CSV)
+
+    def has_view_permission(self, request: HttpRequest, obj: object = None) -> bool:
+        # The export is the one capability-only gate (D75): a staff member who
+        # may export must be able to open the list to select the rows. ``super()``
+        # only refers to ModelAdmin at run time, so cast keeps mypy quiet.
+        base = cast(Any, super())
+        return has_capability(request.user, Capability.EXPORT_CSV) or base.has_view_permission(
+            request, obj
+        )
 
 
 class ProductImageInline(admin.TabularInline):

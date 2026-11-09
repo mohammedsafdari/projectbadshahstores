@@ -32,7 +32,14 @@ def _superuser() -> User:
 
 
 def _staff(*codenames: str) -> User:
-    user = User.objects.create_user(phone="+919876543220", password="ok", is_staff=True)
+    # A manager's default capabilities include STOCK_WRITE (D75), so the
+    # positive tests still reach the page while the permission checks stay.
+    user = User.objects.create_user(
+        phone="+919876543220",
+        password="ok",
+        is_staff=True,
+        role=User.ROLE_MANAGER,
+    )
     for codename in codenames:
         user.user_permissions.add(Permission.objects.get(codename=codename))
     return user

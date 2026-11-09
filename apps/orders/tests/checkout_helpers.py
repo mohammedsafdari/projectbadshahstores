@@ -260,11 +260,11 @@ def post_data(
     token: str,
     address_row: Address,
     *,
-    payment_method: str | None = None,
+    use_credit: bool = False,
     substitution: str = Order.SubstitutionPreference.CALL_ME,
     note: str = "",
 ) -> dict[str, str]:
-    """The fields one checkout POST needs; ``None`` leaves the method out."""
+    """The fields one checkout POST needs; ``use_credit`` ticks the khata box."""
     data = {
         "csrfmiddlewaretoken": token,
         "checkout_group": group,
@@ -272,6 +272,6 @@ def post_data(
         "substitution_preference": substitution,
         "customer_note": note,
     }
-    if payment_method is not None:
-        data["payment_method"] = payment_method
+    if use_credit:
+        data["use_credit"] = "on"
     return data

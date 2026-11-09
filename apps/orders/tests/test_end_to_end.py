@@ -110,7 +110,7 @@ def test_guest_signs_up_shops_and_cancels_a_cod_order() -> None:
     group, token = open_checkout(guest)
     response = guest.post(
         reverse("checkout"),
-        post_data(group, token, address_row, payment_method=Order.PaymentMethod.COD),
+        post_data(group, token, address_row),
     )
 
     order = Order.objects.get()
@@ -150,7 +150,7 @@ def test_otp_customer_places_a_credit_order_and_the_cancel_returns_the_credit() 
     group, token = open_checkout(client)
     client.post(
         reverse("checkout"),
-        post_data(group, token, address_row, payment_method=Order.PaymentMethod.CREDIT),
+        post_data(group, token, address_row, use_credit=True),
     )
 
     order = Order.objects.get()

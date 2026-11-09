@@ -47,7 +47,18 @@ class OrderFactory(factory.django.DjangoModelFactory):
     delivery_fee = Decimal("30.00")
     grand_total = Decimal("230.00")
     savings_total = Decimal("40.00")
-    amount_due_on_delivery = Decimal("230.00")
+    # A credit order is, by default, fully on the khata; a COD order has no
+    # credit part. The order constraints require both to agree (D74).
+    credit_applied = factory.LazyAttribute(
+        lambda order: (
+            order.grand_total
+            if order.payment_method == Order.PaymentMethod.CREDIT
+            else Decimal("0.00")
+        )
+    )
+    amount_due_on_delivery = factory.LazyAttribute(
+        lambda order: order.grand_total - order.credit_applied
+    )
 
     promised_delivery_date = factory.LazyFunction(lambda: date(2026, 11, 7))
     delivery_is_same_day = True

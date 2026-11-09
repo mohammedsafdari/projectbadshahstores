@@ -118,9 +118,30 @@ def test_account_admin_requires_staff() -> None:
     assert response.status_code == 302
     assert "/admin/login/" in response["Location"]
 
-    # Staff status alone is not enough: the role must be OWNER or MANAGER.
+    # Staff status alone is not enough: the role must have the credit
+    # capabilities (D75), which a PACKER has neither of.
     staff = UserFactory(is_staff=True, role=User.ROLE_PACKER)
     response = _client(staff).get(reverse("admin:credit_creditaccount_changelist"))
+    assert response.status_code == 403
+
+
+def test_manager_with_view_permission_can_read_accounts() -> None:
+    manager = UserFactory(is_staff=True, role=User.ROLE_MANAGER)
+    manager.user_permissions.add(Permission.objects.get(codename="view_creditaccount"))
+    CreditAccountFactory()
+
+    response = _client(manager).get(reverse("admin:credit_creditaccount_changelist"))
+
+    assert response.status_code == 200
+
+
+def test_member_with_view_permission_cannot_read_accounts() -> None:
+    member = UserFactory(is_staff=True, role=User.ROLE_MEMBER)
+    member.user_permissions.add(Permission.objects.get(codename="view_creditaccount"))
+    CreditAccountFactory()
+
+    response = _client(member).get(reverse("admin:credit_creditaccount_changelist"))
+
     assert response.status_code == 403
 
 

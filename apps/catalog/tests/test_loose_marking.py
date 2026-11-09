@@ -272,10 +272,9 @@ def test_a_forged_post_without_the_change_permission_writes_nothing() -> None:
 
     response = _post_action(_client(viewer), "mark_sold_loose", [variant.pk])
 
-    # Django refuses the action before calling it: it redirects back to the
-    # changelist, so the action never runs and nothing is written.
-    assert response.status_code == 302
-    assert response["Location"] == reverse(CHANGELIST)
+    # Django omits the action from the choices, so the forged post fails the
+    # action form and re-renders the changelist without running it.
+    assert response.status_code == 200
     variant.refresh_from_db()
     assert variant.is_sold_loose is False
     assert not AuditLog.objects.exists()

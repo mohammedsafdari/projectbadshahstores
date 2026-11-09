@@ -1,12 +1,25 @@
-"""Admin registration for the custom User model."""
+"""Admin registration for the custom User model and the capability matrix."""
+
+from typing import cast
 
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm as AuthUserChangeForm
 from django.contrib.auth.forms import UserCreationForm as AuthUserCreationForm
+from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.template.response import TemplateResponse
+from django.urls import URLPattern, path, reverse
 
-from apps.accounts.models import User
+from apps.accounts.capabilities import (
+    MATRIX_ROLES,
+    ROLE_OWNER,
+    Capability,
+    default_allowed,
+)
+from apps.accounts.capability_services import RoleCapabilityError, set_role_capabilities
+from apps.accounts.models import RoleCapability, User
 from apps.accounts.verification import invalidate_email_codes
 from apps.core.phone import normalise_phone
 
@@ -202,3 +215,140 @@ class UserAdmin(BaseUserAdmin):
             # address (D71 limit, closed by D73).
             invalidate_email_codes(obj)
         super().save_model(request, obj, form, change)
+
+
+ROLE_LABELS: dict[str, str] = dict(User.ROLE_CHOICES)
+
+
+def _can_manage_capabilities(user: object) -> bool:
+    """Only an active staff superuser or OWNER may open or save the matrix."""
+    if not isinstance(user, User):
+        return False
+    return user.is_active and user.is_staff and (user.is_superuser or user.role == ROLE_OWNER)
+
+
+def _stored_overrides() -> dict[tuple[str, str], bool]:
+    """Every stored cell in one query, keyed by (role, capability)."""
+    return {(row.role, row.capability): row.allowed for row in RoleCapability.objects.all()}
+
+
+def _matrix_rows(stored: dict[tuple[str, str], bool]) -> list[dict[str, object]]:
+    """One row per capability, with one cell per editable role."""
+    rows: list[dict[str, object]] = []
+    for capability in Capability.values:
+        cells = []
+        for role in MATRIX_ROLES:
+            # A missing row falls back to the documented default, so the box
+            # always shows the value that is actually in force (D75).
+            allowed = stored.get(
+                (role, capability),
+                default_allowed(role, capability),
+            )
+            cells.append(
+                {
+                    "role": role,
+                    "allowed": allowed,
+                    "input_name": f"cap_{role}_{capability}",
+                }
+            )
+        rows.append(
+            {
+                "capability": capability,
+                "label": Capability(capability).label,
+                "cells": cells,
+            }
+        )
+    return rows
+
+
+@admin.register(RoleCapability)
+class RoleCapabilityAdmin(admin.ModelAdmin):
+    """The owner-editable capability matrix (D75).
+
+    The raw rows are never edited one by one: every visit opens the matrix, and
+    every save goes through ``set_role_capabilities`` so an unchanged submit
+    writes nothing.
+    """
+
+    list_display = ("role", "capability", "allowed", "updated_by", "updated_at")
+
+    def has_module_permission(self, request: HttpRequest) -> bool:
+        return _can_manage_capabilities(request.user)
+
+    def has_view_permission(self, request: HttpRequest, obj: object = None) -> bool:
+        return _can_manage_capabilities(request.user)
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: object = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: object = None) -> bool:
+        return False
+
+    def get_urls(self) -> list[URLPattern]:
+        # Custom pages come first, like the Stock screens (D45).
+        custom = [
+            path(
+                "matrix/",
+                self.admin_site.admin_view(self.matrix_view),
+                name="accounts_rolecapability_matrix",
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def changelist_view(
+        self,
+        request: HttpRequest,
+        extra_context: dict[str, object] | None = None,
+    ) -> HttpResponse:
+        """There is only the matrix, so the list URL opens it."""
+        return HttpResponseRedirect(reverse("admin:accounts_rolecapability_matrix"))
+
+    def matrix_view(self, request: HttpRequest) -> HttpResponse:
+        """Show and save the whole matrix; each changed cell gets an audit row."""
+        if not _can_manage_capabilities(request.user):
+            raise PermissionDenied
+
+        if request.method == "POST":
+            return self._save_matrix(request)
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Role capabilities",
+            "roles": [(role, ROLE_LABELS[role]) for role in MATRIX_ROLES],
+            "owner_label": ROLE_LABELS[ROLE_OWNER],
+            "rows": _matrix_rows(_stored_overrides()),
+            "owner_checked": True,
+        }
+        return TemplateResponse(
+            request,
+            "admin/accounts/rolecapability/matrix.html",
+            context,
+        )
+
+    def _save_matrix(self, request: HttpRequest) -> HttpResponse:
+        """Turn the posted boxes into one service call per editable role."""
+        # The caller checked the matrix permission, so request.user is a real User.
+        actor = cast(User, request.user)
+        changed = 0
+        for role in MATRIX_ROLES:
+            # A cleared checkbox is simply absent from POST, so read every
+            # capability and treat absence as "not allowed".
+            posted = {
+                capability: request.POST.get(f"cap_{role}_{capability}") == "on"
+                for capability in Capability.values
+            }
+            try:
+                changed += len(set_role_capabilities(actor, role, posted))
+            except RoleCapabilityError as error:
+                messages.error(request, str(error))
+                return HttpResponseRedirect(reverse("admin:accounts_rolecapability_matrix"))
+
+        if changed:
+            messages.success(request, f"Saved {changed} capability change(s).")
+        else:
+            messages.info(request, "Nothing changed.")
+        return HttpResponseRedirect(reverse("admin:accounts_rolecapability_matrix"))

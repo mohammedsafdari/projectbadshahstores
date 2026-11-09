@@ -48,13 +48,13 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Audit log retention: how long to keep rows. Default: forever. Owner: shop owner. Needed before production.
 - [ ] Slice 21 must write an audit entry for every price change it makes: `snapshot_variant_from_db` before and `record_variant_change` after (`apps/catalog/audit.py`, D44); Slice 20 does this for the import. Default: yes (a reminder, not a business question).
 - [ ] Should creating or deleting a variant, or changing a product, brand or category, also be audited? — owner/developer; default in use: no, only edits of existing variants (D44)
-- [ ] Which staff roles may read the audit log? — owner; needed when the staff roles exist; default in use: superusers only (D44)
-- [ ] Which staff may receive, adjust, damage and count stock before the Phase 5 roles exist? — owner; default in use: users with the Stock view permission and `inventory.add_inventorymovement`, and superusers (D45)
+- [x] Which staff roles may read the audit log? — answered (D75, 9 November 2026): the `AUDIT_READ` capability decides, with owner and manager allowed by default; change it in the role capability matrix — owner
+- [x] Which staff may receive, adjust, damage and count stock before the Phase 5 roles exist? — answered (D75, 9 November 2026): the `STOCK_WRITE` capability decides, with owner and manager allowed by default, on top of the Stock view permission and `inventory.add_inventorymovement`; change it in the role capability matrix — owner
 - [ ] How many days ahead should the expiry screen warn? — owner; default in use: filters for 7, 30 and 60 days plus "already expired" (D45)
 - [ ] Should low stock or near expiry also send a message (WhatsApp, SMS or email)? — owner; default in use: screens only, notifications wait for Phase 6 (D45)
 - [ ] Should the Adjust page refuse to take stock below zero? — owner/developer; default in use: no, `adjust_stock` allows it and logs a warning (D43); Damage cannot go below zero
 - [ ] Do you need to know how much of each received lot is left (batch-level stock)? — owner; default in use: no, the Expiring lots screen shows the variant's total (D42, D45)
-- [ ] Should the CSV export hide `cost_price` from some staff (for example packers) or from everyone except the owner? — owner; needed with the Phase 5 roles; default in use: anyone with `catalog.view_productvariant` gets it (D46)
+- [ ] Should the CSV export hide `cost_price` from some staff (for example packers) or from everyone except the owner? — owner; ask again before Phase 5; default in use: the `EXPORT_CSV` capability decides who may export (owner and manager by default, D75), and the file still includes `cost_price` (D46)
 - [ ] Should every CSV export be logged (who downloaded the catalogue, when)? — owner/developer; default in use: no (D46)
 - [ ] Would an `.xlsx` export be better than CSV for the staff (Excel mangles barcodes and HSN codes in CSV)? — owner; default in use: CSV only, import will validate barcodes and HSN codes (D46)
 - [ ] Do you want a separate stock-level export (on-hand per SKU) for the billing software or stock counts? — owner; needed by Slice 20; default in use: no stock column in the catalogue export (D46)
@@ -109,7 +109,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Should customers get payment reminders or a dues list? — owner; ask again before Phase 5; default in use: none
 
 ### Added in Slice 37b
-- [ ] Should a credit customer be able to pay part of an order on credit and the rest in cash? — owner; ask again before Phase 5; default in use: no, all or nothing
+- [x] Should a credit customer be able to pay part of an order on credit and the rest in cash? — answered (D74, 9 November 2026): yes. The order uses as much available credit as it needs, and the rest is cash on delivery; the customer ticks one khata checkbox and cannot type an amount — owner
 
 ### Added in Slice 38
 - [ ] DLT templates for the six order message texts (D69) — owner; ask again before real SMS; default in use: the console SMS backend
@@ -125,6 +125,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 38g
 - [ ] Orders and verification state for staff in Phase 5 (see docs/phase5_minimum.md) — owner; ask again before Phase 5; default in use: as listed in that file
+
+### Added in Slice 39
+- [ ] Should capabilities be settable per person (an override on `User`) instead of only per role? — owner; ask again before Phase 5; default in use: per role only (D75)
+- [ ] Should a cash part above the COD cap be allowed when the customer agrees, or should the order always be refused? — owner; low priority; ask again before Phase 5; default in use: refused (D74)
+- [ ] Should the split-order SMS name the cash amount at the door, and should the placed credit SMS show the credit part instead of the grand total? — owner; ask again before real SMS and DLT; default in use: the texts are unchanged (D74; the A8 inspect found no door-payment message uses `grand_total`, but the placed credit text does)
 
 ## Accounts and access
 - [ ] Initial staff accounts and role split (owner/manager/packer/delivery) — owner; MVP supports it, not necessarily used at launch

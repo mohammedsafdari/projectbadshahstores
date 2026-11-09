@@ -28,7 +28,6 @@ from apps.accounts.verification_presentation import BANNER_HEADING, pending_veri
 from apps.cart.services import CartSummary, build_cart
 from apps.cart.stores import DbCartStore
 from apps.core.services import get_shop_settings
-from apps.credit.models import CreditAccount
 from apps.credit.services import available_credit
 from apps.delivery.services import address_is_served, get_delivery_promise
 from apps.inventory.reservations import ReservationShortfallError
@@ -53,7 +52,7 @@ from apps.orders.presentation import (
     cod_limit_message,
     cod_on_delivery_sentence,
     cod_sentence,
-    credit_checkout_sentence,
+    credit_choice_sentence,
     credit_confirmation_sentence,
     credit_limit_message,
     credit_refused_message,
@@ -62,6 +61,7 @@ from apps.orders.presentation import (
     item_count_text,
     item_quantity,
     money,
+    no_credit_left_message,
     order_date_text,
     page_label,
     page_text,
@@ -143,28 +143,18 @@ def _session_group(request: HttpRequest) -> str:
     return group
 
 
-def _posted_payment(request: HttpRequest) -> str:
-    """The posted method when it is valid, otherwise an empty string."""
-    value = request.POST.get("payment_method", "")
-    choices = {choice for choice, _label in Order.PaymentMethod.choices}
-    return value if value in choices else ""
+def _posted_use_credit(request: HttpRequest) -> bool:
+    """Whether the khata checkbox was ticked on the posted form."""
+    return request.POST.get("use_credit") == "on"
 
 
-def _payment_state(user: User, summary: CartSummary) -> dict[str, object]:
-    """The four facts the payment radios need, read once (D68)."""
-    # Credit is offered only to a customer with an active khata.
-    credit_offered = CreditAccount.objects.filter(user=user, is_active=True).exists()
-    # What the customer may still charge, zero without an active account.
+def _payment_state(user: User) -> dict[str, object]:
+    """The one fact the khata checkbox needs: is there any credit left (D74)."""
+    # available_credit is zero without an account or with a suspended one.
     available = available_credit(user)
-    # Cash on delivery is allowed unless the order is above the shop cap.
-    cod_allowed = summary.grand_total <= get_shop_settings().cod_cap
-    # Credit fits only when the offered account covers the whole total.
-    credit_fits = credit_offered and summary.grand_total <= available
     return {
-        "credit_offered": credit_offered,
+        "credit_offered": available > Decimal("0.00"),
         "available": available,
-        "cod_allowed": cod_allowed,
-        "credit_fits": credit_fits,
     }
 
 
@@ -175,7 +165,7 @@ def _render_checkout(
     form: CheckoutForm,
     selected_address: str,
     selected_substitution: str,
-    selected_payment: str = "",
+    use_credit: bool = False,
     error: str | None = None,
 ) -> HttpResponse:
     """Render the checkout page with a fresh cart, address list and promise."""
@@ -183,15 +173,17 @@ def _render_checkout(
     rows = _address_rows(user, selected_address)
     has_served_address = any(bool(row["is_served"]) for row in rows)
     cod_cap = get_shop_settings().cod_cap
-    at_cod_limit = summary.grand_total > cod_cap
-    payment = _payment_state(user, summary)
+    payment = _payment_state(user)
     credit_offered = bool(payment["credit_offered"])
     available = cast(Decimal, payment["available"])
-    cod_allowed = bool(payment["cod_allowed"])
-    credit_fits = bool(payment["credit_fits"])
-    # The posted method wins; otherwise COD first, then credit if COD is out.
-    if selected_payment not in (Order.PaymentMethod.COD, Order.PaymentMethod.CREDIT):
-        selected_payment = Order.PaymentMethod.COD if cod_allowed else Order.PaymentMethod.CREDIT
+    # Without any credit left the checkbox is never shown, whatever was posted.
+    if not credit_offered:
+        use_credit = False
+    # The customer cannot type an amount: the credit part is as much of the
+    # order as their available credit covers, and the rest is cash (D74).
+    credit_applied = min(available, summary.grand_total) if use_credit else Decimal("0.00")
+    cash_due = summary.grand_total - credit_applied
+    at_cod_limit = cash_due > cod_cap
     # One small dict per line, so the shared summary partial prints values only.
     lines = [
         {
@@ -226,12 +218,16 @@ def _render_checkout(
             "credit_offered": credit_offered,
             "available": available,
             "available_credit_text": available_credit_sentence(available),
-            "cod_allowed": cod_allowed,
-            "credit_fits": credit_fits,
-            "selected_payment": selected_payment,
-            "credit_sentence": credit_checkout_sentence(summary.grand_total),
+            "use_credit": use_credit,
+            "credit_applied": credit_applied,
+            "cash_due": cash_due,
+            "show_credit_row": use_credit,
+            "show_cash_row": cash_due > Decimal("0.00"),
+            "credit_sentence": (
+                credit_choice_sentence(credit_applied, cash_due) if use_credit else ""
+            ),
             "credit_limit_message": credit_limit_message(available),
-            "can_submit": has_served_address and (cod_allowed or credit_fits),
+            "can_submit": has_served_address and not at_cod_limit,
             "error": error,
         },
     )
@@ -261,6 +257,8 @@ def _checkout_get(request: HttpRequest, user: User) -> HttpResponse:
         form=form,
         selected_address=selected,
         selected_substitution=Order.SubstitutionPreference.CALL_ME,
+        # Ticked by default whenever the customer has credit to use (D74).
+        use_credit=True,
     )
 
 
@@ -319,15 +317,18 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             form=form,
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
-            selected_payment=_posted_payment(request),
+            use_credit=_posted_use_credit(request),
         )
 
     # (e) The service is the only writer; it holds the stock and the order.
+    payment_method = (
+        Order.PaymentMethod.CREDIT if form.cleaned_data["use_credit"] else Order.PaymentMethod.COD
+    )
     try:
         placed = place_order(
             user=user,
             address_id=form.cleaned_data["address"],
-            payment_method=form.cleaned_data["payment_method"],
+            payment_method=payment_method,
             checkout_group=group,
             substitution_preference=form.cleaned_data["substitution_preference"],
             customer_note=form.cleaned_data["customer_note"],
@@ -343,7 +344,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             form=form,
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
-            selected_payment=_posted_payment(request),
+            use_credit=_posted_use_credit(request),
             error=str(ADDRESS_NOT_SERVED_MESSAGE),
         )
     except OrderAddressNotFoundError:
@@ -353,7 +354,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             form=form,
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
-            selected_payment=_posted_payment(request),
+            use_credit=_posted_use_credit(request),
             error=str(ADDRESS_NOT_FOUND_MESSAGE),
         )
     except CodLimitExceededError:
@@ -363,7 +364,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             form=form,
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
-            selected_payment=Order.PaymentMethod.COD,
+            use_credit=_posted_use_credit(request),
             error=cod_limit_message(get_shop_settings().cod_cap),
         )
     except OrderCreditUnavailableError:
@@ -373,18 +374,23 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             form=form,
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
-            selected_payment=Order.PaymentMethod.CREDIT,
+            use_credit=True,
             error=str(CREDIT_UNAVAILABLE_MESSAGE),
         )
     except OrderCreditLimitExceededError:
+        available = available_credit(user)
         return _render_checkout(
             request,
             user,
             form=form,
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
-            selected_payment=Order.PaymentMethod.CREDIT,
-            error=credit_refused_message(available_credit(user)),
+            use_credit=True,
+            error=(
+                no_credit_left_message()
+                if available <= Decimal("0.00")
+                else credit_refused_message(available)
+            ),
         )
     except CheckoutGroupInUseError:
         return _refuse_checkout(request)
@@ -420,7 +426,8 @@ def _order_page_context(order: Order) -> dict[str, object]:
         }
         for item in order.items.all()
     ]
-    is_credit = order.payment_method == Order.PaymentMethod.CREDIT
+    is_credit = order.credit_applied > Decimal("0.00")
+    cash_due = order.amount_due_on_delivery
     return {
         "order": order,
         "summary": order,
@@ -428,10 +435,16 @@ def _order_page_context(order: Order) -> dict[str, object]:
         "status_sentence": status_sentence(order.status),
         "delivery_day": delivery_day_text(order.promised_delivery_date),
         "substitution_choice": substitution_label(order.substitution_preference),
-        "cod_sentence": cod_on_delivery_sentence(order.amount_due_on_delivery),
+        "cod_sentence": cod_on_delivery_sentence(cash_due) if cash_due > Decimal("0.00") else "",
         "is_credit": is_credit,
+        "credit_applied": order.credit_applied,
+        "cash_due": cash_due,
+        "show_credit_row": is_credit,
+        "show_cash_row": cash_due > Decimal("0.00"),
         "payment_method": payment_method_label(order.payment_method),
-        "credit_sentence": (credit_confirmation_sentence(order.grand_total) if is_credit else ""),
+        "credit_sentence": (
+            credit_confirmation_sentence(order.credit_applied) if is_credit else ""
+        ),
     }
 
 
@@ -497,7 +510,7 @@ def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
             "cancel_url": reverse("order_cancel", args=[order.checkout_group]),
             "whatsapp_href": whatsapp_href(get_shop_settings().whatsapp_number, order.order_number),
             "credit_returned_text": (
-                credit_returned_sentence(order.grand_total) if cancelled_credit else ""
+                credit_returned_sentence(order.credit_applied) if cancelled_credit else ""
             ),
             "orders_url": reverse("order_list"),
             "verification_items": pending_verifications(user),

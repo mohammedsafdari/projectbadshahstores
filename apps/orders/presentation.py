@@ -39,6 +39,9 @@ SAVINGS_LABEL = _("You save")
 DELIVERY_LABEL = _("Delivery")
 FREE_LABEL = _("Free")
 TOTAL_LABEL = _("Total")
+# The two parts of a split order (D74).
+FROM_CREDIT_LABEL = _("From credit")
+CASH_ON_DELIVERY_LABEL = _("Cash on delivery")
 DELIVERY_DAY_LABEL = _("Delivery day")
 
 SUBSTITUTION_HEADING = _("If an item is not available")
@@ -168,10 +171,10 @@ def cod_on_delivery_sentence(amount_due: Decimal) -> str:
 
 
 def cod_limit_message(cap: Decimal) -> str:
-    """Why the order cannot be placed for cash on delivery."""
+    """Why the cash part cannot be paid on delivery."""
     return str(
         _(
-            "This order is above the %(cap)s cash-on-delivery limit. "
+            "The cash part of this order is above the %(cap)s cash-on-delivery limit. "
             "Please remove some items or call the shop."
         )
         % {"cap": money(cap)}
@@ -183,11 +186,16 @@ def available_credit_sentence(available: Decimal) -> str:
     return str(_("Available credit: %(amount)s") % {"amount": money(available)})
 
 
-def credit_checkout_sentence(grand_total: Decimal) -> str:
-    """The sentence next to the credit radio on the checkout page."""
+def credit_choice_sentence(credit_amount: Decimal, cash_due: Decimal) -> str:
+    """What ticking the khata checkbox will do with this order (D74)."""
+    if cash_due > Decimal("0.00"):
+        return str(
+            _("%(credit)s will be added to your khata balance. Pay %(cash)s in cash on delivery.")
+            % {"credit": money(credit_amount), "cash": money(cash_due)}
+        )
     return str(
         _("%(amount)s will be added to your khata balance. Nothing to pay on delivery.")
-        % {"amount": money(grand_total)}
+        % {"amount": money(credit_amount)}
     )
 
 
@@ -195,6 +203,13 @@ def credit_limit_message(available: Decimal) -> str:
     """Why credit cannot be used for this order."""
     return str(
         _("Your available credit %(amount)s is below this order.") % {"amount": money(available)}
+    )
+
+
+def no_credit_left_message() -> str:
+    """The checkout error when the account has no credit left (D74)."""
+    return str(
+        _("There is no credit left on this account. Choose cash on delivery or call the shop.")
     )
 
 
@@ -210,11 +225,8 @@ def credit_refused_message(available: Decimal) -> str:
 
 
 def credit_confirmation_sentence(amount: Decimal) -> str:
-    """The confirmation sentence for an order paid on credit."""
-    return str(
-        _("Added to your khata: %(amount)s. Nothing to pay on delivery.")
-        % {"amount": money(amount)}
-    )
+    """The confirmation sentence for the part paid on credit."""
+    return str(_("Added to your khata: %(amount)s.") % {"amount": money(amount)})
 
 
 def credit_returned_sentence(amount: Decimal) -> str:
@@ -344,6 +356,8 @@ def page_text() -> dict[str, str]:
         "delivery_label": str(DELIVERY_LABEL),
         "free_label": str(FREE_LABEL),
         "total_label": str(TOTAL_LABEL),
+        "from_credit_label": str(FROM_CREDIT_LABEL),
+        "cash_on_delivery_label": str(CASH_ON_DELIVERY_LABEL),
         "delivery_day_label": str(DELIVERY_DAY_LABEL),
         "substitution_heading": str(SUBSTITUTION_HEADING),
         "note_label": str(NOTE_LABEL),

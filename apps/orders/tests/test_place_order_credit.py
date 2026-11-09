@@ -135,20 +135,63 @@ def test_credit_order_exactly_at_the_available_credit_is_allowed() -> None:
     order = place_credit(user, address_row).order
 
     assert order.grand_total == Decimal("230.00")
+    assert order.credit_applied == Decimal("230.00")
+    assert order.amount_due_on_delivery == Decimal("0.00")
     assert CreditAccount.objects.get(user=user).balance == Decimal("230.00")
 
 
-def test_credit_order_one_paisa_above_the_available_credit_is_refused() -> None:
+def test_credit_order_one_paisa_above_the_available_credit_is_split() -> None:
     user, address_row = _ready(limit="229.99")
 
-    with pytest.raises(OrderCreditLimitExceededError):
+    order = place_credit(user, address_row).order
+
+    assert order.payment_method == Order.PaymentMethod.CREDIT
+    assert order.credit_applied == Decimal("229.99")
+    assert order.amount_due_on_delivery == Decimal("0.01")
+    assert CreditAccount.objects.get(user=user).balance == Decimal("229.99")
+
+
+def test_credit_order_with_part_of_the_amount_on_credit_keeps_the_rest_as_cash() -> None:
+    user, address_row = _ready(limit="100.00")
+
+    order = place_credit(user, address_row).order
+
+    assert order.credit_applied == Decimal("100.00")
+    assert order.amount_due_on_delivery == Decimal("130.00")
+    assert CreditEntry.objects.get(order=order).amount == Decimal("100.00")
+
+
+def test_credit_order_whose_cash_part_is_above_the_cap_is_refused() -> None:
+    user, address_row = _ready(limit="100.00")
+    set_settings(cod_cap=Decimal("100.00"))
+
+    # The cash part is 130.00, above the 100.00 cap, so the split is refused.
+    with pytest.raises(CodLimitExceededError):
+        place_credit(user, address_row)
+
+    assert Order.objects.count() == 0
+
+
+def test_credit_order_whose_cash_part_is_exactly_at_the_cap_is_allowed() -> None:
+    user, address_row = _ready(limit="100.00")
+    set_settings(cod_cap=Decimal("130.00"))
+
+    order = place_credit(user, address_row).order
+
+    assert order.amount_due_on_delivery == Decimal("130.00")
+
+
+def test_credit_order_with_no_credit_left_is_refused() -> None:
+    user, address_row = _ready(limit="230.00", balance="230.00")
+
+    with pytest.raises(OrderCreditLimitExceededError, match="no credit left"):
         place_credit(user, address_row)
 
     assert Order.objects.count() == 0
 
 
 def test_refused_credit_order_writes_no_order_no_reservation_no_entry_and_keeps_the_cart() -> None:
-    user, address_row = _ready(limit="100.00")
+    user, address_row = _ready(limit="230.00", balance="230.00")
 
     with pytest.raises(OrderCreditLimitExceededError):
         place_credit(user, address_row)
@@ -156,12 +199,12 @@ def test_refused_credit_order_writes_no_order_no_reservation_no_entry_and_keeps_
     assert Order.objects.count() == 0
     assert StockReservation.objects.count() == 0
     assert CreditEntry.objects.count() == 0
-    assert CreditAccount.objects.get(user=user).balance == Decimal("0.00")
+    assert CreditAccount.objects.get(user=user).balance == Decimal("230.00")
     assert CartItem.objects.filter(cart__user=user).count() == 1
 
 
 def test_refused_credit_order_does_not_use_an_order_number() -> None:
-    user, address_row = _ready(limit="100.00")
+    user, address_row = _ready(limit="230.00", balance="230.00")
 
     with pytest.raises(OrderCreditLimitExceededError):
         place_credit(user, address_row)

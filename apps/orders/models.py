@@ -8,6 +8,7 @@ live in ``apps/orders/services.py``, never in ``save()``.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from decimal import Decimal
 from typing import Any
 
 from django.conf import settings
@@ -80,6 +81,13 @@ class Order(TimeStampedModel):
     delivery_fee = models.DecimalField(max_digits=12, decimal_places=2)
     grand_total = models.DecimalField(max_digits=12, decimal_places=2)
     savings_total = models.DecimalField(max_digits=12, decimal_places=2)
+    # How much of this order is paid from the customer's khata (D74). Zero for
+    # a cash-on-delivery order; between one paisa and the total for a split one.
+    credit_applied = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
     amount_due_on_delivery = models.DecimalField(max_digits=12, decimal_places=2)
 
     promised_delivery_date = models.DateField()
@@ -119,6 +127,31 @@ class Order(TimeStampedModel):
             models.CheckConstraint(
                 condition=models.Q(grand_total=models.F("item_total") + models.F("delivery_fee")),
                 name="order_grand_total_matches",
+            ),
+            # The khata part is money: never negative and never above the total.
+            models.CheckConstraint(
+                condition=models.Q(credit_applied__gte=0),
+                name="order_credit_applied_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(credit_applied__lte=models.F("grand_total")),
+                name="order_credit_applied_lte_grand_total",
+            ),
+            # Whatever the credit does not cover is collected at the door (D74).
+            models.CheckConstraint(
+                condition=models.Q(
+                    amount_due_on_delivery=models.F("grand_total") - models.F("credit_applied")
+                ),
+                name="order_amount_due_matches_credit",
+            ),
+            # Only a credit order carries a khata part, and a credit order must
+            # carry one: a zero credit part is a cash-on-delivery order.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(payment_method="CREDIT", credit_applied__gt=0)
+                    | (~models.Q(payment_method="CREDIT") & models.Q(credit_applied=0))
+                ),
+                name="order_credit_applied_matches_method",
             ),
             # cancelled_at is set exactly when the status is CANCELLED.
             models.CheckConstraint(

@@ -15,6 +15,7 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
+from apps.accounts.capabilities import Capability
 from apps.core.models import ArchivableModel, TimeStampedModel
 from apps.core.phone import normalise_phone
 
@@ -228,6 +229,46 @@ class Address(TimeStampedModel, ArchivableModel):
 
     def __str__(self) -> str:
         return f"{self.recipient_name}: {self.line1}, {self.city} {self.pincode}"
+
+
+class RoleCapability(TimeStampedModel):
+    """One stored override of a role's capability (D75).
+
+    A missing row means "use the default in ``capabilities.DEFAULTS``". A stored
+    row wins either way, so the owner can both grant and take away a capability.
+    The owner role has no rows: it always has every capability.
+    """
+
+    role = models.CharField(max_length=10, choices=User.ROLE_CHOICES)
+    capability = models.CharField(max_length=30, choices=Capability.choices)
+    allowed = models.BooleanField(default=False)
+    # SET_NULL keeps the override when the staff member who set it is deleted.
+    updated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="role_capability_updates",
+    )
+
+    class Meta:
+        ordering = ["role", "capability"]
+        constraints = [
+            # One stored value per role and capability.
+            models.UniqueConstraint(
+                fields=["role", "capability"],
+                name="rolecapability_unique_role_capability",
+            ),
+            # The owner always has every capability, so no owner row may exist.
+            models.CheckConstraint(
+                condition=~models.Q(role=User.ROLE_OWNER),
+                name="rolecapability_not_owner",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = "allowed" if self.allowed else "denied"
+        return f"{self.role} {self.capability}: {state}"
 
 
 class OtpChallenge(models.Model):

@@ -1,0 +1,55 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a> &rsaquo;
+  {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>
+    Tick what each role may do. The owner always has every capability and cannot
+    be changed. These rights are checked inside the shop screens; they do not
+    grant Django admin access, which still needs a staff account.
+  </p>
+  <form method="post" data-capability-matrix>
+    {% csrf_token %}
+    <table>
+      <thead>
+        <tr>
+          <th>Capability</th>
+          {% for role, label in roles %}
+            <th>{{ label }}</th>
+          {% endfor %}
+          <th>{{ owner_label }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <th>{{ row.label }}</th>
+            {% for cell in row.cells %}
+              <td data-role="{{ cell.role }}" data-capability="{{ row.capability }}">
+                <input type="checkbox"
+                       name="{{ cell.input_name }}"
+                       id="{{ cell.input_name }}"
+                       {% if cell.allowed %}checked{% endif %}>
+              </td>
+            {% endfor %}
+            <td data-role="OWNER" data-capability="{{ row.capability }}">
+              <input type="checkbox" checked disabled>
+              always
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="submit-row">
+      <input type="submit" class="default" value="Save capabilities">
+    </div>
+  </form>
+</div>
+{% endblock %}

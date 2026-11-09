@@ -167,13 +167,16 @@ def charge_order(
     actor: User | None = None,
     now: datetime | None = None,
 ) -> CreditEntry:
-    """Charge an order's grand total to its customer's credit account.
+    """Charge an order's khata part to its customer's credit account.
 
     The account is always found through the order's user, so a caller can
-    never charge somebody else's account. Missing or suspended credit raises
-    ``CreditNotAvailableError``; a total above the available credit raises
-    ``CreditLimitExceededError`` and writes nothing. A repeated call returns
-    the first ORDER entry and writes nothing (D67 point 10).
+    never charge somebody else's account. ``Order.credit_applied`` is the
+    amount, so a split order charges only what the customer chose to put on
+    the khata (D74). A zero part raises ``InvalidCreditAmountError`` and writes
+    nothing. Missing or suspended credit raises ``CreditNotAvailableError``; a
+    part above the available credit raises ``CreditLimitExceededError`` and
+    writes nothing. A repeated call returns the first ORDER entry and writes
+    nothing (D67 point 10).
     """
     resolved_now = now if now is not None else timezone.now()
     with transaction.atomic():
@@ -186,21 +189,23 @@ def charge_order(
         ).first()
         if existing is not None:
             return existing
+        amount = locked_order.credit_applied
+        if amount <= ZERO:
+            raise InvalidCreditAmountError("There is no credit amount to charge.")
         if not account.is_active:
             raise CreditNotAvailableError("This credit account is suspended.")
 
         available = max(account.credit_limit - account.balance, ZERO)
-        if locked_order.grand_total > available:
+        if amount > available:
             raise CreditLimitExceededError(
-                f"Available credit is {available}, below the order total "
-                f"{locked_order.grand_total}."
+                f"Available credit is {available}, below the order total {amount}."
             )
 
-        balance_after = account.balance + locked_order.grand_total
+        balance_after = account.balance + amount
         entry = CreditEntry.objects.create(
             account=account,
             entry_type=CreditEntry.EntryType.ORDER,
-            amount=locked_order.grand_total,
+            amount=amount,
             balance_after=balance_after,
             order=locked_order,
             entry_date=_entry_date(resolved_now),

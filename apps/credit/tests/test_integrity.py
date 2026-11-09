@@ -36,7 +36,7 @@ def _charge(user, total: str = "230.00"):
         item_total=amount - Decimal("30.00"),
         delivery_fee=Decimal("30.00"),
         grand_total=amount,
-        amount_due_on_delivery=amount,
+        amount_due_on_delivery=Decimal("0.00"),
     )
     return charge_order(order, now=NOW)
 

@@ -157,7 +157,12 @@ def test_staff_with_view_permission_can_read_but_not_add() -> None:
     # a user, separate from group permissions. A staff user without any
     # permission cannot read the audit log; giving them view_auditlog lets them
     # read it but still not add it (has_add_permission returns False).
-    user = User.objects.create_user(phone="+919876543230", password="ok", is_staff=True)
+    user = User.objects.create_user(
+        phone="+919876543230",
+        password="ok",
+        is_staff=True,
+        role=User.ROLE_MANAGER,
+    )
     view_perm = Permission.objects.get(codename="view_auditlog")
     user.user_permissions.add(view_perm)
     client = Client()
@@ -166,3 +171,12 @@ def test_staff_with_view_permission_can_read_but_not_add() -> None:
     add_response = client.get(reverse("admin:core_auditlog_add"))
     assert list_response.status_code == 200
     assert add_response.status_code == 403
+
+
+def test_staff_with_view_permission_but_no_audit_capability_gets_403() -> None:
+    user = User.objects.create_user(phone="+919876543231", password="ok", is_staff=True)
+    user.user_permissions.add(Permission.objects.get(codename="view_auditlog"))
+    client = Client()
+    client.force_login(user)
+
+    assert client.get(reverse("admin:core_auditlog_changelist")).status_code == 403

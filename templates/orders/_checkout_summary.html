@@ -32,4 +32,16 @@
     <dt>{{ text.total_label }}</dt>
     <dd data-grand-total>₹{{ summary.grand_total|floatformat:"2" }}</dd>
   </div>
+  {% if show_credit_row %}
+    <div class="flex justify-between">
+      <dt class="text-gray-600">{{ text.from_credit_label }}</dt>
+      <dd data-credit-applied class="font-medium text-gray-900">₹{{ credit_applied|floatformat:"2" }}</dd>
+    </div>
+  {% endif %}
+  {% if show_cash_row %}
+    <div class="flex justify-between">
+      <dt class="text-gray-600">{{ text.cash_on_delivery_label }}</dt>
+      <dd data-cash-due class="font-medium text-gray-900">₹{{ cash_due|floatformat:"2" }}</dd>
+    </div>
+  {% endif %}
 </dl>

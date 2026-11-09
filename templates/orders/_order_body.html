@@ -7,11 +7,12 @@
 
 <section class="mt-6">
   <h2 class="text-lg font-semibold text-gray-900">{{ text.payment_heading }}</h2>
-  {% if is_credit %}
+  {% if show_credit_row %}
     <p data-payment-method class="mt-2 text-sm font-medium text-gray-900">{{ payment_method }}</p>
-    <p data-amount-due class="mt-1 text-sm text-gray-700">{{ credit_sentence }}</p>
-  {% else %}
-    <p data-amount-due class="mt-2 text-sm font-medium text-gray-900">{{ cod_sentence }}</p>
+    <p data-credit-sentence class="mt-1 text-sm text-gray-700">{{ credit_sentence }}</p>
+  {% endif %}
+  {% if show_cash_row %}
+    <p data-amount-due class="mt-1 text-sm text-gray-700">{{ cod_sentence }}</p>
   {% endif %}
 </section>
 

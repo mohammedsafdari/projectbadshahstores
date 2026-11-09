@@ -10,6 +10,8 @@ from django.forms import ModelForm
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 
+from apps.accounts.capabilities import Capability, has_capability
+
 from .audit import (
     AUDITED_SHOP_SETTINGS_FIELDS,
     record_shop_settings_change,
@@ -73,6 +75,13 @@ class AuditLogAdmin(admin.ModelAdmin):
     # With change permission off, Django shows the entry as read-only and
     # removes the bulk "delete selected" action. Users with the view
     # permission can still open and read the entry.
+    def has_view_permission(self, request, obj=None):
+        # The role capability is checked as well as Django's own view
+        # permission (D75); an active superuser passes through has_capability.
+        return has_capability(request.user, Capability.AUDIT_READ) and super().has_view_permission(
+            request, obj
+        )
+
     def has_add_permission(self, request):
         return False
 

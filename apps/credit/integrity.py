@@ -4,7 +4,7 @@ Nothing here writes or locks anything. The database already refuses zero
 amounts, wrongly signed rows and duplicate charges. This module proves the two
 rules only the services enforce: the cached account balance equals the entries,
 and every ``balance_after`` follows the one before it. It also checks that an
-ORDER entry still matches its order's frozen total and belongs to a credit
+ORDER entry still matches its order's frozen credit part and belongs to a credit
 order, and that a live or cancelled credit order has the entries D68 requires.
 """
 
@@ -102,7 +102,7 @@ def check_credit_integrity() -> list[CreditProblem]:
             if (
                 entry.entry_type == CreditEntry.EntryType.ORDER
                 and entry.order is not None
-                and entry.amount != entry.order.grand_total
+                and entry.amount != entry.order.credit_applied
             ):
                 problems.append(
                     CreditProblem(
@@ -110,7 +110,7 @@ def check_credit_integrity() -> list[CreditProblem]:
                         code="order_amount_mismatch",
                         detail=(
                             f"Entry {entry.pk} charges {entry.amount} but order "
-                            f"{entry.order_id} totals {entry.order.grand_total}."
+                            f"{entry.order_id} puts {entry.order.credit_applied} on credit."
                         ),
                     )
                 )

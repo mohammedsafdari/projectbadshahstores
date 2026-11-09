@@ -107,9 +107,12 @@ def test_integrity_reports_a_charge_on_a_cod_order() -> None:
 
     problems = check_credit_integrity()
 
-    assert len(problems) == 1
-    assert problems[0].account_id == account.pk
-    assert problems[0].code == "charge_on_non_credit_order"
+    assert len(problems) == 2
+    assert {problem.account_id for problem in problems} == {account.pk}
+    assert {problem.code for problem in problems} == {
+        "order_amount_mismatch",
+        "charge_on_non_credit_order",
+    }
 
 
 def test_integrity_is_clean_for_a_charged_credit_order() -> None:

@@ -59,6 +59,51 @@ def test_a_delivered_order_needs_a_delivered_at_time() -> None:
         OrderFactory(status=Order.Status.DELIVERED, delivered_at=None)
 
 
+def test_credit_applied_cannot_be_negative() -> None:
+    with pytest.raises(IntegrityError):
+        OrderFactory(
+            payment_method=Order.PaymentMethod.CREDIT,
+            credit_applied=Decimal("-1.00"),
+            amount_due_on_delivery=Decimal("231.00"),
+        )
+
+
+def test_credit_applied_cannot_be_above_the_grand_total() -> None:
+    with pytest.raises(IntegrityError):
+        OrderFactory(
+            payment_method=Order.PaymentMethod.CREDIT,
+            credit_applied=Decimal("231.00"),
+            amount_due_on_delivery=Decimal("-1.00"),
+        )
+
+
+def test_amount_due_must_match_the_credit_part() -> None:
+    with pytest.raises(IntegrityError):
+        OrderFactory(
+            payment_method=Order.PaymentMethod.CREDIT,
+            credit_applied=Decimal("100.00"),
+            amount_due_on_delivery=Decimal("100.00"),
+        )
+
+
+def test_a_credit_order_needs_a_credit_part_above_zero() -> None:
+    with pytest.raises(IntegrityError):
+        OrderFactory(
+            payment_method=Order.PaymentMethod.CREDIT,
+            credit_applied=Decimal("0.00"),
+            amount_due_on_delivery=Decimal("230.00"),
+        )
+
+
+def test_a_cod_order_cannot_carry_a_credit_part() -> None:
+    with pytest.raises(IntegrityError):
+        OrderFactory(
+            payment_method=Order.PaymentMethod.COD,
+            credit_applied=Decimal("100.00"),
+            amount_due_on_delivery=Decimal("130.00"),
+        )
+
+
 def test_order_str_is_the_order_number() -> None:
     assert str(OrderFactory(order_number="BS/26-27/000042")) == "BS/26-27/000042"
 

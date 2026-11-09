@@ -19,14 +19,24 @@ PRODUCT_CHANGELIST = "admin:catalog_product_changelist"
 
 
 def _client(
-    *, superuser: bool = False, codenames: tuple[str, ...] = (), phone: str = "+919876543220"
+    *,
+    superuser: bool = False,
+    codenames: tuple[str, ...] = (),
+    phone: str = "+919876543220",
+    role: str = User.ROLE_MANAGER,
 ) -> Client:
     # Each user needs its own phone number (unique), so a test that makes two
     # clients passes a different ``phone`` for the second one.
     if superuser:
         user = User.objects.create_superuser(phone=phone, password="ok")
     else:
-        user = User.objects.create_user(phone=phone, password="ok", is_staff=True)
+        # A manager's default capabilities include EXPORT_CSV (D75).
+        user = User.objects.create_user(
+            phone=phone,
+            password="ok",
+            is_staff=True,
+            role=role,
+        )
         for codename in codenames:
             user.user_permissions.add(Permission.objects.get(codename=codename))
     client = Client()
@@ -102,9 +112,10 @@ def test_staff_with_variant_view_permission_can_export() -> None:
 
 
 def test_staff_without_variant_view_permission_gets_no_file_from_the_variant_page() -> None:
-    # This user may see products but not variants (the file would show cost prices).
+    # This user has no export capability, so the action is not run even though
+    # the page would let them select the row (D75).
     variant = ProductVariantFactory(sku_code="V-2")
-    client = _client(codenames=("view_product",))
+    client = _client(codenames=("view_product",), role=User.ROLE_MEMBER)
     response = _run_action(client, PRODUCT_CHANGELIST, "export_variants_csv", [variant.product_id])
     # Django does not run an action the user is not allowed: it shows the list
     # page again (an HTML page, not a download).
@@ -112,13 +123,34 @@ def test_staff_without_variant_view_permission_gets_no_file_from_the_variant_pag
     assert not response.content.startswith(b"\xef\xbb\xbf")  # type: ignore[attr-defined]
 
 
+def test_staff_with_export_capability_but_no_variant_permission_can_export() -> None:
+    variant = ProductVariantFactory(sku_code="V-3")
+    client = _client(role=User.ROLE_MANAGER)
+
+    response = _run_action(client, VARIANT_CHANGELIST, "export_csv", [variant.pk])
+
+    assert response.status_code == 200  # type: ignore[attr-defined]
+    assert _skus(response) == ["V-3"]
+
+
+def test_member_with_variant_view_permission_cannot_export() -> None:
+    variant = ProductVariantFactory(sku_code="V-4")
+    client = _client(codenames=("view_productvariant",), role=User.ROLE_MEMBER)
+
+    response = _run_action(client, VARIANT_CHANGELIST, "export_csv", [variant.pk])
+
+    assert response["Content-Type"].startswith("text/html")  # type: ignore[index]
+
+
 def test_action_is_listed_only_for_users_who_may_use_it() -> None:
     ProductVariantFactory()
     allowed = _client(codenames=("view_productvariant",)).get(reverse(VARIANT_CHANGELIST))
     assert b'value="export_csv"' in allowed.content
-    product_only = _client(codenames=("view_product",), phone="+919876543230").get(
-        reverse(PRODUCT_CHANGELIST)
-    )
+    product_only = _client(
+        codenames=("view_product",),
+        phone="+919876543230",
+        role=User.ROLE_MEMBER,
+    ).get(reverse(PRODUCT_CHANGELIST))
     assert b"export_variants_csv" not in product_only.content
     superuser = _client(superuser=True, phone="+919876543210").get(reverse(PRODUCT_CHANGELIST))
     assert b'value="export_variants_csv"' in superuser.content

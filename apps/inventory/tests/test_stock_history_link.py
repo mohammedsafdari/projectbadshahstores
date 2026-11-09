@@ -29,8 +29,8 @@ def _superuser() -> User:
     return User.objects.create_superuser(phone="+919876543210", password="ok")
 
 
-def _staff(*codenames: str) -> User:
-    user = User.objects.create_user(phone="+919876543220", password="ok", is_staff=True)
+def _staff(*codenames: str, role: str = User.ROLE_MEMBER) -> User:
+    user = User.objects.create_user(phone="+919876543220", password="ok", is_staff=True, role=role)
     for codename in codenames:
         user.user_permissions.add(Permission.objects.get(codename=codename))
     return user
@@ -91,6 +91,7 @@ def test_action_pages_show_the_history_link_to_a_user_who_may_read_movements(
 def test_action_pages_hide_the_history_link_without_movement_permission(page: str) -> None:
     variant = ProductVariantFactory()
     url = reverse(f"admin:inventory_stockitem_{page}", args=[variant.pk])
-    response = _client_for(_staff(VIEW_STOCK, ADD_MOVEMENT)).get(url)
+    # The write pages also need STOCK_WRITE; the MANAGER default grants it (D75).
+    response = _client_for(_staff(VIEW_STOCK, ADD_MOVEMENT, role=User.ROLE_MANAGER)).get(url)
     assert response.status_code == 200
     assert _history_href(variant) not in response.content.decode("utf-8", "replace")

@@ -242,3 +242,63 @@ order list needs no `try/except`. `apps/orders/views.py`:
     )
 ```
 .NET comparison: `Skip`/`Take` with the page number clamped by hand; here the clamp is built in.
+
+## `TextChoices` and its `.values` / `.label`
+
+`TextChoices` is a small enum whose members are strings, so they can be stored or compared
+directly. `.values` is the list of stored strings and `Capability(value).label` reads the
+human label back. `apps/accounts/capabilities.py`:
+```python
+class Capability(TextChoices):
+    VIEW_ORDERS = "VIEW_ORDERS", "View orders"
+    STOCK_WRITE = "STOCK_WRITE", "Receive, adjust, count or damage stock"
+```
+and the matrix uses `Capability(capability).label` for a row heading.
+.NET comparison: an `enum` with `[Description]` attributes, plus a lookup dictionary built for you.
+
+## `frozenset` for a set that never changes
+
+A `frozenset` is an immutable set: it has no `add`, so nobody can change a module-level default
+by accident, and `in` is a constant-time lookup. `apps/accounts/capabilities.py`:
+```python
+DEFAULTS: dict[str, frozenset[str]] = {
+    ROLE_OWNER: frozenset(Capability.values),
+    ROLE_PACKER: frozenset({Capability.VIEW_ORDERS, Capability.START_PACKING}),
+}
+```
+.NET comparison: `IReadOnlySet<T>` built once, instead of a mutable `HashSet<T>` field.
+
+## A dictionary keyed by a tuple, with `.get(key, fallback)`
+
+A tuple is hashable, so `(role, capability)` can be a dictionary key. `dict.get(key, fallback)`
+returns the stored value or the fallback when the key is absent, which is exactly what "a missing
+row means use the default" needs. `apps/accounts/admin.py`:
+```python
+stored = {(row.role, row.capability): row.allowed for row in RoleCapability.objects.all()}
+allowed = stored.get((role, capability), default_allowed(role, capability))
+```
+.NET comparison: a `Dictionary<(string, string), bool>` plus `TryGetValue` and a default.
+
+## `Mapping` as a read-only dictionary parameter
+
+`Mapping[str, bool]` promises only that the argument can be read like a dictionary, so the caller
+may pass a plain `dict` but the function cannot change it. `apps/accounts/capability_services.py`:
+```python
+def set_role_capabilities(
+    actor: User | None,
+    role: str,
+    changes: Mapping[str, bool],
+) -> list[str]:
+```
+.NET comparison: an `IReadOnlyDictionary<string, bool>` parameter instead of `Dictionary`.
+
+## `cast(Any, super())` inside a plain mixin
+
+A mixin has no base class of its own, so `super().has_view_permission(...)` confuses mypy even
+though the class is combined with `ModelAdmin` at run time. `cast(Any, ...)` tells mypy "trust me,
+this object has that method". `apps/catalog/admin.py`:
+```python
+base = cast(Any, super())
+return has_capability(request.user, Capability.EXPORT_CSV) or base.has_view_permission(request, obj)
+```
+.NET comparison: a cast to a base interface where the compiler cannot see the inheritance.

@@ -187,7 +187,30 @@ def test_detail_of_a_credit_order_shows_the_khata_sentence() -> None:
     assert _element_text(html, "data-payment-method") == payment_method_label(
         Order.PaymentMethod.CREDIT
     )
-    assert _element_text(html, "data-amount-due") == credit_confirmation_sentence(order.grand_total)
+    assert _element_text(html, "data-credit-sentence") == credit_confirmation_sentence(
+        order.credit_applied
+    )
+    assert not _has_element(html, "data-amount-due")
+
+
+def test_detail_of_a_split_order_shows_the_credit_and_cash_parts() -> None:
+    user = UserFactory()
+    order = OrderFactory(
+        user=user,
+        payment_method=Order.PaymentMethod.CREDIT,
+        credit_applied=Decimal("100.00"),
+        amount_due_on_delivery=Decimal("130.00"),
+    )
+    OrderItemFactory(order=order)
+    client = Client()
+    client.force_login(user)
+
+    html = client.get(_detail_path(order)).content.decode()
+
+    assert _element_text(html, "data-credit-sentence") == credit_confirmation_sentence(
+        Decimal("100.00")
+    )
+    assert _element_text(html, "data-amount-due") == cod_on_delivery_sentence(Decimal("130.00"))
 
 
 def test_detail_timeline_lists_every_status_change_in_order() -> None:

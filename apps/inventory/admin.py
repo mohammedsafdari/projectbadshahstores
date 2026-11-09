@@ -17,6 +17,7 @@ from django.urls import URLPattern, path, reverse
 from django.utils import timezone
 from django.utils.html import format_html_join
 
+from apps.accounts.capabilities import Capability, has_capability
 from apps.accounts.models import User
 
 from .forms import AdjustStockForm, CountStockForm, ReceiveStockForm, RecordDamageForm
@@ -293,7 +294,11 @@ class StockItemAdmin(admin.ModelAdmin):
         user = request.user
         if not isinstance(user, User):
             raise PermissionDenied
-        if not (self.has_view_permission(request) and user.has_perm(STOCK_WRITE_PERMISSION)):
+        if not (
+            self.has_view_permission(request)
+            and user.has_perm(STOCK_WRITE_PERMISSION)
+            and has_capability(user, Capability.STOCK_WRITE)
+        ):
             raise PermissionDenied
 
         obj = self.get_object(request, unquote(object_id))
