@@ -187,6 +187,12 @@ def authenticate_customer_password(identifier: str, password: str) -> PasswordLo
         check_password(password, _dummy_password_hash())
         _record_failure(key)
         return PasswordLoginResult(user=None, reason=REASON_WRONG)
+    if not user.has_usable_password():
+        # An OTP-only account has no hash to compare, so use the dummy one:
+        # this answer must cost the same as a wrong password (D72, Slice 38h).
+        check_password(password, _dummy_password_hash())
+        _record_failure(key)
+        return PasswordLoginResult(user=None, reason=REASON_WRONG)
     if not user.check_password(password):
         _record_failure(key)
         return PasswordLoginResult(user=None, reason=REASON_WRONG)

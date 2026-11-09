@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.accounts.auth_presentation import (
     CURRENT_PASSWORD_WRONG_MESSAGE,
     EMAIL_UNUSABLE_MESSAGE,
+    LOGIN_LOCKED_MESSAGE,
 )
 from apps.accounts.models import OtpChallenge, User
 from apps.accounts.passwords import login_locked
@@ -279,3 +280,18 @@ def test_email_page_is_not_cached() -> None:
     response = _logged_in(_customer()).get(_page_path())
 
     assert "no-store" in response["Cache-Control"]
+
+
+def test_locked_account_cannot_change_the_email_even_with_the_right_password() -> None:
+    user = _customer()
+    client = _logged_in(user)
+
+    for _attempt in range(5):
+        _post(client, NEW_EMAIL, current_password="WrongPass9")
+
+    response = _post(client, NEW_EMAIL)
+
+    assert response.status_code == 200
+    assert str(LOGIN_LOCKED_MESSAGE) in response.content.decode()
+    user.refresh_from_db()
+    assert user.email == EMAIL

@@ -229,3 +229,19 @@ def test_new_account_is_a_member_without_staff_flags() -> None:
     assert user.role == User.ROLE_MEMBER
     assert user.is_staff is False
     assert user.is_superuser is False
+
+
+def test_signup_exists_message_is_a_form_error_not_a_field_error() -> None:
+    User.objects.create_user(phone=PHONE, password="OtherPass1")
+    client = Client()
+
+    response = client.post(reverse("account_signup"), _data(email="other@example.com"))
+
+    form = response.context["form"]
+    # ``__all__`` is Django's key for a non-field (whole-form) error.
+    assert list(form.errors) == ["__all__"]
+    assert [str(error) for error in form.non_field_errors()] == [str(SIGNUP_EXISTS_MESSAGE)]
+    html = response.content.decode()
+    assert html.count(str(SIGNUP_EXISTS_MESSAGE)) == 1
+    assert "data-form-error" in html
+    assert "data-field-error" not in html

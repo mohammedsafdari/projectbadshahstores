@@ -42,6 +42,7 @@ PASSWORDS_DIFFER_MESSAGE = _("The two passwords are not the same.")
 EMAIL_REQUIRED_MESSAGE = _("Enter your email address.")
 NAME_REQUIRED_MESSAGE = _("Enter your full name.")
 EMAIL_INVALID_MESSAGE = _("Enter a valid email address.")
+PASSWORD_TOO_LONG_MESSAGE = _("The password is too long.")
 
 # Forgot-password and account pages (D73). The exact sentences are fixed so the
 # views and templates can never drift apart.
@@ -119,6 +120,7 @@ def auth_text() -> dict[str, str]:
         "email_required_message": str(EMAIL_REQUIRED_MESSAGE),
         "name_required_message": str(NAME_REQUIRED_MESSAGE),
         "email_invalid_message": str(EMAIL_INVALID_MESSAGE),
+        "password_too_long_message": str(PASSWORD_TOO_LONG_MESSAGE),
         "forgot_title": str(FORGOT_TITLE),
         "forgot_heading": str(FORGOT_HEADING),
         "forgot_help": str(FORGOT_HELP),

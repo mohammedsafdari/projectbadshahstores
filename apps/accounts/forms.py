@@ -42,6 +42,7 @@ from apps.accounts.auth_presentation import (
     PASSWORD1_LABEL,
     PASSWORD2_LABEL,
     PASSWORD_LABEL,
+    PASSWORD_TOO_LONG_MESSAGE,
     PASSWORDS_DIFFER_MESSAGE,
 )
 from apps.accounts.models import PINCODE_VALIDATOR, Address, User
@@ -54,6 +55,10 @@ INPUT_CLASSES = (
     "text-base shadow-sm focus:border-brand-500 focus:outline-none "
     "focus:ring-2 focus:ring-brand-500"
 )
+
+# No real password is this long; the cap only stops a huge POST from making the
+# hasher work forever (D72, Slice 38h).
+PASSWORD_MAX_LENGTH = 1000
 
 
 class PhoneLoginForm(forms.Form):
@@ -101,6 +106,8 @@ class PasswordLoginForm(forms.Form):
     )
     password = forms.CharField(
         label=PASSWORD_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(
             attrs={
                 "autocomplete": "current-password",
@@ -148,10 +155,14 @@ class SignupForm(forms.Form):
     )
     password1 = forms.CharField(
         label=PASSWORD1_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
     )
     password2 = forms.CharField(
         label=PASSWORD2_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
     )
 
@@ -230,10 +241,14 @@ class ResetPasswordForm(forms.Form):
     )
     new_password1 = forms.CharField(
         label=NEW_PASSWORD1_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
     )
     new_password2 = forms.CharField(
         label=NEW_PASSWORD2_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
     )
 
@@ -274,16 +289,22 @@ class ChangePasswordForm(forms.Form):
 
     current_password = forms.CharField(
         label=CURRENT_PASSWORD_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(
             attrs={"autocomplete": "current-password", "class": INPUT_CLASSES}
         ),
     )
     new_password1 = forms.CharField(
         label=NEW_PASSWORD1_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
     )
     new_password2 = forms.CharField(
         label=NEW_PASSWORD2_LABEL,
+        max_length=PASSWORD_MAX_LENGTH,
+        error_messages={"max_length": PASSWORD_TOO_LONG_MESSAGE},
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": INPUT_CLASSES}),
     )
 

@@ -21,7 +21,7 @@
   {% if form.non_field_errors %}
   <div class="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2">
     {% for error in form.non_field_errors %}
-    <p data-field-error class="text-sm text-red-700">{{ error }}</p>
+    <p data-form-error class="text-sm text-red-700">{{ error }}</p>
     {% endfor %}
   </div>
   {% endif %}

@@ -8,6 +8,7 @@ import pytest
 from django.core.cache import cache
 from django.utils import timezone
 
+from apps.accounts import password_reset
 from apps.accounts.models import OtpChallenge, User
 from apps.accounts.otp import request_code
 from apps.accounts.password_reset import (
@@ -258,3 +259,25 @@ def test_reset_never_touches_a_staff_account_with_the_same_phone() -> None:
     assert user.check_password(NEW_PASSWORD) is True
     assert staff.check_password("StaffPass1") is True
     assert staff.phone_verified_at is None
+
+
+def test_unknown_account_reset_still_runs_a_code_check(monkeypatch) -> None:
+    calls: list[tuple[str, str]] = []
+    real_verify = password_reset.verify_code
+
+    def _recording_verify(phone: str, code: str, **kwargs: object) -> object:
+        calls.append((phone, code))
+        return real_verify(phone, code, **kwargs)
+
+    monkeypatch.setattr(password_reset, "verify_code", _recording_verify)
+    unknown = "+919999999999"
+
+    outcome = confirm_password_reset(
+        phone=unknown,
+        channel=CHANNEL_PHONE,
+        code="123456",
+        new_password=NEW_PASSWORD,
+    )
+
+    assert outcome.ok is False
+    assert calls == [(unknown, "123456")]

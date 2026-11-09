@@ -294,3 +294,49 @@ def test_unknown_identifier_still_hashes_a_password(monkeypatch) -> None:
     authenticate_customer_password("+919999999999", PASSWORD)
 
     assert len(calls) == 1
+
+
+def test_deactivated_customer_cannot_log_in_by_email() -> None:
+    user = _register()
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+
+    result = authenticate_customer_password(EMAIL, PASSWORD)
+
+    assert result.reason == REASON_WRONG
+    assert result.user is None
+
+
+def test_account_without_a_usable_password_still_hashes_a_password(monkeypatch) -> None:
+    # An OTP-only account owns no hash of its own, so the login must still pay
+    # for one hash check: its answer should cost like a normal wrong password.
+    User.objects.create_user(phone=PHONE, email=EMAIL)
+    normal = _register(phone=OTHER_PHONE, email=OTHER_EMAIL)
+
+    calls: list[tuple[str, str]] = []
+    real_check = passwords.check_password
+
+    def _recording_check(password: str, encoded: str) -> bool:
+        calls.append((password, encoded))
+        return real_check(password, encoded)
+
+    monkeypatch.setattr(passwords, "check_password", _recording_check)
+
+    authenticate_customer_password(PHONE, PASSWORD)
+    otp_only_calls = len(calls)
+
+    calls.clear()
+    # The normal login path calls ``user.check_password`` (a different binding),
+    # so compare with one direct call against a normal account's real hash.
+    assert passwords.check_password("WrongPass9", normal.password) is False
+
+    assert len(calls) == otp_only_calls == 1
+
+
+def test_account_without_a_usable_password_counts_toward_the_lock() -> None:
+    User.objects.create_user(phone=PHONE, email=EMAIL)
+
+    for _attempt in range(5):
+        assert authenticate_customer_password(PHONE, PASSWORD).reason == REASON_WRONG
+
+    assert authenticate_customer_password(PHONE, PASSWORD).reason == REASON_LOCKED
