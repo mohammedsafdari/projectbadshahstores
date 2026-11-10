@@ -27,10 +27,24 @@ def test_an_anonymous_user_has_no_capability() -> None:
     assert has_capability(AnonymousUser(), Capability.VIEW_ORDERS) is False
 
 
-def test_an_inactive_staff_user_has_no_capability() -> None:
-    user = _staff(is_active=False)
+def test_an_inactive_manager_has_no_capability() -> None:
+    # A manager is allowed VIEW_ORDERS by default, so only the is_active
+    # check can make this False.
+    user = _staff(User.ROLE_MANAGER, is_active=False)
 
     assert has_capability(user, Capability.VIEW_ORDERS) is False
+
+
+def test_an_inactive_owner_has_no_capability() -> None:
+    user = _staff(User.ROLE_OWNER, is_active=False)
+
+    assert has_capability(user, Capability.STOCK_WRITE) is False
+
+
+def test_an_inactive_superuser_has_no_capability() -> None:
+    user = UserFactory(is_staff=True, is_superuser=True, is_active=False)
+
+    assert has_capability(user, Capability.STOCK_WRITE) is False
 
 
 def test_a_non_staff_user_has_no_capability_even_with_a_staff_role() -> None:
