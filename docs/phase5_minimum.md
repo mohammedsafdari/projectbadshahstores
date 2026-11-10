@@ -43,7 +43,7 @@ yet unless it says so. Tick an item only when it works in production and someone
 
 ## 3. Phase 7 readiness
 
-- [ ] Hosting chosen and paid for, with the production database and media storage in place.
+- [ ] Hosting chosen and paid for, with the production database and media storage in place (D76: one paid India-region VPS with PostgreSQL in Compose and media in Cloudflare R2).
 - [ ] Domain and HTTPS working on the production host.
 - [ ] Backups running on a schedule, and one restore test done from a backup.
 - [ ] Monitoring and error alerts: the site, the database, the disk and failed background jobs.
@@ -56,7 +56,7 @@ yet unless it says so. Tick an item only when it works in production and someone
 
 ## 4. Not needed for the soft launch
 
-- [ ] Online payment (Razorpay) — wait until COD and credit are stable.
+- [ ] Online payment (Razorpay) — Phase 4, in test mode only, and not a soft-launch dependency; the live provider is chosen at KYC time (D76).
 - [ ] WhatsApp API messages — plain SMS and email are enough at the start.
 - [ ] Per-IP rate limits — the per-phone limits stay; revisit after real traffic.
 - [ ] Email login or Google login — phone and password are enough.

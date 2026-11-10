@@ -34,13 +34,13 @@ Work in small vertical slices. After each slice: show the files changed, how to 
 - Installable **PWA** (manifest + service worker for basic caching) in a later phase.
 
 **Integrations**
-- **Payments**: **Razorpay** (UPI, cards, netbanking, wallets) with signature-verified **webhooks** as the source of truth for payment status. Also **Cash on Delivery**. Never store card data; use the gateway's hosted checkout.
-- **Authentication**: **Phone number + OTP login** (primary), optional email. OTP via SMS provider `[MSG91 / Twilio / Fast2SMS]` behind an abstraction so the provider can be swapped. Rate-limit OTP requests.
-- **Notifications**: WhatsApp Business Cloud API (order confirmation, out-for-delivery, delivered) and SMS fallback, behind a notification service abstraction.
+- **Payments**: **Razorpay** in test mode for Phase 4 (UPI, cards, netbanking, wallets) with signature-verified **webhooks** as the source of truth for payment status; the live provider (Razorpay or Cashfree) is chosen at KYC time. UPI above ₹2,000 carries MDR since 15 October 2026, so it is not free (D76). Also **Cash on Delivery**. Never store card data; use the gateway's hosted checkout.
+- **Authentication**: **Phone number + OTP login** (primary), optional email. OTP via **MSG91** with DLT registration (Fast2SMS rejected, D76) behind an abstraction so the provider can be swapped. Rate-limit OTP requests.
+- **Notifications**: the free `wa.me` button only in the MVP (no WhatsApp Business API cost, D76) and SMS fallback, behind a notification service abstraction.
 - **Maps/address**: Pin-code validation against allowed delivery zones; optional Google Maps/Places autocomplete later.
 - **Shipping (Phase 2, own-brand products pan-India)**: abstraction ready for **Shiprocket** or Delhivery.
-- **Email**: transactional email via `[PROVIDER]` (e.g. SES/Brevo).
-- **File/media storage**: S3-compatible object storage (or local in dev) with image resizing.
+- **Email**: transactional email via **Brevo** free (300 emails a day), with SPF and DKIM on the domain (D76).
+- **File/media storage**: **Cloudflare R2** through the S3 API (or local in dev) with image resizing (D76).
 - **Search**: Start with PostgreSQL full-text search + trigram similarity (handles typos and Hinglish spellings reasonably). Design the search layer behind an interface so semantic/embedding search can be added later.
 
 **Infrastructure and quality**
@@ -48,7 +48,7 @@ Work in small vertical slices. After each slice: show the files changed, how to 
 - Environment config via environment variables (`django-environ`); never commit secrets. Provide `.env.example`.
 - **Tooling**: `uv` (or `pip` + `venv`), `ruff` (lint+format), `mypy`/type hints on non-trivial code, `pytest` + `pytest-django`, `factory_boy`, pre-commit hooks.
 - **CI**: GitHub Actions running lint, type check and tests on every push.
-- **Deployment target**: single VPS or managed container service in India region (`[DigitalOcean Bangalore / AWS Mumbai / Azure Central India]`) with Gunicorn + Nginx, managed PostgreSQL with daily backups, HTTPS via Let's Encrypt, Sentry for error tracking, uptime monitoring.
+- **Deployment target**: one paid VPS in an India region (reference DigitalOcean Bangalore; provider not final) with Gunicorn + Nginx, PostgreSQL 16 in Docker Compose on the same server with a nightly encrypted `pg_dump` to Cloudflare R2, HTTPS via Let's Encrypt, Sentry for error tracking, uptime monitoring. Oracle Cloud Always Free is staging only (D76, `docs/hosting_and_costs.md`).
 - **Future (do not build yet, but don't block it)**: a separate **FastAPI** microservice for AI features (semantic product search, WhatsApp ordering assistant, demand forecasting). Keep business logic in service modules that can be called from an API later.
 
 ### 3. Architecture rules

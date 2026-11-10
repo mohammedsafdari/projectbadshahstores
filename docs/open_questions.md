@@ -21,11 +21,14 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Legal Metrology manufacturer details for own-brand variants — to be captured per variant at data entry — owner
 
 ## Payments and notifications
-- [ ] Razorpay test-mode keys (and later live keys) — provider — owner when ready; we default to test mode only until told otherwise
+- [ ] Razorpay test-mode keys — provider — owner when ready; test mode needs no activation, and the live account stays inactive until close to launch because the 0% platform-fee window starts at activation (D76)
+- [ ] Live payment gateway: Razorpay or Cashfree, chosen at KYC time, with Cashfree's AMC in writing if it is chosen (third parties report ₹4,999 a year) — owner/provider; ask again before the Phase 4 wrap-up; default in use: Razorpay stays for Phase 4 in test mode (D76)
+- [ ] Bank confirmation that the shop's UPI QR counts as a small-merchant QR, so receipts up to ₹1 lakh a month stay at zero MDR — owner/bank; ask again before Phase 5 COD/QR collection; default in use: not confirmed (D76)
 - [ ] COD policy: cap ₹2,000 at checkout only (recorded); revisit if policy changes — owner
-- [ ] SMS/WhatsApp provider choice finalized — recorded default MSG91 behind abstraction, console backend in dev — owner; MSG91 needs DLT registration first
+- [x] SMS/WhatsApp provider choice — decided (D76, 10 November 2026): SMS is MSG91 behind the abstraction, with DLT registration first; WhatsApp is only the free `wa.me` button in the MVP, with no WhatsApp Business API — owner
 - [ ] DLT registration for SMS/WhatsApp templates — provider/regulator — owner
-- [ ] Email provider credentials — recorded default Brevo, console backend in dev — owner when ready
+- [ ] MSG91 DLT entity fee quote (a few thousand rupees, unverified) plus the entity, header and template registration — owner/provider; ask again before Phase 7; default in use: the fee is unverified (D76)
+- [ ] Email provider credentials — Brevo free, 300 emails a day shared with transactional email, with SPF and DKIM on the domain — owner when ready (D76)
 
 ## Catalog and inventory
 - [ ] Which variants are sold loose by weight (pulses, dry fruits, masalas), and in what smallest step? The owner will send the exact list later and staff will mark the variants in the admin (Slice 29c) — owner; ask again before production data entry; default in use: nothing is loose until `is_sold_loose` is set per variant (D42, D55)
@@ -138,9 +141,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Real provider accounts wait until the local MVP works — owner; Razorpay, MSG91, Brevo
 
 ## Infrastructure and deployment
-- [ ] Deployment target region — recorded options: DigitalOcean Bangalore / AWS Mumbai / Azure Central India — owner
-- [ ] S3-compatible storage provider for production media — owner
-- [ ] Production domain and HTTPS — owner/deployment
+- [ ] Final VPS provider and size — recorded: one paid VPS in an India region, reference DigitalOcean Bangalore, 1 vCPU / 2 GB to start and 2 vCPU / 4 GB if memory is tight (D76); the provider is not final — owner; ask again before Phase 7
+- [ ] Oracle Cloud Always Free pay-as-you-go status, scarce capacity and idle reclaim (CPU under about 10-20% for a week) — owner; ask again before Phase 7; default in use: staging only, never production (D76)
+- [ ] Production domain and registrar, with Cloudflare DNS and HTTPS — owner/deployment; ask again before Phase 7; default in use: Cloudflare free DNS and Let's Encrypt
+- [ ] Cloudflare R2 free-tier limits re-verified before relying on them — owner; ask again before Phase 7; default in use: 10 GB, 1M writes and 10M reads a month, no egress fees, not re-verified (D76)
+- [ ] GST treatment of hosting and SMS invoices (input credit and the invoice details the CA needs) — CA/legal; ask the CA before Phase 7; default in use: add GST where it applies and claim nothing
 
 ## Deferred (not blockers, tracked for later)
 - [ ] PWA — deferred

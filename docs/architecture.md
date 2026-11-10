@@ -142,9 +142,10 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 The "Import CSV" page on the variant list uploads a file, parses it (`csv_import.py`) and plans it against the database (`csv_import_plan.py`) without writing anything: each row becomes CREATE, UPDATE or UNCHANGED, with issues for bad cells and for clashes only the database can see (an unknown brand or category slug, a SKU that differs only in letter case, a SKU under another product, a barcode another SKU holds). Confirm keeps the uploaded bytes in the session together with their SHA-256 and the plan's fingerprint. `apply_import` (`csv_import_apply.py`) locks products and then variants in ascending `pk` order inside one `transaction.atomic()`, plans again under the lock, refuses when the fingerprint has moved, and then writes products and variants row by row with `full_clean()`, one audit row per created or changed variant (`VARIANT_CREATE`, `VARIANT_UPDATE`). Any problem rolls the whole file back, so a file is applied completely or not at all; `bulk_create()` and queryset `update()` are never used because they skip validation and the audit call.
 
 ### Provider defaults (locked)
-- Payments: Razorpay, test mode only until told otherwise.
-- OTP/SMS/WhatsApp: MSG91 behind abstraction; console backend in development; real integration later after DLT registration.
-- Email: Brevo, console backend in development until real credentials.
+- Payments: Razorpay, test mode only during Phase 4; the live provider (Razorpay or Cashfree) is chosen at KYC time (D76).
+- OTP/SMS/WhatsApp: MSG91 for SMS behind the abstraction, with DLT registration; console backend in development. WhatsApp in the MVP is only the free `wa.me` button, with no WhatsApp Business API (D70, D76).
+- Email: Brevo free (300 emails a day), console backend in development until real credentials; SPF and DKIM on the domain (D76).
+- Hosting and costs: see `docs/hosting_and_costs.md` and D76.
 - Shipping (later business phase, own-brand pan-India): abstraction ready for Shiprocket or Delhivery; not built in MVP.
 
 ## 4. Inventory and order integrity rules (REVIEW CAREFULLY)
@@ -184,10 +185,10 @@ The "Import CSV" page on the variant list uploads a file, parses it (`csv_import
 - Environment config via `django-environ`; secrets from environment only; `.env.example` with placeholders; `.env` in `.gitignore`.
 - Tooling: `uv` + `uv.lock`, pin all dependencies; `ruff` (lint + format); `mypy` with `django-stubs`; `pytest` + `pytest-django`; `factory_boy`; pre-commit hooks.
 - CI: GitHub Actions workflow `.github/workflows/ci.yml`, run on push to `main` and on pull requests. One job, `checks`, on `ubuntu-24.04` with a Postgres 16 service container. Steps: `uv sync --locked`, `ruff check`, `ruff format --check`, `mypy`, `pytest`. Secret scanning (gitleaks) runs in pre-commit. Job env is defined in ci.yml.
-- Deployment target: single VPS or managed container service in India region (DigitalOcean Bangalore / AWS Mumbai / Azure Central India) with Gunicorn + Nginx, managed PostgreSQL with daily backups, HTTPS via Let's Encrypt, Sentry, uptime monitoring.
+- Deployment target: one paid VPS in an India region (reference DigitalOcean Bangalore; the provider is not final), running the same Docker Compose stack as development, with Gunicorn + Nginx, PostgreSQL 16 in Compose on the same server and a nightly encrypted `pg_dump` to Cloudflare R2, HTTPS via Let's Encrypt, Sentry, uptime monitoring. Oracle Cloud Always Free is staging only (D76, `docs/hosting_and_costs.md`).
 - Security: OWASP Top 10 patterns, CSRF, XSS-safe templates, secure session cookies, HTTPS-only, HSTS, security headers, CSP. Parameterised queries via the ORM. Rate-limit login/OTP/checkout/search. Never log secrets, OTPs, or full payment data. Encrypt sensitive config; rotate keys. Validate uploads (type, size) and CSV imports.
 - Search: start with PostgreSQL full-text + trigram similarity behind an interface; semantic/embedding search later.
-- Media: S3-compatible object storage (or local in dev) with image resizing.
+- Media: Cloudflare R2 through the S3 API (`django-storages`) in production, local storage in dev, with image resizing (D27, narrowed by D76).
 - Tests required for pricing/GST, cart totals, stock reservation and races, order state transitions, webhook idempotency, coupon rules, permissions, delivery-zone/slot validation; high coverage on `services/`.
 - Structured logging, Sentry, health-check endpoint, database backups with documented restore procedure.
 - Accessibility: semantic HTML, labels, keyboard navigation, sufficient contrast.
