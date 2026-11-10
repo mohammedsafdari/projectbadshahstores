@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from decimal import Decimal
 
@@ -192,6 +193,17 @@ def test_expiry_is_idempotent() -> None:
     assert first == 1
     assert second == 0
     assert order.status_logs.filter(to_status=Order.Status.CANCELLED).count() == 1
+
+
+def test_expiry_logs_how_many_orders_it_cancelled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _user, _order, _row = _aged_online_order()
+
+    with caplog.at_level(logging.INFO, logger="apps.payments.services"):
+        expire_unpaid_online_orders(now=NOW)
+
+    assert "Cancelled 1 unpaid online order(s)." in caplog.text
 
 
 def test_expiry_moves_the_order_updated_at() -> None:

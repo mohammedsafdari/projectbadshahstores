@@ -41,14 +41,15 @@ def test_an_empty_cart_gets_the_order_lines_back() -> None:
     assert line.quantity == Decimal("2.000")
 
 
-def test_an_existing_line_is_replaced_by_the_order_quantity() -> None:
+def test_an_existing_line_is_left_alone() -> None:
     user = UserFactory()
     row = variant()
     add_item(DbCartStore(user), row, Decimal("1"))
 
-    restore_cart_from_order(user, [(row, Decimal("2"))])
+    restored = restore_cart_from_order(user, [(row, Decimal("2"))])
 
-    assert CartItem.objects.get(cart__user=user).quantity == Decimal("2.000")
+    assert restored == []
+    assert CartItem.objects.get(cart__user=user).quantity == Decimal("1.000")
 
 
 def test_the_restored_quantity_is_clamped_to_available_stock() -> None:
@@ -106,22 +107,29 @@ def test_a_zero_quantity_is_ignored() -> None:
     assert restore_cart_from_order(user, [(row, Decimal("0"))]) == []
 
 
-def test_the_cart_and_the_changed_line_timestamps_move() -> None:
+def test_a_new_line_moves_the_cart_timestamp_and_leaves_the_old_line_alone() -> None:
     user = UserFactory()
-    row = variant()
-    add_item(DbCartStore(user), row, Decimal("1"))
+    kept = variant()
+    added = variant()
+    add_item(DbCartStore(user), kept, Decimal("1"))
     cart = CartItem.objects.get(cart__user=user).cart
-    line = CartItem.objects.get(cart=cart)
+    kept_line = CartItem.objects.get(cart=cart)
     cart_before = cart.updated_at
-    line_before = line.updated_at
+    kept_before = kept_line.updated_at
 
-    restore_cart_from_order(user, [(row, Decimal("2"))])
+    restored = restore_cart_from_order(
+        user,
+        [(kept, Decimal("2")), (added, Decimal("1"))],
+    )
 
     cart.refresh_from_db()
-    line.refresh_from_db()
+    kept_line.refresh_from_db()
+    added_line = CartItem.objects.get(cart=cart, variant=added)
+    assert restored == [added.pk]
     assert cart.updated_at > cart_before
-    assert line.updated_at > line_before
-    assert line.quantity == Decimal("2.000")
+    assert kept_line.updated_at == kept_before
+    assert kept_line.quantity == Decimal("1.000")
+    assert added_line.quantity == Decimal("1.000")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -160,4 +168,5 @@ def test_two_simultaneous_restores_leave_one_line() -> None:
         Decimal("1.000"),
         Decimal("2.000"),
     )
-    assert restored == [[row_pk], [row_pk]]
+    # One thread adds the line; the other finds it and reports nothing added.
+    assert sorted(restored) == [[], [row_pk]]

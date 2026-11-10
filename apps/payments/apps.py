@@ -1,4 +1,4 @@
-"""Payments app — Payment, WebhookEvent and the Razorpay gateway boundary."""
+"""Payments app — Payment, WebhookEvent and the payment gateway boundary."""
 
 from django.apps import AppConfig
 

@@ -110,7 +110,7 @@ def test_the_event_value_object_defaults_to_an_empty_payload() -> None:
         method="upi",
     )
 
-    assert event.raw == {}
+    assert event.safe == {}
 
 
 def test_a_bad_signature_is_a_gateway_error() -> None:

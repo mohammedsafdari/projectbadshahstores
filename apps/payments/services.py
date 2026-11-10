@@ -1,15 +1,17 @@
-"""Online payment services: start, webhook, retry and expiry (D77).
+"""Online payment services: start, webhook, fetch, retry and expiry (D77).
 
 Every state change runs in one ``transaction.atomic()`` and locks its rows.
 The order row is locked before the payment row, in the same order as the
 expiry job, so the two cannot deadlock.
 
-A webhook is the only thing that marks money as received. A redirect from the
-browser proves nothing, so the return page only reads the database.
+The provider's webhook or a server-to-server fetch are the only sources of a
+captured payment. A redirect from the browser proves nothing, so the return
+page asks the provider itself before it renders.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -46,10 +48,13 @@ from apps.payments.gateway import (
     PAYMENT_FAILED,
     GatewayEvent,
     GatewayNotConfigured,
+    PaymentGatewayError,
     PaymentSession,
     get_gateway,
 )
 from apps.payments.models import Payment, WebhookEvent
+
+logger = logging.getLogger(__name__)
 
 
 class OnlinePaymentError(ValueError):
@@ -231,7 +236,7 @@ def _capture(
     payment.method = event.method[:30]
     payment.captured_at = now
     payment.failure_reason = ""
-    payment.raw_response = event.raw
+    payment.raw_response = event.safe
     payment.save(
         update_fields=[
             "status",
@@ -252,6 +257,7 @@ def _capture(
     if payout_possible and not _restock_for_capture(order, now=now):
         payment.needs_refund = True
         payment.save(update_fields=["needs_refund", "updated_at"])
+        _warn_needs_refund(payment, order)
         transition_order(
             order.pk,
             Order.Status.CANCELLED,
@@ -267,6 +273,18 @@ def _capture(
     if not payout_possible or confirmed.status != Order.Status.CONFIRMED:
         payment.needs_refund = True
         payment.save(update_fields=["needs_refund", "updated_at"])
+        _warn_needs_refund(payment, order)
+
+
+def _warn_needs_refund(payment: Payment, order: Order) -> None:
+    """One warning line for money that a person must send back (D77)."""
+    # No customer name, phone or address: only the order and the money facts.
+    logger.warning(
+        "Payment needs a refund: order=%s gateway_order=%s amount=%s",
+        order.order_number,
+        payment.gateway_order_id,
+        payment.amount,
+    )
 
 
 def _fail(payment: Payment, event: GatewayEvent, *, now: datetime) -> None:
@@ -277,8 +295,9 @@ def _fail(payment: Payment, event: GatewayEvent, *, now: datetime) -> None:
     payment.gateway_payment_id = event.gateway_payment_id
     payment.method = event.method[:30]
     payment.failed_at = now
-    payment.failure_reason = str(event.raw.get("error", ""))[:200] or "Payment failed"
-    payment.raw_response = event.raw
+    failure = str(event.safe.get("error_description", ""))[:200]
+    payment.failure_reason = failure or "Payment failed"
+    payment.raw_response = event.safe
     payment.save(
         update_fields=[
             "status",
@@ -291,6 +310,28 @@ def _fail(payment: Payment, event: GatewayEvent, *, now: datetime) -> None:
         ]
     )
     mark_order_payment_failed(payment.order_id, reason=payment.failure_reason, now=now)
+
+
+def _apply_event(
+    payment: Payment,
+    order: Order,
+    event: GatewayEvent,
+    *,
+    now: datetime,
+) -> str | None:
+    """Apply one neutral event; return an error message, or None (D77).
+
+    This is the one apply step shared by the webhook and the return-page fetch.
+    The caller has already locked the order and then the payment.
+    """
+    if event.amount != payment.amount:
+        return "Amount does not match the payment"
+    if event.kind == PAYMENT_CAPTURED:
+        if payment.status != Payment.Status.CAPTURED:
+            _capture(payment, order, event, now=now)
+    elif event.kind == PAYMENT_FAILED:
+        _fail(payment, event, now=now)
+    return None
 
 
 def handle_gateway_event(
@@ -315,7 +356,7 @@ def handle_gateway_event(
                 provider=provider,
                 event_id=event_id,
                 event_type=event.kind,
-                payload=event.raw,
+                payload=event.safe,
             )
 
         # The order is locked before the payment, the same order the expiry
@@ -337,17 +378,74 @@ def handle_gateway_event(
             return webhook
         webhook.payment = payment
 
-        if event.amount != payment.amount:
-            webhook.error = "Amount does not match the payment"
-        elif event.kind == PAYMENT_CAPTURED:
-            if payment.status != Payment.Status.CAPTURED:
-                _capture(payment, order, event, now=resolved_now)
-        elif event.kind == PAYMENT_FAILED:
-            _fail(payment, event, now=resolved_now)
+        webhook.error = _apply_event(payment, order, event, now=resolved_now) or ""
 
         webhook.processed_at = resolved_now
         webhook.save(update_fields=["payment", "error", "processed_at", "updated_at"])
         return webhook
+
+
+def refresh_payment_from_gateway(
+    user: User,
+    order_number: str,
+    *,
+    gateway=None,
+    now: datetime | None = None,
+) -> None:
+    """Ask the provider about one customer's latest payment (D77).
+
+    The return page calls this once per load. The provider call runs outside
+    any transaction or lock, because a slow network reply must not hold a row.
+    A gateway error is logged and ignored: the page still shows the last stored
+    facts, and the webhook can arrive later. This writes no ``WebhookEvent``.
+    """
+    resolved_now = _now(now)
+    order = Order.objects.filter(user=user, order_number=order_number).first()
+    if order is None:
+        raise OrderNotFoundError("Order not found.")
+    payment = latest_payment(order)
+    if payment is None or payment.status == Payment.Status.CAPTURED:
+        return
+
+    try:
+        provider = gateway if gateway is not None else get_gateway()
+    except PaymentGatewayError:
+        provider = None
+    if provider is None:
+        logger.warning("Payment check skipped: no gateway for order=%s", order.order_number)
+        return
+
+    try:
+        events = provider.fetch_order_payments(payment.gateway_order_id)
+    except PaymentGatewayError:
+        # No body, no reply text and no secret in the log.
+        logger.warning(
+            "Payment check failed: order=%s gateway_order=%s",
+            order.order_number,
+            payment.gateway_order_id,
+        )
+        return
+
+    # A generator inside next() stops at the first match; a captured payment
+    # wins over a failed one for the same order.
+    chosen = next((event for event in events if event.kind == PAYMENT_CAPTURED), None)
+    if chosen is None:
+        chosen = next((event for event in events if event.kind == PAYMENT_FAILED), None)
+    if chosen is None:
+        return
+
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().filter(pk=order.pk).first()
+        locked_payment = Payment.objects.select_for_update().filter(pk=payment.pk).first()
+        if locked_order is None or locked_payment is None:
+            return
+        error = _apply_event(locked_payment, locked_order, chosen, now=resolved_now)
+        if error:
+            logger.warning(
+                "Payment check amount mismatch: order=%s gateway_order=%s",
+                locked_order.order_number,
+                locked_payment.gateway_order_id,
+            )
 
 
 def expire_unpaid_online_orders(now: datetime | None = None) -> int:
@@ -377,6 +475,7 @@ def expire_unpaid_online_orders(now: datetime | None = None) -> int:
     for order_id in order_ids:
         if _expire_one(order_id, now=resolved_now, cutoff=cutoff):
             cancelled += 1
+    logger.info("Cancelled %s unpaid online order(s).", cancelled)
     return cancelled
 
 

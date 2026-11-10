@@ -13,6 +13,7 @@ from apps.credit.models import CreditAccount, CreditEntry
 from apps.inventory.models import StockReservation
 from apps.orders.models import Order, OrderStatusLog
 from apps.orders.services import (
+    CodLimitExceededError,
     InvalidPaymentMethodError,
     OnlinePaymentUnavailableError,
     place_order,
@@ -153,12 +154,78 @@ def test_an_unknown_remainder_method_is_refused() -> None:
 
 def test_online_payment_is_allowed_above_the_cash_cap() -> None:
     user, address_row, _row = ready_customer()
-    set_settings(cod_cap=Decimal("30.00"))
+    # One paisa below the online part: the cap still does not apply online.
+    set_settings(cod_cap=Decimal("229.99"))
 
     order = place_online(user, address_row).order
 
     assert order.online_amount == Decimal("230.00")
     assert order.amount_due_on_delivery == Decimal("0.00")
+
+
+def test_a_cash_order_at_the_cap_is_accepted_and_a_cent_above_is_refused() -> None:
+    user, address_row, _row = ready_customer()
+    set_settings(cod_cap=Decimal("230.00"))
+
+    accepted = place_order(
+        user=user,
+        address_id=address_row.pk,
+        payment_method=Order.PaymentMethod.COD,
+        checkout_group=uuid4(),
+        now=NOW,
+    )
+
+    assert accepted.order.amount_due_on_delivery == Decimal("230.00")
+
+    # The first call already created the served pin code zone, so build the
+    # second customer without calling serve() again (its pincode is unique).
+    other_user = UserFactory()
+    other_address = address(other_user)
+    fill_cart(other_user, variant())
+    set_settings(cod_cap=Decimal("229.99"))
+    with pytest.raises(CodLimitExceededError):
+        place_order(
+            user=other_user,
+            address_id=other_address.pk,
+            payment_method=Order.PaymentMethod.COD,
+            checkout_group=uuid4(),
+            now=NOW,
+        )
+
+    assert Order.objects.count() == 1
+
+
+def test_a_khata_cash_part_at_the_cap_is_accepted_and_a_cent_above_is_refused() -> None:
+    user, address_row, _row = ready_customer(credit_limit="100.00")
+    set_settings(cod_cap=Decimal("130.00"))
+
+    accepted = place_order(
+        user=user,
+        address_id=address_row.pk,
+        payment_method=Order.PaymentMethod.CREDIT,
+        checkout_group=uuid4(),
+        now=NOW,
+    )
+
+    assert accepted.order.credit_applied == Decimal("100.00")
+    assert accepted.order.amount_due_on_delivery == Decimal("130.00")
+
+    # The zone already exists from the first ready_customer() call above.
+    other_user = UserFactory()
+    credit_account(other_user, limit="100.00")
+    other_address = address(other_user)
+    fill_cart(other_user, variant())
+    set_settings(cod_cap=Decimal("129.99"))
+    with pytest.raises(CodLimitExceededError):
+        place_order(
+            user=other_user,
+            address_id=other_address.pk,
+            payment_method=Order.PaymentMethod.CREDIT,
+            checkout_group=uuid4(),
+            now=NOW,
+        )
+
+    assert Order.objects.count() == 1
 
 
 def test_the_status_log_records_the_wait_for_payment() -> None:

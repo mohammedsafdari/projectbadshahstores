@@ -1,7 +1,8 @@
 """Customer payment pages and the provider webhook (D77).
 
-The webhook is the only writer of a captured payment. The return and status
-pages read the database, so a forged query string cannot mark an order paid.
+The provider's webhook or a server-to-server fetch are the only things that can
+mark money as received. The browser's redirect proves nothing, so the return
+page asks the provider itself, and the status page only reads the database.
 """
 
 from __future__ import annotations
@@ -22,8 +23,6 @@ from apps.orders.models import Order
 from apps.orders.presentation import page_text, status_sentence
 from apps.orders.services import OrderNotFoundError, get_user_order_by_number
 from apps.payments.gateway import (
-    PAYMENT_CAPTURED,
-    PAYMENT_FAILED,
     GatewayNotConfigured,
     PaymentGatewayError,
     get_gateway,
@@ -34,6 +33,7 @@ from apps.payments.services import (
     PaymentNotAllowedError,
     handle_gateway_event,
     latest_payment,
+    refresh_payment_from_gateway,
     start_online_payment,
 )
 
@@ -121,8 +121,12 @@ def payment_start(request: HttpRequest, order_number: str) -> HttpResponse:
 @require_GET
 @never_cache
 def payment_return(request: HttpRequest, order_number: str) -> HttpResponse:
-    """The page the gateway redirects to; it only reads the database (D77)."""
+    """Ask the provider about the payment, then show the stored facts (D77)."""
     order = _own_order(request, order_number)
+    # This GET changes state on purpose. It is safe because the service is
+    # idempotent and the provider, not the browser, supplies the facts.
+    refresh_payment_from_gateway(_current_user(request), order_number)
+    order.refresh_from_db()
     payment = latest_payment(order)
     return render(
         request,
@@ -153,23 +157,24 @@ def payment_status(request: HttpRequest, order_number: str) -> HttpResponse:
 
 @csrf_exempt
 @require_POST
-def razorpay_webhook(request: HttpRequest) -> JsonResponse:
-    """Verify and apply one provider webhook; retries are safe (D77)."""
+def payment_webhook(request: HttpRequest, provider: str) -> JsonResponse:
+    """Verify and apply one provider webhook; retries are safe (D77).
+
+    The route carries the provider name, so no provider or header name appears
+    in this module. A wrong name is a 404, exactly like an unknown page.
+    """
     try:
         gateway = get_gateway()
-        if gateway is None:
-            return JsonResponse({"detail": "Payments are not configured."}, status=400)
-        event = gateway.parse_webhook(
-            request.body,
-            request.headers.get("X-Razorpay-Signature", ""),
-            event_id=request.headers.get("X-Razorpay-Event-Id", ""),
-        )
-        # Only a captured or failed event is understood; parse_webhook refuses
-        # anything else before this line.
-        if event.kind not in (PAYMENT_CAPTURED, PAYMENT_FAILED):
-            return JsonResponse({"detail": "Event not handled."}, status=400)
-        handle_gateway_event(event, provider=gateway.name)
+    except PaymentGatewayError:
+        gateway = None
+    if gateway is None or provider != gateway.name:
+        raise Http404("Payment provider not found.")
+    try:
+        event = gateway.parse_webhook(request.body, request.headers)
     except PaymentGatewayError:
         # Never echo the body or the signature: they are untrusted data.
         return JsonResponse({"detail": "Invalid webhook."}, status=400)
+    if event is None:
+        return JsonResponse({"status": "ignored"})
+    handle_gateway_event(event, provider=gateway.name)
     return JsonResponse({"status": "ok"})

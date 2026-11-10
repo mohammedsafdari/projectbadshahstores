@@ -9,6 +9,7 @@ from django.test import Client
 from django.urls import reverse
 
 from apps.orders.models import Order
+from apps.payments.fake_gateway import FakeGateway
 from apps.payments.gateway import PAYMENT_CAPTURED, PAYMENT_FAILED
 from apps.payments.models import Payment, WebhookEvent
 from apps.payments.tests.factories import (
@@ -18,6 +19,7 @@ from apps.payments.tests.factories import (
 )
 from apps.payments.tests.helpers import (
     clear_settings,
+    event_for,
     factory_online_order,
     online_order,
     reset_settings,
@@ -33,7 +35,9 @@ def _online_shop(settings):
     """A clean settings row and the fake provider for every test."""
     reset_settings()
     settings.PAYMENT_PROVIDER = "fake"
+    FakeGateway.reset()
     yield
+    FakeGateway.reset()
     clear_settings()
 
 
@@ -66,12 +70,18 @@ def _webhook_body(payment: Payment, *, kind: str = PAYMENT_CAPTURED) -> dict[str
     }
 
 
-def _post_webhook(client: Client, body: dict[str, object], *, signature: str = "sig"):
+def _post_webhook(
+    client: Client,
+    body: dict[str, object],
+    *,
+    signature: str = "sig",
+    provider: str = "fake",
+):
     return client.post(
-        reverse("razorpay_webhook"),
+        reverse("payment_webhook", args=[provider]),
         data=json.dumps(body),
         content_type="application/json",
-        HTTP_X_RAZORPAY_SIGNATURE=signature,
+        HTTP_X_FAKE_SIGNATURE=signature,
     )
 
 
@@ -194,7 +204,7 @@ def test_payment_return_shows_a_failed_payment_with_try_again() -> None:
     assert "update cart" in html.lower()
 
 
-def test_payment_return_only_reads_the_database() -> None:
+def test_payment_return_adds_nothing_without_gateway_facts() -> None:
     order = factory_online_order()
     PaymentFactory(order=order)
 
@@ -202,6 +212,24 @@ def test_payment_return_only_reads_the_database() -> None:
 
     order.refresh_from_db()
     assert order.status == Order.Status.PAYMENT_PENDING
+
+
+def test_payment_return_applies_a_captured_payment_on_page_load() -> None:
+    _user, order, _row = online_order()
+    payment = start_payment(order).payment
+    FakeGateway.seed_payments(
+        payment.gateway_order_id,
+        [event_for(payment, event_id="evt_fetch")],
+    )
+
+    response = _client(order.user).get(_return_url(order))
+
+    payment.refresh_from_db()
+    order.refresh_from_db()
+    assert 'data-payment-state="captured"' in response.content.decode()
+    assert payment.status == Payment.Status.CAPTURED
+    assert order.status == Order.Status.CONFIRMED
+    assert WebhookEvent.objects.count() == 0
 
 
 def test_payment_return_hides_another_customers_order() -> None:
@@ -243,13 +271,20 @@ def test_the_status_fragment_marks_a_failure() -> None:
 def test_the_webhook_is_csrf_exempt() -> None:
     from apps.payments import views
 
-    assert views.razorpay_webhook.csrf_exempt is True
+    assert views.payment_webhook.csrf_exempt is True
 
 
 def test_the_webhook_is_post_only() -> None:
-    response = Client().get(reverse("razorpay_webhook"))
+    response = Client().get(reverse("payment_webhook", args=["fake"]))
 
     assert response.status_code == 405
+
+
+def test_the_webhook_is_404_for_another_provider() -> None:
+    response = _post_webhook(Client(), {"event": PAYMENT_CAPTURED}, provider="razorpay")
+
+    assert response.status_code == 404
+    assert WebhookEvent.objects.count() == 0
 
 
 def test_the_webhook_captures_a_payment() -> None:
@@ -292,7 +327,7 @@ def test_the_webhook_refuses_a_missing_signature() -> None:
     assert response.json() == {"detail": "Invalid webhook."}
 
 
-def test_the_webhook_refuses_an_unknown_event() -> None:
+def test_the_webhook_ignores_a_valid_event_it_does_not_handle() -> None:
     _user, order, _row = online_order()
     payment = start_payment(order).payment
 
@@ -301,7 +336,28 @@ def test_the_webhook_refuses_an_unknown_event() -> None:
         {**_webhook_body(payment), "event": "payment.refunded"},
     )
 
-    assert response.status_code == 400
+    payment.refresh_from_db()
+    order.refresh_from_db()
+    assert response.status_code == 200
+    assert response.json() == {"status": "ignored"}
+    assert WebhookEvent.objects.count() == 0
+    assert payment.status == Payment.Status.CREATED
+    assert order.status == Order.Status.PAYMENT_PENDING
+
+
+def test_a_duplicate_webhook_applies_only_once() -> None:
+    _user, order, _row = online_order()
+    payment = start_payment(order).payment
+    body = _webhook_body(payment)
+
+    first = _post_webhook(Client(), body)
+    second = _post_webhook(Client(), body)
+
+    order.refresh_from_db()
+    assert first.json() == {"status": "ok"}
+    assert second.json() == {"status": "ok"}
+    assert WebhookEvent.objects.count() == 1
+    assert order.status == Order.Status.CONFIRMED
 
 
 def test_the_webhook_refuses_when_no_gateway_is_configured(settings) -> None:
@@ -309,8 +365,7 @@ def test_the_webhook_refuses_when_no_gateway_is_configured(settings) -> None:
 
     response = _post_webhook(Client(), {"event": PAYMENT_CAPTURED})
 
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Payments are not configured."}
+    assert response.status_code == 404
 
 
 def test_the_webhook_records_an_amount_mismatch() -> None:

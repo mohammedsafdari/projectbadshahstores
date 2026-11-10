@@ -12,5 +12,9 @@ urlpatterns = [
     path("start/<path:order_number>/", views.payment_start, name="payment_start"),
     path("return/<path:order_number>/", views.payment_return, name="payment_return"),
     path("status/<path:order_number>/", views.payment_status, name="payment_status"),
-    path("webhook/razorpay/", views.razorpay_webhook, name="razorpay_webhook"),
+    path(
+        "webhook/<str:provider>/",
+        views.payment_webhook,
+        name="payment_webhook",
+    ),
 ]

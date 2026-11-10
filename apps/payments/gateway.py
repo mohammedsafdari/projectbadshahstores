@@ -1,15 +1,16 @@
 """The provider boundary for online payments (D76, D77).
 
 Everything outside this package talks to these small types only. A provider
-module (``razorpay_gateway``) is imported lazily inside ``get_gateway``, so the
-rest of the project never depends on a gateway SDK or on network access.
+module is imported lazily inside ``get_gateway``, so the rest of the project
+never depends on a gateway SDK or on network access.
 
-Money here is always ``Decimal`` INR. The Razorpay module converts to paise
-inside itself, because that is a Razorpay detail.
+Money here is always ``Decimal`` INR. A provider module converts to its own
+smallest unit inside itself, because that is a provider detail.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol
@@ -50,7 +51,7 @@ class PaymentSession:
 
 @dataclass(frozen=True)
 class GatewayEvent:
-    """One verified webhook event, copied into provider-neutral values."""
+    """One verified gateway event, copied into provider-neutral values."""
 
     event_id: str
     kind: str
@@ -58,7 +59,9 @@ class GatewayEvent:
     gateway_payment_id: str
     amount: Decimal
     method: str
-    raw: dict[str, object] = field(default_factory=dict)
+    # The allow-listed part of the provider reply that may be stored. Personal
+    # data (phone, email, UPI address, card, bank, notes) never goes in here.
+    safe: dict[str, object] = field(default_factory=dict)
 
 
 class PaymentGateway(Protocol):
@@ -75,11 +78,16 @@ class PaymentGateway(Protocol):
     def parse_webhook(
         self,
         body: bytes,
-        signature: str,
-        *,
-        event_id: str = "",
-    ) -> GatewayEvent:
-        """Verify the signature and return one neutral event."""
+        headers: Mapping[str, str],
+    ) -> GatewayEvent | None:
+        """Verify the signature and return one neutral event.
+
+        ``None`` means the event was signed correctly but the shop does not act
+        on it, which the view answers with 200 and stores nothing.
+        """
+
+    def fetch_order_payments(self, gateway_order_id: str) -> list[GatewayEvent]:
+        """The captured and failed payments the provider has for one order."""
 
 
 def get_gateway(name: str | None = None):

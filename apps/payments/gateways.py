@@ -1,7 +1,8 @@
 """The provider registry: one name in settings, one module here (D77).
 
 Adding a provider means one entry in this function and one module that offers
-``create_session`` and ``parse_webhook``. Nothing else in the project changes.
+``create_session``, ``parse_webhook`` and ``fetch_order_payments``. Nothing else
+in the project changes.
 """
 
 from __future__ import annotations

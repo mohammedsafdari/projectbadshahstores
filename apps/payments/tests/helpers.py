@@ -104,5 +104,5 @@ def event_for(
         gateway_payment_id=payment_id,
         amount=payment.amount if amount is None else amount,
         method=method,
-        raw={"event": kind},
+        safe={"event": kind},
     )

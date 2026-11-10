@@ -255,9 +255,11 @@ def restore_cart_from_order(
     """Put an unpaid order's lines back into the saved cart (D77).
 
     A failed online order must leave the customer able to change quantities and
-    try again. Lines are clamped to the per-line cap and to what is available
-    now, and rounded down to the variant's step, so restoring can never create
-    a line the cart rules would refuse. Returns the variant ids written.
+    try again. A line that already exists is left alone: the customer's newer
+    quantity wins. New lines are clamped to the per-line cap and to what is
+    available now, and rounded down to the variant's step, so restoring can
+    never create a line the cart rules would refuse. Returns the variant ids
+    actually added.
     """
     requested = [(variant, quantity) for variant, quantity in items if quantity > 0]
     if not requested:
@@ -274,6 +276,9 @@ def restore_cart_from_order(
         for variant, quantity in requested:
             if variant.pk not in purchasable_ids:
                 continue
+            if variant.pk in existing:
+                # Do not overwrite the customer's newer quantity.
+                continue
             available = available_by_id.get(variant.pk, Decimal("0"))
             if available <= 0:
                 continue
@@ -284,12 +289,7 @@ def restore_cart_from_order(
             target = _round_down_to_step(target, variant.quantity_step)
             if target <= 0:
                 continue
-            item = existing.get(variant.pk)
-            if item is None:
-                CartItem.objects.create(cart=cart, variant=variant, quantity=target)
-            elif item.quantity != target:
-                item.quantity = target
-                item.save(update_fields=["quantity", "updated_at"])
+            CartItem.objects.create(cart=cart, variant=variant, quantity=target)
             restored.append(variant.pk)
         if restored:
             cart.save(update_fields=["updated_at"])

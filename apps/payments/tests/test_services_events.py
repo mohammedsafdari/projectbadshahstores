@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
@@ -169,7 +170,7 @@ def test_the_provider_error_text_is_kept_as_the_failure_reason() -> None:
     _order, payment = _pending()
     event = replace(
         event_for(payment, kind=PAYMENT_FAILED),
-        raw={"error": "card declined"},
+        safe={"error_description": "card declined"},
     )
 
     handle_gateway_event(event, provider="fake", now=NOW)
@@ -367,3 +368,64 @@ def test_an_unknown_event_kind_changes_nothing() -> None:
     assert webhook.processed_at == NOW
     assert payment.status == Payment.Status.CREATED
     assert order.status == Order.Status.PAYMENT_PENDING
+
+
+def test_a_late_capture_logs_the_refund_duty(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    order, payment = _pending()
+    transition_order(
+        order.pk,
+        Order.Status.CANCELLED,
+        actor=order.user,
+        reason="Customer called",
+        now=NOW,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="apps.payments.services"):
+        handle_gateway_event(event_for(payment), provider="fake", now=NOW)
+
+    assert "Payment needs a refund" in caplog.text
+    assert order.order_number in caplog.text
+    assert payment.gateway_order_id in caplog.text
+
+
+def test_a_capture_that_cannot_restock_logs_the_refund_duty(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _order, payment = _pending()
+    monkeypatch.setattr(
+        "apps.payments.services._restock_for_capture",
+        lambda order, *, now: False,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="apps.payments.services"):
+        handle_gateway_event(event_for(payment), provider="fake", now=NOW)
+
+    assert "Payment needs a refund" in caplog.text
+    assert payment.gateway_order_id in caplog.text
+
+
+def test_a_processed_event_id_alone_never_applies_a_second_capture() -> None:
+    order, payment = _pending()
+    # Another event with this id was already processed, but this payment is
+    # still waiting: the duplicate guard must stop the capture on its own.
+    WebhookEvent.objects.create(
+        provider="fake",
+        event_id="evt_done",
+        event_type=PAYMENT_CAPTURED,
+        processed_at=NOW,
+    )
+
+    handle_gateway_event(
+        event_for(payment, event_id="evt_done"),
+        provider="fake",
+        now=NOW,
+    )
+
+    payment.refresh_from_db()
+    order.refresh_from_db()
+    assert payment.status == Payment.Status.CREATED
+    assert order.status == Order.Status.PAYMENT_PENDING
+    assert WebhookEvent.objects.count() == 1

@@ -28,6 +28,7 @@ from apps.payments.tests.helpers import (
     reset_settings,
     start_payment,
 )
+from tests.factories import UserFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -131,6 +132,17 @@ def test_start_reports_an_unknown_order_as_not_found() -> None:
 
     with pytest.raises(OrderNotFoundError):
         start_online_payment(order.user, order.order_number + "-other", now=NOW)
+
+
+def test_start_with_another_customers_user_creates_nothing() -> None:
+    order = factory_online_order()
+
+    with pytest.raises(OrderNotFoundError):
+        start_online_payment(UserFactory(), order.order_number, now=NOW)
+
+    assert Payment.objects.filter(order=order).count() == 0
+    order.refresh_from_db()
+    assert order.status == Order.Status.PAYMENT_PENDING
 
 
 def test_start_refuses_a_cancelled_order() -> None:
