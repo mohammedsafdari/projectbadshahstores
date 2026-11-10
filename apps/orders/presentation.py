@@ -76,6 +76,7 @@ ADDRESS_INVALID = _("Choose a delivery address.")
 SUBSTITUTION_INVALID = _("Choose how we should handle an item that is not available.")
 NOTE_TOO_LONG = _("Keep the note to 300 characters or fewer.")
 PAYMENT_METHOD_INVALID = _("Choose cash on delivery or credit.")
+REMAINDER_INVALID = _("Choose cash on delivery or pay online.")
 CREDIT_UNAVAILABLE_MESSAGE = _("Credit is not available for this account.")
 
 MY_ORDERS_TITLE = _("My orders")
@@ -106,11 +107,39 @@ ALREADY_CANCELLED_MESSAGE = _("This order is already cancelled.")
 WHATSAPP_BUTTON = _("Message us on WhatsApp")
 WHATSAPP_MESSAGE = _("Hello, I have a question about my order %(order_number)s.")
 
-# The customer's choice of how to pay (D66, D68).
+# The customer's choice of how to pay (D66, D68, D77).
 PAYMENT_METHOD_LABELS = {
     Order.PaymentMethod.COD: _("Cash on delivery"),
     Order.PaymentMethod.CREDIT: _("Credit (khata)"),
+    Order.PaymentMethod.ONLINE: _("Online payment"),
 }
+
+# Paying the part the khata does not cover (D77).
+REMAINDER_HEADING = _("How would you like to pay the rest?")
+PAY_ONLINE_LABEL = _("Pay online")
+ONLINE_UNAVAILABLE_MESSAGE = _(
+    "Online payment is not available right now. Choose cash on delivery."
+)
+PAID_ONLINE_LABEL = _("Paid online")
+PAY_ONLINE_SENTENCE = _("Pay %(amount)s online now.")
+PAID_ONLINE_SENTENCE = _("Paid online: %(amount)s.")
+PAYMENT_PENDING_HEADING = _("Complete your payment")
+PAYMENT_PENDING_SENTENCE = _("We are waiting for your online payment.")
+PAYMENT_FAILED_MESSAGE = _("The payment did not go through. You can try again or update your cart.")
+PAY_NOW_BUTTON = _("Pay now")
+TRY_AGAIN_BUTTON = _("Try again")
+UPDATE_CART_LINK = _("Update cart")
+PAID_CANNOT_CANCEL_MESSAGE = _(
+    "This order has an online payment. Please call the shop to cancel it."
+)
+PAYMENT_RETURN_TITLE = _("Payment")
+PAYMENT_CONFIRMING_HEADING = _("Checking your payment")
+PAYMENT_CONFIRMING_MESSAGE = _(
+    "We are checking your payment with the gateway. This page updates by itself."
+)
+PAYMENT_CAPTURED_MESSAGE = _("We have received your payment.")
+PAYMENT_NOT_RECEIVED_MESSAGE = _("We have not received this payment yet.")
+PAYMENT_FAILED_PAGE_MESSAGE = _("This payment did not go through.")
 
 # The customer's choice when an item is out of stock (D64).
 SUBSTITUTION_LABELS = {
@@ -163,6 +192,26 @@ def cod_sentence(grand_total: Decimal) -> str:
     return str(
         _("Pay %(amount)s in cash when your order arrives.") % {"amount": money(grand_total)}
     )
+
+
+def online_sentence(amount: Decimal) -> str:
+    """The checkout sentence when the rest is paid online (D77)."""
+    return str(PAY_ONLINE_SENTENCE % {"amount": money(amount)})
+
+
+def paid_online_sentence(amount: Decimal) -> str:
+    """The confirmation sentence for the part already paid online."""
+    return str(PAID_ONLINE_SENTENCE % {"amount": money(amount)})
+
+
+def online_amount_label(*, paid: bool) -> str:
+    """The summary row label: "Paid online" only after the gateway confirms it."""
+    return str(PAID_ONLINE_LABEL if paid else PAY_ONLINE_LABEL)
+
+
+def online_unavailable_message() -> str:
+    """Why the online radio cannot be used."""
+    return str(ONLINE_UNAVAILABLE_MESSAGE)
 
 
 def cod_on_delivery_sentence(amount_due: Decimal) -> str:
@@ -369,6 +418,23 @@ def page_text() -> dict[str, str]:
         "payment_heading": str(PAYMENT_HEADING),
         "payment_method_cod": payment_method_label(Order.PaymentMethod.COD),
         "payment_method_credit": payment_method_label(Order.PaymentMethod.CREDIT),
+        "payment_method_online": payment_method_label(Order.PaymentMethod.ONLINE),
+        "remainder_heading": str(REMAINDER_HEADING),
+        "pay_online_label": str(PAY_ONLINE_LABEL),
+        "paid_online_label": str(PAID_ONLINE_LABEL),
+        "payment_pending_heading": str(PAYMENT_PENDING_HEADING),
+        "payment_pending_sentence": str(PAYMENT_PENDING_SENTENCE),
+        "payment_failed_message": str(PAYMENT_FAILED_MESSAGE),
+        "pay_now_button": str(PAY_NOW_BUTTON),
+        "try_again_button": str(TRY_AGAIN_BUTTON),
+        "update_cart_link": str(UPDATE_CART_LINK),
+        "paid_cannot_cancel_message": str(PAID_CANNOT_CANCEL_MESSAGE),
+        "payment_return_title": str(PAYMENT_RETURN_TITLE),
+        "payment_confirming_heading": str(PAYMENT_CONFIRMING_HEADING),
+        "payment_confirming_message": str(PAYMENT_CONFIRMING_MESSAGE),
+        "payment_captured_message": str(PAYMENT_CAPTURED_MESSAGE),
+        "payment_not_received_message": str(PAYMENT_NOT_RECEIVED_MESSAGE),
+        "payment_failed_page_message": str(PAYMENT_FAILED_PAGE_MESSAGE),
         "shipping_heading": str(SHIPPING_HEADING),
         "note_heading": str(NOTE_HEADING),
         "my_orders_title": str(MY_ORDERS_TITLE),

@@ -1,0 +1,22 @@
+{# The payment status block shared by the return page and its polling fragment. #}
+<div data-payment-status data-payment-state="{% if captured %}captured{% elif failed %}failed{% else %}pending{% endif %}"
+     hx-get="{{ status_url }}" hx-trigger="every 5s" hx-swap="outerHTML">
+  {% if captured %}
+    <p data-payment-captured class="mt-3 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">{{ text.payment_captured_message }}</p>
+  {% elif failed %}
+    <p data-payment-failed role="alert" class="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ text.payment_failed_page_message }}</p>
+    <p class="mt-1 text-sm text-gray-700">{{ text.payment_failed_message }}</p>
+  {% else %}
+    <p data-payment-pending class="mt-3 text-sm text-gray-700">{{ text.payment_confirming_message }}</p>
+  {% endif %}
+
+  {% if can_pay %}
+    <form method="post" action="{{ pay_url }}" data-pay-form class="mt-3">
+      {% csrf_token %}
+      <button type="submit" data-pay-now class="rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+        {% if failed %}{{ text.try_again_button }}{% else %}{{ text.pay_now_button }}{% endif %}
+      </button>
+      <a href="{{ cart_url }}" data-update-cart class="ml-4 text-sm font-medium text-brand-600 hover:text-brand-700">{{ text.update_cart_link }}</a>
+    </form>
+  {% endif %}
+</div>

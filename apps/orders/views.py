@@ -45,7 +45,9 @@ from apps.orders.presentation import (
     GROUP_INVALID_MESSAGE,
     GROUP_REFUSED_MESSAGE,
     NO_ADDRESS_MESSAGE,
+    ONLINE_UNAVAILABLE_MESSAGE,
     ORDER_CANCELLED_MESSAGE,
+    PAID_CANNOT_CANCEL_MESSAGE,
     available_credit_sentence,
     cancel_question,
     cart_quantity,
@@ -62,9 +64,12 @@ from apps.orders.presentation import (
     item_quantity,
     money,
     no_credit_left_message,
+    online_amount_label,
+    online_sentence,
     order_date_text,
     page_label,
     page_text,
+    paid_online_sentence,
     payment_method_label,
     status_sentence,
     substitution_label,
@@ -81,15 +86,19 @@ from apps.orders.services import (
     CodLimitExceededError,
     EmptyCartError,
     InvalidTransitionError,
+    OnlinePaymentUnavailableError,
     OrderAddressNotFoundError,
     OrderCreditLimitExceededError,
     OrderCreditUnavailableError,
     OrderNotFoundError,
+    OrderPaidOnlineError,
     cancel_order_by_customer,
     get_user_order_by_group,
     list_user_order_rows,
     place_order,
 )
+from apps.payments.gateway import online_payment_available
+from apps.payments.models import Payment
 
 LOGIN_URL = reverse_lazy("account_login")
 
@@ -148,13 +157,22 @@ def _posted_use_credit(request: HttpRequest) -> bool:
     return request.POST.get("use_credit") == "on"
 
 
+def _posted_remainder(request: HttpRequest) -> str:
+    """The posted way to pay the rest, or cash on delivery for anything else."""
+    value = request.POST.get("remainder_method", "")
+    if value == Order.PaymentMethod.ONLINE:
+        return Order.PaymentMethod.ONLINE
+    return Order.PaymentMethod.COD
+
+
 def _payment_state(user: User) -> dict[str, object]:
-    """The one fact the khata checkbox needs: is there any credit left (D74)."""
+    """The facts the payment section needs: credit left and a gateway (D74, D77)."""
     # available_credit is zero without an account or with a suspended one.
     available = available_credit(user)
     return {
         "credit_offered": available > Decimal("0.00"),
         "available": available,
+        "online_offered": online_payment_available(),
     }
 
 
@@ -166,6 +184,7 @@ def _render_checkout(
     selected_address: str,
     selected_substitution: str,
     use_credit: bool = False,
+    remainder_method: str = Order.PaymentMethod.COD,
     error: str | None = None,
 ) -> HttpResponse:
     """Render the checkout page with a fresh cart, address list and promise."""
@@ -175,14 +194,27 @@ def _render_checkout(
     cod_cap = get_shop_settings().cod_cap
     payment = _payment_state(user)
     credit_offered = bool(payment["credit_offered"])
+    online_offered = bool(payment["online_offered"])
     available = cast(Decimal, payment["available"])
     # Without any credit left the checkbox is never shown, whatever was posted.
     if not credit_offered:
         use_credit = False
     # The customer cannot type an amount: the credit part is as much of the
-    # order as their available credit covers, and the rest is cash (D74).
+    # order as their available credit covers, and the rest is cash or online.
     credit_applied = min(available, summary.grand_total) if use_credit else Decimal("0.00")
-    cash_due = summary.grand_total - credit_applied
+    remaining = summary.grand_total - credit_applied
+    # The online radio is hidden when the khata covers everything, and is
+    # refused when no gateway is configured (D77).
+    show_remainder = remaining > Decimal("0.00")
+    if remainder_method not in (
+        Order.PaymentMethod.COD,
+        Order.PaymentMethod.ONLINE,
+    ):
+        remainder_method = Order.PaymentMethod.COD
+    if not online_offered:
+        remainder_method = Order.PaymentMethod.COD
+    online_due = remaining if remainder_method == Order.PaymentMethod.ONLINE else Decimal("0.00")
+    cash_due = Decimal("0.00") if online_due > Decimal("0.00") else remaining
     at_cod_limit = cash_due > cod_cap
     # One small dict per line, so the shared summary partial prints values only.
     lines = [
@@ -221,11 +253,20 @@ def _render_checkout(
             "use_credit": use_credit,
             "credit_applied": credit_applied,
             "cash_due": cash_due,
+            "online_due": online_due,
+            # The shared summary partial reads one name for both pages.
+            "online_amount": online_due,
+            "online_row_label": online_amount_label(paid=False),
             "show_credit_row": use_credit,
             "show_cash_row": cash_due > Decimal("0.00"),
+            "show_online_row": online_due > Decimal("0.00"),
             "credit_sentence": (
                 credit_choice_sentence(credit_applied, cash_due) if use_credit else ""
             ),
+            "online_sentence": online_sentence(online_due) if online_due > Decimal("0.00") else "",
+            "show_remainder": show_remainder,
+            "online_offered": online_offered,
+            "remainder_method": remainder_method,
             "credit_limit_message": credit_limit_message(available),
             "can_submit": has_served_address and not at_cod_limit,
             "error": error,
@@ -318,6 +359,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
             use_credit=_posted_use_credit(request),
+            remainder_method=_posted_remainder(request),
         )
 
     # (e) The service is the only writer; it holds the stock and the order.
@@ -329,6 +371,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             user=user,
             address_id=form.cleaned_data["address"],
             payment_method=payment_method,
+            remainder_method=form.cleaned_data["remainder_method"],
             checkout_group=group,
             substitution_preference=form.cleaned_data["substitution_preference"],
             customer_note=form.cleaned_data["customer_note"],
@@ -345,6 +388,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
             use_credit=_posted_use_credit(request),
+            remainder_method=_posted_remainder(request),
             error=str(ADDRESS_NOT_SERVED_MESSAGE),
         )
     except OrderAddressNotFoundError:
@@ -355,6 +399,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
             use_credit=_posted_use_credit(request),
+            remainder_method=_posted_remainder(request),
             error=str(ADDRESS_NOT_FOUND_MESSAGE),
         )
     except CodLimitExceededError:
@@ -365,6 +410,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
             use_credit=_posted_use_credit(request),
+            remainder_method=_posted_remainder(request),
             error=cod_limit_message(get_shop_settings().cod_cap),
         )
     except OrderCreditUnavailableError:
@@ -375,6 +421,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
             use_credit=True,
+            remainder_method=_posted_remainder(request),
             error=str(CREDIT_UNAVAILABLE_MESSAGE),
         )
     except OrderCreditLimitExceededError:
@@ -386,11 +433,23 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             selected_address=request.POST.get("address", ""),
             selected_substitution=_posted_substitution(request),
             use_credit=True,
+            remainder_method=_posted_remainder(request),
             error=(
                 no_credit_left_message()
                 if available <= Decimal("0.00")
                 else credit_refused_message(available)
             ),
+        )
+    except OnlinePaymentUnavailableError:
+        return _render_checkout(
+            request,
+            user,
+            form=form,
+            selected_address=request.POST.get("address", ""),
+            selected_substitution=_posted_substitution(request),
+            use_credit=_posted_use_credit(request),
+            remainder_method=Order.PaymentMethod.COD,
+            error=str(ONLINE_UNAVAILABLE_MESSAGE),
         )
     except CheckoutGroupInUseError:
         return _refuse_checkout(request)
@@ -428,6 +487,23 @@ def _order_page_context(order: Order) -> dict[str, object]:
     ]
     is_credit = order.credit_applied > Decimal("0.00")
     cash_due = order.amount_due_on_delivery
+    paid_online = Payment.objects.filter(
+        order=order,
+        status=Payment.Status.CAPTURED,
+    ).exists()
+    latest_payment = Payment.objects.filter(order=order).order_by("-created_at", "-pk").first()
+    # A payment can be started from PLACED (the first try), PAYMENT_PENDING (a
+    # reload) and PAYMENT_FAILED (a retry) (D77).
+    can_pay = (
+        order.online_amount > Decimal("0.00")
+        and order.status
+        in (
+            Order.Status.PLACED,
+            Order.Status.PAYMENT_PENDING,
+            Order.Status.PAYMENT_FAILED,
+        )
+        and not paid_online
+    )
     return {
         "order": order,
         "summary": order,
@@ -439,8 +515,24 @@ def _order_page_context(order: Order) -> dict[str, object]:
         "is_credit": is_credit,
         "credit_applied": order.credit_applied,
         "cash_due": cash_due,
+        "online_amount": order.online_amount,
+        "online_row_label": online_amount_label(paid=paid_online),
         "show_credit_row": is_credit,
         "show_cash_row": cash_due > Decimal("0.00"),
+        "show_online_row": order.online_amount > Decimal("0.00"),
+        "paid_online": paid_online,
+        "payment_status": latest_payment.status if latest_payment is not None else "",
+        "payment_failed": order.status == Order.Status.PAYMENT_FAILED,
+        "can_pay": can_pay,
+        "pay_url": reverse("payment_start", args=[order.order_number]),
+        "update_cart_url": reverse("cart_detail"),
+        # "Pay ... online now" only while the customer can still pay it; an
+        # old cancelled order must not invite a payment (D77).
+        "online_sentence": (
+            paid_online_sentence(order.online_amount)
+            if paid_online
+            else (online_sentence(order.online_amount) if can_pay else "")
+        ),
         "payment_method": payment_method_label(order.payment_method),
         "credit_sentence": (
             credit_confirmation_sentence(order.credit_applied) if is_credit else ""
@@ -497,6 +589,10 @@ def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
         order.status == Order.Status.CANCELLED
         and order.payment_method == Order.PaymentMethod.CREDIT
     )
+    paid_online = Payment.objects.filter(
+        order=order,
+        status=Payment.Status.CAPTURED,
+    ).exists()
     # The ** spreads the shared keys into this page's own context dict.
     return render(
         request,
@@ -506,7 +602,9 @@ def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
             **_order_page_context(order),
             "timeline": timeline,
             "placed_on": order_date_text(order.created_at),
-            "can_cancel": order.status in CUSTOMER_CANCELLABLE,
+            "can_cancel": order.status in CUSTOMER_CANCELLABLE and not paid_online,
+            "paid_cannot_cancel": paid_online and order.status in CUSTOMER_CANCELLABLE,
+            "paid_cannot_cancel_text": str(PAID_CANNOT_CANCEL_MESSAGE),
             "cancel_url": reverse("order_cancel", args=[order.checkout_group]),
             "whatsapp_href": whatsapp_href(get_shop_settings().whatsapp_number, order.order_number),
             "credit_returned_text": (
@@ -580,6 +678,9 @@ def order_cancel(request: HttpRequest, group: UUID) -> HttpResponse:
         )
     except OrderNotFoundError:
         raise Http404("Order not found.") from None
+    except OrderPaidOnlineError:
+        messages.error(request, PAID_CANNOT_CANCEL_MESSAGE)
+        return redirect("order_detail", group=order.checkout_group)
     except InvalidTransitionError:
         # Staff may have moved the order between the checks above and the lock.
         return _redirect_cannot_cancel(request, order)

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}{{ text.payment_pending_heading }} — Badshah Store{% endblock title %}
+
+{% block head_extra %}
+  <meta name="robots" content="noindex">
+{% endblock head_extra %}
+
+{% block content %}
+  <h1 class="text-2xl font-bold text-gray-900">{{ text.payment_pending_heading }}</h1>
+  <p class="mt-2 text-sm text-gray-700">{{ text.order_number_label }}: <span data-order-number>{{ order.order_number }}</span></p>
+  <p data-payment-amount class="mt-1 text-sm text-gray-700">₹{{ session.amount|floatformat:"2" }}</p>
+
+  {# The provider template is picked by the gateway name in the view. #}
+  {% include provider_template %}
+{% endblock content %}

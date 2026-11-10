@@ -25,6 +25,10 @@ CACHES = {
     }
 }
 
+# The fake gateway is allowed in tests, so no test ever touches the network.
+# Each test still chooses its provider through override_settings.
+PAYMENT_ALLOW_FAKE_GATEWAY = True
+
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_TASK_STORE_EAGER_RESULT = False

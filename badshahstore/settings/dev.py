@@ -33,4 +33,12 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 ORDER_SMS_ENABLED = True
 ORDER_EMAIL_ENABLED = True
 
+# A local development site has no Razorpay account, so it uses the fake
+# gateway by default. The checkout offers the three common methods.
+PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="fake")
+PAYMENT_ALLOW_FAKE_GATEWAY = True
+# The star import above skips names starting with "_", so the cleanup helper
+# is not available here; a plain list is enough for development.
+PAYMENT_ENABLED_METHODS = env.list("PAYMENT_ENABLED_METHODS", default=["upi", "card", "netbanking"])
+
 LOGIN_URL = "/accounts/login/"

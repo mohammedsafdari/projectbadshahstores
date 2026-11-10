@@ -96,21 +96,42 @@
           {% else %}
             <p data-cod-sentence class="text-sm text-gray-700">{{ cod_sentence }}</p>
           {% endif %}
-          {% if at_cod_limit %}
-            <p data-cod-limit role="alert" class="mt-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ limit_message }}</p>
+          {% if show_online_row %}
+            <p data-online-sentence class="text-sm text-gray-700">{{ online_sentence }}</p>
           {% endif %}
         </div>
-        {% if can_submit %}
-          <button type="submit" data-place-order class="mt-4 w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.place_order_button }}</button>
-        {% endif %}
       {% else %}
-        <p data-cod-sentence class="text-sm font-medium text-gray-900">{{ cod_sentence }}</p>
-        {% if at_cod_limit %}
-          <p data-cod-limit role="alert" class="mt-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ limit_message }}</p>
+        {% if not show_online_row %}
+          <p data-cod-sentence class="text-sm font-medium text-gray-900">{{ cod_sentence }}</p>
         {% endif %}
-        {% if can_submit %}
-          <button type="submit" data-place-order class="mt-4 w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.place_order_button }}</button>
+        {% if show_online_row %}
+          <p data-online-sentence class="text-sm font-medium text-gray-900">{{ online_sentence }}</p>
         {% endif %}
+      {% endif %}
+
+      {% if show_remainder %}
+        {% if online_offered %}
+          <h3 class="mt-4 text-sm font-medium text-gray-900">{{ text.remainder_heading }}</h3>
+          <div class="mt-2 space-y-2" data-remainder-methods>
+            <div class="flex items-center gap-2">
+              <input type="radio" name="remainder_method" value="COD" id="remainder-cod"{% if remainder_method == "COD" %} checked{% endif %}>
+              <label for="remainder-cod" class="text-sm text-gray-700">{{ text.payment_method_cod }}</label>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="radio" name="remainder_method" value="ONLINE" id="remainder-online"{% if remainder_method == "ONLINE" %} checked{% endif %}>
+              <label for="remainder-online" class="text-sm text-gray-700">{{ text.pay_online_label }}</label>
+            </div>
+          </div>
+        {% else %}
+          <input type="hidden" name="remainder_method" value="COD">
+        {% endif %}
+      {% endif %}
+
+      {% if at_cod_limit %}
+        <p data-cod-limit role="alert" class="mt-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ limit_message }}</p>
+      {% endif %}
+      {% if can_submit %}
+        <button type="submit" data-place-order class="mt-4 w-full rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.place_order_button }}</button>
       {% endif %}
     </section>
   </form>

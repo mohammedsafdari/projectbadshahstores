@@ -1,0 +1,8 @@
+{# The development gateway never takes money and never opens a connection (D77). #}
+<div data-fake-gateway class="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+  <p>Development gateway: no real payment is taken.</p>
+  <p class="mt-1">Provider order: <span data-gateway-order-id>{{ session.gateway_order_id }}</span></p>
+</div>
+<a href="{{ callback_url }}" data-payment-return class="mt-3 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">
+  {{ text.payment_confirming_heading }}
+</a>

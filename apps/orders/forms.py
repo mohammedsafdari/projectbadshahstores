@@ -15,8 +15,11 @@ from apps.orders.presentation import (
     ADDRESS_REQUIRED,
     CANCEL_REASON_TOO_LONG,
     NOTE_TOO_LONG,
+    ONLINE_UNAVAILABLE_MESSAGE,
+    REMAINDER_INVALID,
     SUBSTITUTION_INVALID,
 )
+from apps.payments.gateway import online_payment_available
 
 
 class CheckoutForm(forms.Form):
@@ -33,6 +36,17 @@ class CheckoutForm(forms.Form):
     # The customer never types an amount: ticking the box puts as much of the
     # order as their available credit covers on the khata (D74).
     use_credit = forms.BooleanField(required=False)
+    # The rest of the bill is cash or online (D77). A missing value means cash,
+    # so a hand-made POST still works and the checkout default is unchanged.
+    remainder_method = forms.ChoiceField(
+        choices=[
+            (Order.PaymentMethod.COD, "Cash on delivery"),
+            (Order.PaymentMethod.ONLINE, "Pay online"),
+        ],
+        required=False,
+        initial=Order.PaymentMethod.COD,
+        error_messages={"invalid_choice": REMAINDER_INVALID},
+    )
     # required=False lets a hand-made POST omit the radio; the clean method
     # then falls back to CALL_ME, the model default.
     substitution_preference = forms.ChoiceField(
@@ -52,6 +66,14 @@ class CheckoutForm(forms.Form):
         # A missing choice is the same as the default, rather than an error.
         choice = self.cleaned_data["substitution_preference"]
         return choice or Order.SubstitutionPreference.CALL_ME
+
+    def clean_remainder_method(self) -> str:
+        # A missing radio is cash on delivery, never an error. Online is
+        # refused here when no gateway is configured, before the service runs.
+        choice = self.cleaned_data["remainder_method"] or Order.PaymentMethod.COD
+        if choice == Order.PaymentMethod.ONLINE and not online_payment_available():
+            raise forms.ValidationError(str(ONLINE_UNAVAILABLE_MESSAGE))
+        return choice
 
 
 class CancelOrderForm(forms.Form):

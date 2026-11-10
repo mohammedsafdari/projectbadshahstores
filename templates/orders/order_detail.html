@@ -32,6 +32,10 @@
     </dl>
   </div>
 
+  {% if paid_cannot_cancel %}
+    <p data-paid-cannot-cancel class="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ paid_cannot_cancel_text }}</p>
+  {% endif %}
+
   <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
     {% if can_cancel %}
       <a data-cancel-link href="{{ cancel_url }}" class="font-medium text-brand-600 hover:text-brand-700">{{ text.cancel_order_link }}</a>

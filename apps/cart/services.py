@@ -7,6 +7,7 @@ read live; nothing is snapshotted until the order (Slice 35).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal
 
@@ -245,6 +246,54 @@ def build_cart(store: CartStore) -> CartSummary:
         has_problem_lines=has_problem_lines,
         checkout_ready=checkout_ready,
     )
+
+
+def restore_cart_from_order(
+    user: User,
+    items: Iterable[tuple[ProductVariant, Decimal]],
+) -> list[int]:
+    """Put an unpaid order's lines back into the saved cart (D77).
+
+    A failed online order must leave the customer able to change quantities and
+    try again. Lines are clamped to the per-line cap and to what is available
+    now, and rounded down to the variant's step, so restoring can never create
+    a line the cart rules would refuse. Returns the variant ids written.
+    """
+    requested = [(variant, quantity) for variant, quantity in items if quantity > 0]
+    if not requested:
+        return []
+    variant_ids = [variant.pk for variant, _quantity in requested]
+    available_by_id = get_available_quantities(variant_ids)
+    purchasable_ids = purchasable_variant_ids(variant_ids)
+
+    restored: list[int] = []
+    with transaction.atomic():
+        cart, _created = Cart.objects.get_or_create(user=user)
+        cart = Cart.objects.select_for_update().get(pk=cart.pk)
+        existing = {item.variant_id: item for item in cart.items.all()}
+        for variant, quantity in requested:
+            if variant.pk not in purchasable_ids:
+                continue
+            available = available_by_id.get(variant.pk, Decimal("0"))
+            if available <= 0:
+                continue
+            line_cap = (
+                MAX_LOOSE_PER_LINE if variant.is_sold_loose else Decimal(MAX_PACKETS_PER_LINE)
+            )
+            target = min(quantity, line_cap, available)
+            target = _round_down_to_step(target, variant.quantity_step)
+            if target <= 0:
+                continue
+            item = existing.get(variant.pk)
+            if item is None:
+                CartItem.objects.create(cart=cart, variant=variant, quantity=target)
+            elif item.quantity != target:
+                item.quantity = target
+                item.save(update_fields=["quantity", "updated_at"])
+            restored.append(variant.pk)
+        if restored:
+            cart.save(update_fields=["updated_at"])
+    return restored
 
 
 # ---------------------------------------------------------------------------

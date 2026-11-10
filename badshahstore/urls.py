@@ -20,6 +20,9 @@ urlpatterns = [
     # The customer order list also starts with a fixed prefix, so it must come
     # before the storefront include for the same reason as the cart.
     path("orders/", include("apps.orders.order_urls")),
+    # Online payment pages and the provider webhook (D77), also before the
+    # empty storefront include.
+    path("payments/", include("apps.payments.urls")),
     path("delivery/", include("apps.delivery.urls")),
     path("", include("apps.storefront.urls")),
     path("", include("apps.core.urls")),

@@ -177,6 +177,16 @@ CACHES = {
 CELERY_BROKER_URL = env("REDIS_URL")
 CELERY_RESULT_BACKEND = env("REDIS_URL")
 
+# The one scheduled job so far (D77): cancel online orders whose payment never
+# completed and give their stock back. Celery beat asks for it every 300
+# seconds. The task itself is idempotent, so a missed or repeated run is safe.
+CELERY_BEAT_SCHEDULE = {
+    "expire-unpaid-online-orders": {
+        "task": "apps.payments.tasks.expire_unpaid_online_orders",
+        "schedule": 300.0,
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Security — production controls, toggled by environment
@@ -237,6 +247,28 @@ ORDER_SMS_ENABLED = env.bool("ORDER_SMS_ENABLED", default=False)
 ORDER_EMAIL_ENABLED = env.bool("ORDER_EMAIL_ENABLED", default=False)
 # The From address on every order email; the console backend prints it in dev.
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Badshah Stores <noreply@localhost>")
+
+# Online payments (D77). The provider name is empty until the owner turns it
+# on, so checkout offers cash only until then.
+PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="")
+# The fake gateway never touches the network. It is refused unless this switch
+# is on, so a production deployment cannot fall into it by accident.
+PAYMENT_ALLOW_FAKE_GATEWAY = env.bool("PAYMENT_ALLOW_FAKE_GATEWAY", default=False)
+# Which methods the checkout may show, copied from the gateway dashboard. The
+# project never decides that UPI, cards or anything else is available itself.
+PAYMENT_ENABLED_METHODS = _clean_host_list(env("PAYMENT_ENABLED_METHODS", default=[]))
+# How long an unpaid online order keeps its stock after the normal reservation
+# window before it is cancelled and the cart is restored.
+PAYMENT_GRACE_MINUTES = env.int("PAYMENT_GRACE_MINUTES", default=30)
+# The absolute site address used in messages (for example the cart link after
+# a failed payment). Blank means the link is left relative.
+SITE_BASE_URL = env("SITE_BASE_URL", default="")
+
+# Razorpay test-mode credentials. They are read from the environment only and
+# never stored in the repository (D76).
+RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
+RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
+RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET", default="")
 
 # auth.W004 warns when USERNAME_FIELD is not unique in the database. For this
 # project the phone username is unique only among active users (deactivated

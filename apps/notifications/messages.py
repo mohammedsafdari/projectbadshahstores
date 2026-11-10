@@ -17,13 +17,16 @@ EVENT_CANCELLED = "ORDER_CANCELLED"
 EVENT_OUT_FOR_DELIVERY = "ORDER_OUT_FOR_DELIVERY"
 EVENT_DELIVERED = "ORDER_DELIVERED"
 EVENT_STAFF_NEW_ORDER = "STAFF_NEW_ORDER"
+# A failed online payment that will not be retried (D77).
+EVENT_PAYMENT_FAILED = "ORDER_PAYMENT_FAILED"
 
-# The four events a customer hears about. The staff event is email only.
+# The customer events. The staff event is email only.
 CUSTOMER_EVENTS = (
     EVENT_PLACED,
     EVENT_CANCELLED,
     EVENT_OUT_FOR_DELIVERY,
     EVENT_DELIVERED,
+    EVENT_PAYMENT_FAILED,
 )
 
 # The brand name in every text. It is a constant, not a setting, because the
@@ -57,6 +60,7 @@ _SUBJECT_WORDS = {
     EVENT_CANCELLED: "cancelled",
     EVENT_OUT_FOR_DELIVERY: "out for delivery",
     EVENT_DELIVERED: "delivered",
+    EVENT_PAYMENT_FAILED: "payment failed",
 }
 
 
@@ -78,6 +82,12 @@ class OrderNotice:
     ship_city: str
     ship_pincode: str
     ship_phone: str
+    # The online part and the khata part (D77). Both default to zero so every
+    # existing caller and test keeps working unchanged.
+    online_amount: Decimal = Decimal("0.00")
+    credit_applied: Decimal = Decimal("0.00")
+    # Absolute cart link used when a failed payment sends the customer back.
+    cart_url: str = ""
 
 
 def _amount(value: Decimal) -> str:
@@ -92,27 +102,57 @@ def _date(value: date) -> str:
 
 
 def _is_credit(notice: OrderNotice) -> bool:
-    """Whether this order is paid from the khata rather than on delivery."""
+    """Whether the khata is the first money used for this order."""
     return notice.payment_method == _CREDIT
 
 
+def _is_online(notice: OrderNotice) -> bool:
+    """Whether the whole order is paid online (no khata part)."""
+    # A split khata-and-online order keeps payment_method CREDIT, so the
+    # online part is read from its amount, not from the method.
+    return notice.payment_method == "ONLINE" or notice.online_amount > Decimal("0.00")
+
+
 def _payment_name(notice: OrderNotice) -> str:
-    """The long payment name used in emails (D68)."""
-    return "Credit (khata)" if _is_credit(notice) else "Cash on delivery"
+    """The long payment name used in emails (D68, D77)."""
+    if _is_credit(notice):
+        if notice.online_amount > Decimal("0.00"):
+            return "Credit (khata) and online payment"
+        return "Credit (khata)"
+    if _is_online(notice):
+        return "Paid online"
+    return "Cash on delivery"
 
 
 def _short_payment_name(notice: OrderNotice) -> str:
     """The short payment name used in the staff email subject (D69)."""
-    return "Credit" if _is_credit(notice) else "Cash on delivery"
+    if _is_credit(notice):
+        return "Credit"
+    if _is_online(notice):
+        return "Online"
+    return "Cash on delivery"
 
 
 def _customer_sentence(event: str, notice: OrderNotice) -> str:
     """The one sentence customer texts and emails share, without the brand."""
     if event == EVENT_PLACED:
         if _is_credit(notice):
+            if notice.online_amount > Decimal("0.00"):
+                return (
+                    f"Order {notice.order_number} is placed. "
+                    f"Rs {_amount(notice.online_amount)} is paid online and "
+                    f"Rs {_amount(notice.credit_applied)} is on your credit account. "
+                    f"Delivery: {_date(notice.promised_delivery_date)}."
+                )
             return (
                 f"Order {notice.order_number} is placed on your credit account. "
                 f"Total Rs {_amount(notice.grand_total)}. "
+                f"Delivery: {_date(notice.promised_delivery_date)}."
+            )
+        if _is_online(notice):
+            return (
+                f"Order {notice.order_number} is placed. "
+                f"Rs {_amount(notice.online_amount)} is paid online. "
                 f"Delivery: {_date(notice.promised_delivery_date)}."
             )
         return (
@@ -122,13 +162,21 @@ def _customer_sentence(event: str, notice: OrderNotice) -> str:
         )
     if event == EVENT_CANCELLED:
         return f"Order {notice.order_number} is cancelled. Call us if you have questions."
-    if event == EVENT_OUT_FOR_DELIVERY:
-        if _is_credit(notice):
-            return f"Order {notice.order_number} is out for delivery."
+    if event == EVENT_PAYMENT_FAILED:
+        link = notice.cart_url or "your cart"
         return (
-            f"Order {notice.order_number} is out for delivery. "
-            f"Please keep Rs {_amount(notice.amount_due_on_delivery)} ready."
+            f"Order {notice.order_number} was not placed because the payment did not go "
+            f"through. Your cart is saved at {link}."
         )
+    if event == EVENT_OUT_FOR_DELIVERY:
+        # A khata order never asks for cash here: a split khata order already
+        # told the customer the cash part when it was placed.
+        if not _is_credit(notice) and notice.amount_due_on_delivery > Decimal("0.00"):
+            return (
+                f"Order {notice.order_number} is out for delivery. "
+                f"Please keep Rs {_amount(notice.amount_due_on_delivery)} ready."
+            )
+        return f"Order {notice.order_number} is out for delivery."
     if event == EVENT_DELIVERED:
         return f"Order {notice.order_number} is delivered. Thank you for shopping with us."
     raise ValueError(f"No customer message for event {event!r}.")
@@ -169,6 +217,13 @@ def _staff_email_body(notice: OrderNotice) -> str:
         f"Pin code: {notice.ship_pincode}",
         f"Payment: {_payment_name(notice)}",
         f"Total: Rs {_amount(notice.grand_total)}",
+        # The * unpacks a one-item list only when there is an online part, so
+        # the existing cash and credit emails keep exactly their old lines.
+        *(
+            [f"Paid online: Rs {_amount(notice.online_amount)}"]
+            if notice.online_amount > Decimal("0.00")
+            else []
+        ),
         f"Amount due on delivery: Rs {_amount(notice.amount_due_on_delivery)}",
         f"Delivery: {_date(notice.promised_delivery_date)}",
     ]
@@ -190,7 +245,11 @@ def email_body(event: str, notice: OrderNotice) -> str:
         "",
         f"Order: {notice.order_number}",
         f"Total: Rs {_amount(notice.grand_total)}",
-        f"Payment: {_payment_name(notice)}",
+    ]
+    # A failed payment must not be described as if the money had arrived.
+    if event != EVENT_PAYMENT_FAILED:
+        lines.append(f"Payment: {_payment_name(notice)}")
+    lines += [
         f"Delivery: {_date(notice.promised_delivery_date)}",
         "",
         "Thank you,",

@@ -106,10 +106,13 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - Refunds after an invoice need a credit note (`CreditNote` model later; noted in docs, not built in MVP).
 
 ### Payments
-- `Payment`, `Refund`, `WebhookEvent` (unique `event_id`).
-- Webhook flow: verify Razorpay signature FIRST, then in one transaction insert the `WebhookEvent` row (unique constraint is the idempotency gate; on conflict return 200), process, mark processed.
-- Out-of-order events handled through allowed state transitions only.
-- Razorpay amounts are in paise: exact `Decimal` conversion at the gateway boundary only; raise on fractional paise; no float rounding.
+
+- Built in Slice 40 (D77). `apps/payments/gateway.py` is the provider boundary: `PaymentSession`, `GatewayEvent`, `PaymentGatewayError`, `GatewayNotConfigured`, `InvalidWebhookSignature`, `get_gateway`, `online_payment_available` and `enabled_payment_methods`. Everything outside `razorpay_gateway.py` and `templates/payments/gateways/razorpay.html` uses that interface only; `gateways.py` maps `PAYMENT_PROVIDER` to `RazorpayGateway` or to the deterministic `FakeGateway`, which is refused unless `PAYMENT_ALLOW_FAKE_GATEWAY` is on.
+- `Payment` is one attempt for the online part of an order: a unique provider order id, `CREATED`/`CAPTURED`/`FAILED` (plus `REFUND_PENDING`, `REFUNDED` and `PARTIALLY_REFUNDED` for Slice 41), a provider payment id, method, failure text, `needs_refund`, `captured_at`, `failed_at` and the raw reply. `Order.online_amount` sits beside `credit_applied` and `amount_due_on_delivery`. `WebhookEvent` stores each provider event once (unique `event_id`), with its type, payload, linked payment, processed time and error.
+- Webhook flow: verify the provider signature first (`hmac.compare_digest`), then in one transaction insert the `WebhookEvent` row (the unique constraint is the idempotency gate; a repeat returns 200 and applies nothing), lock the order and then the payment, check the amount, apply one event once and mark it processed. A capture walks the order `PAYMENT_PENDING` → `PAID` → `CONFIRMED` and sends the placed and staff notices once; a failure sets `PAYMENT_FAILED` and keeps the hold for a retry. Out-of-order and late events move the order only through the allowed transitions, and a capture for an order that is no longer waiting for it never revives it.
+- `Refund` is not built. A payment that must be returned (a late capture, or a staff cancellation after capture) keeps its `CAPTURED` row and sets `needs_refund=True`, the hand-off to Slice 41. No refund is sent in this slice.
+- `expire_unpaid_online_orders` cancels an online order older than the shop's reservation window plus `PAYMENT_GRACE_MINUTES`, releases the hold, restores the order lines to the saved cart and sends `EVENT_PAYMENT_FAILED` after commit. It runs every 300 seconds through the Celery beat entry and is also the `expire_unpaid_orders` management command.
+- Razorpay amounts are in paise: the exact `Decimal` conversion happens only inside `razorpay_gateway.py`; the stored online amount always has two decimal places, so multiplying by 100 always gives whole paise, and no float rounding is used. Incoming webhook paise are divided by 100 and quantised to two places. No fee, MDR or "UPI is free" value is stored in code or shown to the customer.
 
 ### Coupons
 - `Coupon`, `CouponRedemption` with a unique constraint on `(coupon, order)`. Lock the coupon row (`select_for_update`) while checking limits and redeeming.

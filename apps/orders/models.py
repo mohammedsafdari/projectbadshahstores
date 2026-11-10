@@ -38,6 +38,7 @@ class Order(TimeStampedModel):
     class PaymentMethod(models.TextChoices):
         COD = "COD", "Cash on delivery"
         CREDIT = "CREDIT", "Credit (khata)"
+        ONLINE = "ONLINE", "Pay online"
 
     class SubstitutionPreference(models.TextChoices):
         SUBSTITUTE = "SUBSTITUTE", "Substitute"
@@ -84,6 +85,13 @@ class Order(TimeStampedModel):
     # How much of this order is paid from the customer's khata (D74). Zero for
     # a cash-on-delivery order; between one paisa and the total for a split one.
     credit_applied = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    # How much of this order is paid online (D77). Zero for a cash or khata
+    # order; between one paisa and the total for an online or split one.
+    online_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         default=Decimal("0.00"),
@@ -137,21 +145,53 @@ class Order(TimeStampedModel):
                 condition=models.Q(credit_applied__lte=models.F("grand_total")),
                 name="order_credit_applied_lte_grand_total",
             ),
-            # Whatever the credit does not cover is collected at the door (D74).
+            # The online part is money too: never negative and never above the
+            # total. The two paid parts together never exceed the total (D77).
+            models.CheckConstraint(
+                condition=models.Q(online_amount__gte=0),
+                name="order_online_amount_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(online_amount__lte=models.F("grand_total")),
+                name="order_online_amount_lte_grand_total",
+            ),
             models.CheckConstraint(
                 condition=models.Q(
-                    amount_due_on_delivery=models.F("grand_total") - models.F("credit_applied")
+                    credit_applied__lte=models.F("grand_total") - models.F("online_amount")
                 ),
-                name="order_amount_due_matches_credit",
+                name="order_payment_split_lte_grand_total",
             ),
-            # Only a credit order carries a khata part, and a credit order must
-            # carry one: a zero credit part is a cash-on-delivery order.
+            # Whatever the khata and the online payment do not cover is
+            # collected at the door (D74, D77).
+            models.CheckConstraint(
+                condition=models.Q(
+                    amount_due_on_delivery=(
+                        models.F("grand_total")
+                        - models.F("credit_applied")
+                        - models.F("online_amount")
+                    )
+                ),
+                name="order_amount_due_matches_split",
+            ),
+            # The method must agree with the parts:
+            # - cash: no khata and no online part;
+            # - khata: a khata part, with or without an online part;
+            # - online: an online part and no khata part.
             models.CheckConstraint(
                 condition=(
-                    models.Q(payment_method="CREDIT", credit_applied__gt=0)
-                    | (~models.Q(payment_method="CREDIT") & models.Q(credit_applied=0))
+                    models.Q(
+                        payment_method="COD",
+                        credit_applied=0,
+                        online_amount=0,
+                    )
+                    | models.Q(payment_method="CREDIT", credit_applied__gt=0)
+                    | models.Q(
+                        payment_method="ONLINE",
+                        credit_applied=0,
+                        online_amount__gt=0,
+                    )
                 ),
-                name="order_credit_applied_matches_method",
+                name="order_payment_split_matches_method",
             ),
             # cancelled_at is set exactly when the status is CANCELLED.
             models.CheckConstraint(

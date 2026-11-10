@@ -56,8 +56,9 @@ class OrderFactory(factory.django.DjangoModelFactory):
             else Decimal("0.00")
         )
     )
+    online_amount = Decimal("0.00")
     amount_due_on_delivery = factory.LazyAttribute(
-        lambda order: order.grand_total - order.credit_applied
+        lambda order: order.grand_total - order.credit_applied - order.online_amount
     )
 
     promised_delivery_date = factory.LazyFunction(lambda: date(2026, 11, 7))

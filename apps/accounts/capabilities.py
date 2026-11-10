@@ -40,6 +40,7 @@ class Capability(TextChoices):
     STOCK_WRITE = "STOCK_WRITE", "Receive, adjust, count or damage stock"
     AUDIT_READ = "AUDIT_READ", "Read the audit log"
     EXPORT_CSV = "EXPORT_CSV", "Export variants to CSV"
+    VIEW_PAYMENTS = "VIEW_PAYMENTS", "View online payments"
 
 
 # The default rights of each role, used until the owner stores an override.

@@ -39,6 +39,7 @@ from apps.credit.services import (
     reverse_order_charge,
 )
 from apps.delivery.services import address_is_served, get_delivery_promise
+from apps.inventory.models import StockReservation
 from apps.inventory.reservations import ReservationLine, release_group, reserve_stock
 from apps.notifications.messages import (
     EVENT_CANCELLED,
@@ -54,8 +55,11 @@ from apps.orders.state import (
     COD_ONLY_BLOCKED,
     DELIVERED,
     OUT_FOR_DELIVERY,
+    PAYMENT_FAILED,
     can_transition,
 )
+from apps.payments.gateway import online_payment_available
+from apps.payments.models import Payment
 
 # The status moves that tell the customer something (D69). Every other move,
 # including CONFIRMED and PACKING, sends nothing.
@@ -115,7 +119,15 @@ class CodLimitExceededError(OrderError):
 
 
 class InvalidPaymentMethodError(OrderError):
-    """The payment method is not COD or CREDIT."""
+    """The payment method or the remainder choice is not one we offer."""
+
+
+class OnlinePaymentUnavailableError(OrderError):
+    """The customer chose online payment but no gateway is configured (D77)."""
+
+
+class OrderPaidOnlineError(OrderError):
+    """A customer cannot cancel an order whose online part is already paid."""
 
 
 class OrderCreditUnavailableError(OrderError):
@@ -182,6 +194,24 @@ def _cancel_pending_items(order: Order) -> None:
         item.save(update_fields=["item_status", "updated_at"])
 
 
+def _mark_captured_payments_for_refund(order: Order) -> None:
+    """Flag any captured online payment so Slice 41 can refund it.
+
+    A cancellation never makes money disappear: the payment row stays
+    ``CAPTURED`` and ``needs_refund`` records the duty.
+    """
+    rows = (
+        Payment.objects.select_for_update()
+        .filter(order=order, status=Payment.Status.CAPTURED)
+        .order_by("pk")
+    )
+    for payment in rows:
+        if payment.needs_refund:
+            continue
+        payment.needs_refund = True
+        payment.save(update_fields=["needs_refund", "updated_at"])
+
+
 def _apply_transition(
     order: Order,
     to_status: str,
@@ -191,6 +221,7 @@ def _apply_transition(
     reason: str,
     now: datetime,
     require_cancel_reason: bool,
+    notify: bool = True,
 ) -> Order:
     """Apply one move to an already locked order and write its log row.
 
@@ -205,8 +236,11 @@ def _apply_transition(
         raise InvalidTransitionError(f"The order is already {to_status}.")
     if not can_transition(order.status, to_status):
         raise InvalidTransitionError(f"Cannot move an order from {order.status} to {to_status}.")
+    # A cash order (and a khata order with no online part) never reaches the
+    # payment states. A split order with online money does (D77).
     if (
-        order.payment_method
+        order.online_amount <= Decimal("0.00")
+        and order.payment_method
         in (
             Order.PaymentMethod.COD,
             Order.PaymentMethod.CREDIT,
@@ -251,9 +285,10 @@ def _apply_transition(
         # Give the credit back for a cancelled credit order (D68). This does
         # nothing for a COD order that was never charged.
         reverse_order_charge(order, actor=actor, now=now)
+        _mark_captured_payments_for_refund(order)
 
     event = STATUS_EVENTS.get(to_status)
-    if event is not None:
+    if notify and event is not None:
         _register_notices(order.pk, (event,))
     return order
 
@@ -266,11 +301,14 @@ def transition_order(
     note: str = "",
     reason: str = "",
     now: datetime | None = None,
+    notify: bool = True,
 ) -> Order:
     """Move one order to ``to_status``, or refuse and change nothing.
 
     No permission check here: views and staff roles come later (D64). A staff
     cancellation (``to_status == CANCELLED``) needs a non-blank ``reason``.
+    ``notify=False`` keeps a caller that sends its own message from also
+    sending the status event (the unpaid-order expiry uses this).
     """
     resolved_now = now if now is not None else timezone.now()
     with transaction.atomic():
@@ -285,6 +323,88 @@ def transition_order(
             reason=reason,
             now=resolved_now,
             require_cancel_reason=True,
+            notify=notify,
+        )
+
+
+def mark_order_paid(
+    order_id: int,
+    *,
+    actor: User | None = None,
+    now: datetime | None = None,
+) -> Order:
+    """Move a paid online order to PAID then CONFIRMED and notify once (D77).
+
+    Idempotent: an order already confirmed or past that point is returned
+    unchanged, so a repeated webhook cannot send a second set of messages.
+    """
+    resolved_now = now if now is not None else timezone.now()
+    with transaction.atomic():
+        order = Order.objects.select_for_update().filter(pk=order_id).first()
+        if order is None:
+            raise OrderNotFoundError("Order not found.")
+        if order.status not in (
+            Order.Status.PLACED,
+            Order.Status.PAYMENT_PENDING,
+            Order.Status.PAYMENT_FAILED,
+        ):
+            return order
+        # PAYMENT_FAILED can only reach PAYMENT_PENDING, and PLACED can as
+        # well; a retry therefore walks the same short chain every time.
+        if order.status in (Order.Status.PLACED, Order.Status.PAYMENT_FAILED):
+            _apply_transition(
+                order,
+                Order.Status.PAYMENT_PENDING,
+                actor=actor,
+                note="Online payment retry",
+                reason="",
+                now=resolved_now,
+                require_cancel_reason=False,
+            )
+        _apply_transition(
+            order,
+            Order.Status.PAID,
+            actor=actor,
+            note="Online payment captured",
+            reason="",
+            now=resolved_now,
+            require_cancel_reason=False,
+        )
+        _apply_transition(
+            order,
+            Order.Status.CONFIRMED,
+            actor=actor,
+            note="Order confirmed",
+            reason="",
+            now=resolved_now,
+            require_cancel_reason=False,
+        )
+        _register_notices(order.pk, (EVENT_PLACED, EVENT_STAFF_NEW_ORDER))
+        return order
+
+
+def mark_order_payment_failed(
+    order_id: int,
+    *,
+    reason: str = "",
+    now: datetime | None = None,
+) -> Order:
+    """Record a failed online attempt and keep the stock for a retry (D77)."""
+    resolved_now = now if now is not None else timezone.now()
+    with transaction.atomic():
+        order = Order.objects.select_for_update().filter(pk=order_id).first()
+        if order is None:
+            raise OrderNotFoundError("Order not found.")
+        if order.status != Order.Status.PAYMENT_PENDING:
+            return order
+        return _apply_transition(
+            order,
+            PAYMENT_FAILED,
+            actor=None,
+            note=(reason or "Online payment failed")[:200],
+            reason="",
+            now=resolved_now,
+            require_cancel_reason=False,
         )
 
 
@@ -307,6 +427,12 @@ def cancel_order_by_customer(
             raise OrderNotFoundError("Order not found.")
         if order.status not in CUSTOMER_CANCELLABLE:
             raise InvalidTransitionError("The customer can no longer cancel this order.")
+        # Money already captured online cannot be released by the customer;
+        # the shop must start a refund (D77, refunds in Slice 41).
+        if Payment.objects.filter(order=order, status=Payment.Status.CAPTURED).exists():
+            raise OrderPaidOnlineError(
+                "This order has an online payment. Please call the shop to cancel."
+            )
         return _apply_transition(
             order,
             Order.Status.CANCELLED,
@@ -324,17 +450,22 @@ def place_order(
     address_id: int,
     payment_method: str,
     checkout_group: UUID,
+    remainder_method: str = Order.PaymentMethod.COD,
     substitution_preference: str = Order.SubstitutionPreference.CALL_ME,
     customer_note: str = "",
     now: datetime | None = None,
 ) -> PlacedOrder:
-    """Create a COD or credit order, reserve its stock and confirm it.
+    """Create a cash, khata or online order and reserve its stock.
+
+    ``payment_method`` is the customer's khata choice (COD or CREDIT).
+    ``remainder_method`` decides how the rest is paid when the khata does not
+    cover everything: cash on delivery (the default) or online (D77).
 
     Re-submitting the same ``checkout_group`` by the same customer returns the
     existing order with ``created=False``; another customer gets
     ``CheckoutGroupInUseError``. The user row is locked first, so two identical
-    submissions queue instead of racing. A credit order is charged to the
-    customer's khata in the same transaction (D68).
+    submissions queue instead of racing. A khata part is charged to the
+    customer in the same transaction (D68).
     """
     resolved_now = now if now is not None else timezone.now()
     with transaction.atomic():
@@ -348,13 +479,19 @@ def place_order(
                 return PlacedOrder(order=existing, created=False)
             raise CheckoutGroupInUseError("This checkout has already been used.")
 
-        # Only COD and credit exist in Phase 3 (D68). Checked before any other
-        # read or write, so an unknown value can never create a row.
+        # Checked before any other read or write, so an unknown value can
+        # never create a row. The khata choice is COD or CREDIT; the rest of
+        # the bill is cash or online (D77).
         if payment_method not in (
             Order.PaymentMethod.COD,
             Order.PaymentMethod.CREDIT,
         ):
             raise InvalidPaymentMethodError("Choose cash on delivery or credit.")
+        if remainder_method not in (
+            Order.PaymentMethod.COD,
+            Order.PaymentMethod.ONLINE,
+        ):
+            raise InvalidPaymentMethodError("Choose cash on delivery or pay online.")
 
         # A credit request needs an active khata with something left in it
         # (D74). The amount actually charged is decided from the cart total
@@ -387,15 +524,33 @@ def place_order(
         credit_applied = Decimal("0.00")
         if payment_method == Order.PaymentMethod.CREDIT:
             # Use as much of the available credit as the order needs; the rest
-            # is paid in cash at the door (D74).
+            # is paid in cash or online (D74, D77).
             credit_applied = min(available, summary.grand_total)
-            cash_due = summary.grand_total - credit_applied
-            if cash_due > settings.cod_cap:
-                raise CodLimitExceededError(
-                    "The cash part of this order is above the cash-on-delivery limit."
-                )
-        elif summary.grand_total > settings.cod_cap:
-            raise CodLimitExceededError("The total is above the cash-on-delivery limit.")
+        remainder = summary.grand_total - credit_applied
+        online_amount = Decimal("0.00")
+        cash_due = remainder
+        if remainder > Decimal("0.00") and remainder_method == Order.PaymentMethod.ONLINE:
+            # Joining a khata part to an online payment is allowed; the recorded
+            # method stays CREDIT because the khata is the first money used.
+            if not online_payment_available():
+                raise OnlinePaymentUnavailableError("Online payment is not available.")
+            online_amount = remainder
+            cash_due = Decimal("0.00")
+        elif remainder > settings.cod_cap:
+            raise CodLimitExceededError(
+                "The cash part of this order is above the cash-on-delivery limit."
+                if credit_applied > Decimal("0.00")
+                else "The total is above the cash-on-delivery limit."
+            )
+
+        if online_amount > Decimal("0.00") and credit_applied > Decimal("0.00"):
+            recorded_method = Order.PaymentMethod.CREDIT
+        elif online_amount > Decimal("0.00"):
+            recorded_method = Order.PaymentMethod.ONLINE
+        elif credit_applied > Decimal("0.00"):
+            recorded_method = Order.PaymentMethod.CREDIT
+        else:
+            recorded_method = Order.PaymentMethod.COD
 
         lines = [
             ReservationLine(variant_id=line.variant.pk, quantity=line.quantity)
@@ -404,10 +559,17 @@ def place_order(
         ]
         # A shortfall raises unchanged and rolls the whole transaction back:
         # no order, no reservation and no number is used.
+        # An online order keeps a checkout hold that expires; cash and khata
+        # orders hold their stock for fulfilment straight away (D63, D77).
+        reservation_kind = (
+            StockReservation.Kind.CHECKOUT_PENDING_PAYMENT
+            if online_amount > Decimal("0.00")
+            else StockReservation.Kind.HELD_FOR_FULFILMENT
+        )
         reservations = reserve_stock(
             user=user,
             lines=lines,
-            kind="HELD_FOR_FULFILMENT",
+            kind=reservation_kind,
             checkout_group=checkout_group,
             now=resolved_now,
         )
@@ -424,7 +586,7 @@ def place_order(
             user=user,
             checkout_group=group,
             status=Order.Status.PLACED,
-            payment_method=payment_method,
+            payment_method=recorded_method,
             ship_name=address.recipient_name,
             ship_phone=address.recipient_phone,
             ship_line1=address.line1,
@@ -439,8 +601,10 @@ def place_order(
             grand_total=summary.grand_total,
             savings_total=summary.savings_total,
             credit_applied=credit_applied,
-            # Whatever the credit part does not cover is collected at the door.
-            amount_due_on_delivery=summary.grand_total - credit_applied,
+            online_amount=online_amount,
+            # Whatever the khata and online parts do not cover is collected at
+            # the door; an online order collects nothing there.
+            amount_due_on_delivery=cash_due,
             promised_delivery_date=promise.day,
             delivery_is_same_day=promise.is_same_day,
             substitution_preference=substitution_preference,
@@ -486,20 +650,35 @@ def place_order(
             actor=user,
             note="Order placed",
         )
-        _apply_transition(
-            order,
-            Order.Status.CONFIRMED,
-            actor=user,
-            note="Order confirmed",
-            reason="",
-            now=resolved_now,
-            require_cancel_reason=False,
-        )
+        if online_amount > Decimal("0.00"):
+            # Wait for the gateway: the order is not confirmed and no message
+            # goes out until the payment is captured (D77).
+            _apply_transition(
+                order,
+                Order.Status.PAYMENT_PENDING,
+                actor=user,
+                note="Waiting for online payment",
+                reason="",
+                now=resolved_now,
+                require_cancel_reason=False,
+            )
+        else:
+            _apply_transition(
+                order,
+                Order.Status.CONFIRMED,
+                actor=user,
+                note="Order confirmed",
+                reason="",
+                now=resolved_now,
+                require_cancel_reason=False,
+            )
 
         # Only after the order and its stock hold exist is the cart cleared.
         clear_cart(store)
-        # Messages go out only after the transaction commits (D69).
-        _register_notices(order.pk, (EVENT_PLACED, EVENT_STAFF_NEW_ORDER))
+        if online_amount <= Decimal("0.00"):
+            # Messages go out only after the transaction commits (D69). An
+            # online order waits for its captured payment instead.
+            _register_notices(order.pk, (EVENT_PLACED, EVENT_STAFF_NEW_ORDER))
         return PlacedOrder(order=order, created=True)
 
 
@@ -512,6 +691,22 @@ def get_user_order(user: User, order_id: int) -> Order:
     order = (
         Order.objects.filter(user=user, pk=order_id)
         .prefetch_related("items", "status_logs")
+        .first()
+    )
+    if order is None:
+        raise OrderNotFoundError("Order not found.")
+    return order
+
+
+def get_user_order_by_number(user: User, order_number: str) -> Order:
+    """One order of this customer by its printed order number (D77).
+
+    The number contains slashes, so the payment routes use a ``path``
+    converter and this lookup by the exact stored value.
+    """
+    order = (
+        Order.objects.filter(user=user, order_number=order_number)
+        .prefetch_related("items", "status_logs", "payments")
         .first()
     )
     if order is None:

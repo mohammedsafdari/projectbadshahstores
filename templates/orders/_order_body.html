@@ -14,6 +14,21 @@
   {% if show_cash_row %}
     <p data-amount-due class="mt-1 text-sm text-gray-700">{{ cod_sentence }}</p>
   {% endif %}
+  {% if show_online_row %}
+    <p data-online-paid class="mt-1 text-sm text-gray-700">{{ online_sentence }}</p>
+  {% endif %}
+  {% if payment_failed %}
+    <p data-payment-failed role="alert" class="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ text.payment_failed_message }}</p>
+  {% endif %}
+  {% if can_pay %}
+    <form method="post" action="{{ pay_url }}" data-pay-form class="mt-3">
+      {% csrf_token %}
+      <button type="submit" data-pay-now class="rounded bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+        {% if payment_failed %}{{ text.try_again_button }}{% else %}{{ text.pay_now_button }}{% endif %}
+      </button>
+      <a href="{{ update_cart_url }}" data-update-cart class="ml-4 text-sm font-medium text-brand-600 hover:text-brand-700">{{ text.update_cart_link }}</a>
+    </form>
+  {% endif %}
 </section>
 
 <section class="mt-6">

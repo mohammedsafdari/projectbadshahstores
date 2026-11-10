@@ -10,6 +10,7 @@ import logging
 
 from django.conf import settings
 from django.core.mail import send_mail
+from django.urls import reverse
 
 from apps.core.services import get_shop_settings
 from apps.notifications.messages import (
@@ -40,7 +41,17 @@ def build_notice(order: Order) -> OrderNotice:
         ship_city=order.ship_city,
         ship_pincode=order.ship_pincode,
         ship_phone=order.ship_phone,
+        online_amount=order.online_amount,
+        credit_applied=order.credit_applied,
+        cart_url=_cart_url(),
     )
+
+
+def _cart_url() -> str:
+    """The cart link for a message, absolute when the site address is set."""
+    path = reverse("cart_detail")
+    base = str(getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
+    return f"{base}{path}" if base else path
 
 
 def notify_order_event(order_id: int, event: str) -> None:
