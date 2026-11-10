@@ -6,6 +6,23 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def backfill_credit_split(apps, schema_editor):
+    """Old rows predate D74: a khata order was fully on credit, a COD order at the door."""
+    Order = apps.get_model("orders", "Order")
+    Order.objects.filter(payment_method="CREDIT").update(
+        credit_applied=models.F("grand_total"),
+        amount_due_on_delivery=Decimal("0.00"),
+    )
+    Order.objects.filter(payment_method="COD").update(
+        credit_applied=Decimal("0.00"),
+        amount_due_on_delivery=models.F("grand_total"),
+    )
+
+
+def no_backfill(apps, schema_editor):
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -19,6 +36,7 @@ class Migration(migrations.Migration):
             name='credit_applied',
             field=models.DecimalField(decimal_places=2, default=Decimal('0.00'), max_digits=12),
         ),
+        migrations.RunPython(backfill_credit_split, no_backfill),
         migrations.AddConstraint(
             model_name='order',
             constraint=models.CheckConstraint(condition=models.Q(('credit_applied__gte', 0)), name='order_credit_applied_gte_0'),
