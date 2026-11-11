@@ -1,4 +1,4 @@
-"""Checkout, confirmation and detail tests for online payment (D77)."""
+"""Checkout, confirmation and detail tests for online payment (D77, D78)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,14 @@ from django.urls import reverse
 
 from apps.orders.models import Order
 from apps.orders.tests.checkout_helpers import open_checkout, post_data
-from apps.payments.models import Payment
-from apps.payments.tests.factories import CapturedPaymentFactory, FailedPaymentFactory
+from apps.payments.models import Payment, Refund
+from apps.payments.tests.factories import (
+    CapturedPaymentFactory,
+    FailedPaymentFactory,
+    RefundFactory,
+)
 from apps.payments.tests.helpers import (
+    NOW,
     clear_settings,
     factory_online_order,
     online_order,
@@ -179,7 +184,7 @@ def test_the_confirmation_page_offers_try_again_after_a_failure() -> None:
     assert "Update cart" in html
 
 
-def test_the_detail_page_marks_a_paid_order_and_hides_the_cancel_link() -> None:
+def test_the_detail_page_marks_a_paid_order_and_offers_the_cancel_link() -> None:
     user = order_user()
     order = factory_online_order(
         user=user,
@@ -192,9 +197,37 @@ def test_the_detail_page_marks_a_paid_order_and_hides_the_cancel_link() -> None:
 
     html = client.get(reverse("order_detail", args=[order.checkout_group])).content.decode()
 
-    assert "data-paid-cannot-cancel" in html
-    assert "data-cancel-link" not in html
+    # A paid order can be cancelled now; the money goes back through a refund
+    # after the cancellation commits (D78).
+    assert "data-cancel-link" in html
+    assert "data-paid-cannot-cancel" not in html
     assert "Paid online" in html
+
+
+def test_the_detail_page_shows_where_a_refund_is() -> None:
+    user = order_user()
+    order = factory_online_order(
+        user=user,
+        status=Order.Status.CANCELLED,
+        cancelled_at=NOW,
+        online_amount=Decimal("230.00"),
+        amount_due_on_delivery=Decimal("0.00"),
+    )
+    payment = CapturedPaymentFactory(order=order, needs_refund=True)
+    RefundFactory(
+        payment=payment,
+        amount=Decimal("224.25"),
+        fee_amount=Decimal("5.75"),
+        status=Refund.Status.PROCESSED,
+        processed_at=NOW,
+    )
+    client = _client(user)
+
+    html = client.get(reverse("order_detail", args=[order.checkout_group])).content.decode()
+
+    assert "data-refund-text" in html
+    assert "We have refunded ₹224.25 to you." in html
+    assert "₹5.75" in html
 
 
 def test_the_detail_page_offers_payment_for_a_pending_order() -> None:

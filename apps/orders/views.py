@@ -47,7 +47,6 @@ from apps.orders.presentation import (
     NO_ADDRESS_MESSAGE,
     ONLINE_UNAVAILABLE_MESSAGE,
     ORDER_CANCELLED_MESSAGE,
-    PAID_CANNOT_CANCEL_MESSAGE,
     available_credit_sentence,
     cancel_question,
     cart_quantity,
@@ -71,6 +70,7 @@ from apps.orders.presentation import (
     page_text,
     paid_online_sentence,
     payment_method_label,
+    refund_sentence,
     status_sentence,
     substitution_label,
     timeline_label,
@@ -91,7 +91,6 @@ from apps.orders.services import (
     OrderCreditLimitExceededError,
     OrderCreditUnavailableError,
     OrderNotFoundError,
-    OrderPaidOnlineError,
     cancel_order_by_customer,
     get_user_order_by_group,
     list_user_order_rows,
@@ -99,6 +98,7 @@ from apps.orders.services import (
 )
 from apps.payments.gateway import online_payment_available
 from apps.payments.models import Payment
+from apps.payments.refunds import latest_refund
 
 LOGIN_URL = reverse_lazy("account_login")
 
@@ -589,10 +589,12 @@ def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
         order.status == Order.Status.CANCELLED
         and order.payment_method == Order.PaymentMethod.CREDIT
     )
-    paid_online = Payment.objects.filter(
-        order=order,
-        status=Payment.Status.CAPTURED,
-    ).exists()
+    refund = latest_refund(order)
+    refund_text = (
+        refund_sentence(refund.amount, refund.fee_amount, refund.status)
+        if refund is not None
+        else ""
+    )
     # The ** spreads the shared keys into this page's own context dict.
     return render(
         request,
@@ -602,9 +604,8 @@ def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
             **_order_page_context(order),
             "timeline": timeline,
             "placed_on": order_date_text(order.created_at),
-            "can_cancel": order.status in CUSTOMER_CANCELLABLE and not paid_online,
-            "paid_cannot_cancel": paid_online and order.status in CUSTOMER_CANCELLABLE,
-            "paid_cannot_cancel_text": str(PAID_CANNOT_CANCEL_MESSAGE),
+            "can_cancel": order.status in CUSTOMER_CANCELLABLE,
+            "refund_text": refund_text,
             "cancel_url": reverse("order_cancel", args=[order.checkout_group]),
             "whatsapp_href": whatsapp_href(get_shop_settings().whatsapp_number, order.order_number),
             "credit_returned_text": (
@@ -678,9 +679,6 @@ def order_cancel(request: HttpRequest, group: UUID) -> HttpResponse:
         )
     except OrderNotFoundError:
         raise Http404("Order not found.") from None
-    except OrderPaidOnlineError:
-        messages.error(request, PAID_CANNOT_CANCEL_MESSAGE)
-        return redirect("order_detail", group=order.checkout_group)
     except InvalidTransitionError:
         # Staff may have moved the order between the checks above and the lock.
         return _redirect_cannot_cancel(request, order)

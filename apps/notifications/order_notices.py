@@ -7,6 +7,7 @@ called after the order transaction has committed (Slice 38b).
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -15,7 +16,9 @@ from django.urls import reverse
 from apps.core.services import get_shop_settings
 from apps.notifications.messages import (
     CUSTOMER_EVENTS,
+    EVENT_REFUND_PROCESSED,
     EVENT_STAFF_NEW_ORDER,
+    EVENT_STAFF_REFUND_FAILED,
     OrderNotice,
     email_body,
     email_subject,
@@ -27,8 +30,12 @@ from apps.orders.models import Order
 logger = logging.getLogger(__name__)
 
 
-def build_notice(order: Order) -> OrderNotice:
-    """Copy the order facts one message needs into a plain, read-only object."""
+def build_notice(order: Order, refund=None) -> OrderNotice:
+    """Copy the order facts one message needs into a plain, read-only object.
+
+    ``refund`` is the Refund row for a refund event; every other event passes
+    nothing and keeps the two refund fields at zero (D78).
+    """
     return OrderNotice(
         order_number=order.order_number,
         # The account name is preferred; a blank one falls back to the name on
@@ -44,6 +51,8 @@ def build_notice(order: Order) -> OrderNotice:
         online_amount=order.online_amount,
         credit_applied=order.credit_applied,
         cart_url=_cart_url(),
+        refund_amount=refund.amount if refund is not None else Decimal("0.00"),
+        refund_fee=refund.fee_amount if refund is not None else Decimal("0.00"),
     )
 
 
@@ -68,12 +77,15 @@ def notify_order_event(order_id: int, event: str) -> None:
         # select_related("user") reads the customer in the same query. There is
         # no lock and no write: sending a message changes nothing in the database.
         order = Order.objects.select_related("user").filter(pk=order_id).first()
-        if order is None or (event not in CUSTOMER_EVENTS and event != EVENT_STAFF_NEW_ORDER):
+        if order is None or (
+            event not in CUSTOMER_EVENTS
+            and event not in (EVENT_STAFF_NEW_ORDER, EVENT_STAFF_REFUND_FAILED)
+        ):
             # Only the event and the id: never a phone number or a message text.
             logger.warning("Order notice skipped: event=%s order_id=%s", event, order_id)
             return
 
-        notice = build_notice(order)
+        notice = build_notice(order, _latest_refund(order, event))
     except Exception:
         logger.exception(
             "Order notice failed: event=%s order_id=%s channel=load",
@@ -82,10 +94,26 @@ def notify_order_event(order_id: int, event: str) -> None:
         )
         return
     if event == EVENT_STAFF_NEW_ORDER:
-        _send_staff_email(notice, order.pk)
+        _send_staff_email(notice, order.pk, EVENT_STAFF_NEW_ORDER)
+        return
+    if event == EVENT_STAFF_REFUND_FAILED:
+        _send_staff_email(notice, order.pk, EVENT_STAFF_REFUND_FAILED)
         return
     _send_customer_sms(order, event, notice)
     _send_customer_email(order, event, notice)
+
+
+def _latest_refund(order: Order, event: str):
+    """The newest refund for a refund event, or None for every other event.
+
+    The import is inside the function so this module keeps working before the
+    payments tables exist, and a normal order message adds no query (D78).
+    """
+    if event not in (EVENT_REFUND_PROCESSED, EVENT_STAFF_REFUND_FAILED):
+        return None
+    from apps.payments.models import Refund
+
+    return Refund.objects.filter(payment__order=order).order_by("-created_at", "-pk").first()
 
 
 def _send_customer_sms(order: Order, event: str, notice: OrderNotice) -> None:
@@ -126,8 +154,8 @@ def _send_customer_email(order: Order, event: str, notice: OrderNotice) -> None:
         )
 
 
-def _send_staff_email(notice: OrderNotice, order_id: int) -> None:
-    """Send the shop's new-order email when the switch is on and it has an address."""
+def _send_staff_email(notice: OrderNotice, order_id: int, event: str) -> None:
+    """Send a shop email for a staff event when the switch is on."""
     if not settings.ORDER_EMAIL_ENABLED:
         return
     try:
@@ -135,14 +163,14 @@ def _send_staff_email(notice: OrderNotice, order_id: int) -> None:
         if not recipient:
             return
         send_mail(
-            email_subject(EVENT_STAFF_NEW_ORDER, notice),
-            email_body(EVENT_STAFF_NEW_ORDER, notice),
+            email_subject(event, notice),
+            email_body(event, notice),
             settings.DEFAULT_FROM_EMAIL,
             [recipient],
         )
     except Exception:
         logger.exception(
             "Order notice failed: event=%s order_id=%s channel=staff_email",
-            EVENT_STAFF_NEW_ORDER,
+            event,
             order_id,
         )

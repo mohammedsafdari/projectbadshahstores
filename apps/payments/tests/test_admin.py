@@ -1,4 +1,4 @@
-"""Tests for the read-only payment admin screens (D77)."""
+"""Tests for the read-only payment and refund admin screens (D77, D78)."""
 
 from __future__ import annotations
 
@@ -8,9 +8,13 @@ from django.test import Client, RequestFactory
 from django.urls import reverse
 
 from apps.accounts.models import User
-from apps.payments.admin import PaymentAdmin, WebhookEventAdmin
-from apps.payments.models import Payment, WebhookEvent
-from apps.payments.tests.factories import PaymentFactory, WebhookEventFactory
+from apps.payments.admin import PaymentAdmin, RefundAdmin, WebhookEventAdmin
+from apps.payments.models import Payment, Refund, WebhookEvent
+from apps.payments.tests.factories import (
+    PaymentFactory,
+    RefundFactory,
+    WebhookEventFactory,
+)
 from tests.factories import UserFactory
 
 pytestmark = pytest.mark.django_db
@@ -128,3 +132,31 @@ def test_the_webhook_search_finds_the_event_id() -> None:
 
     assert response.status_code == 200
     assert webhook.event_id in response.content.decode()
+
+
+def test_a_manager_sees_the_refund_changelist() -> None:
+    RefundFactory()
+    client = Client()
+    client.force_login(_manager())
+
+    response = client.get(reverse("admin:payments_refund_changelist"))
+
+    assert response.status_code == 200
+
+
+def test_the_refund_admin_is_read_only() -> None:
+    refund_admin, request = _admin_for(Refund, RefundAdmin, _manager())
+
+    assert refund_admin.has_view_permission(request) is True
+    assert refund_admin.has_add_permission(request) is False
+    assert refund_admin.has_change_permission(request) is False
+    assert refund_admin.has_delete_permission(request) is False
+    expected = {field.name for field in Refund._meta.fields}
+    assert set(refund_admin.get_readonly_fields(request)) == expected
+
+
+def test_a_member_without_the_refund_capability_is_refused() -> None:
+    refund_admin, request = _admin_for(Refund, RefundAdmin, _member())
+
+    assert refund_admin.has_module_permission(request) is False
+    assert refund_admin.has_view_permission(request) is False

@@ -56,6 +56,7 @@ def _change_data(row: ShopSettings, **overrides: Any) -> dict[str, Any]:
         "delivery_fee": str(row.delivery_fee),
         "free_delivery_threshold": str(row.free_delivery_threshold),
         "cod_cap": str(row.cod_cap),
+        "refund_fee_percent": str(row.refund_fee_percent),
         "same_day_cutoff": row.same_day_cutoff.strftime("%H:%M"),
         "reservation_minutes": str(row.reservation_minutes),
         "online_stock_buffer": str(row.online_stock_buffer),

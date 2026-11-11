@@ -150,6 +150,15 @@ class ShopSettings(TimeStampedModel):
         max_digits=10, decimal_places=2, default=Decimal("500.00")
     )
     cod_cap = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("2000.00"))
+    # The percent kept when a customer cancels a paid online order (D78). The
+    # default is zero: the shop returns the whole payment until the owner
+    # decides otherwise. The allowed range is 0 to 10.
+    refund_fee_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Percent kept from a customer-cancelled online refund (0 to 10).",
+    )
     # Stored as a wall-clock time and compared in settings.TIME_ZONE (D58).
     same_day_cutoff = models.TimeField(default=time(17, 0))
     reservation_minutes = models.IntegerField(default=15)
@@ -182,6 +191,14 @@ class ShopSettings(TimeStampedModel):
             models.CheckConstraint(
                 condition=models.Q(cod_cap__gte=0),
                 name="core_shopsettings_cod_cap_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(refund_fee_percent__gte=0),
+                name="core_shopsettings_refund_fee_percent_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(refund_fee_percent__lte=10),
+                name="core_shopsettings_refund_fee_percent_lte_10",
             ),
             models.CheckConstraint(
                 condition=models.Q(reservation_minutes__gt=0),

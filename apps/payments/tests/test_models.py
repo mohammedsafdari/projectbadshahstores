@@ -1,4 +1,4 @@
-"""Model tests for Payment and WebhookEvent (D77)."""
+"""Model tests for Payment, WebhookEvent and Refund (D77, D78)."""
 
 from __future__ import annotations
 
@@ -9,11 +9,12 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.utils import timezone
 
-from apps.payments.models import Payment
+from apps.payments.models import Payment, Refund
 from apps.payments.tests.factories import (
     CapturedPaymentFactory,
     FailedPaymentFactory,
     PaymentFactory,
+    RefundFactory,
     WebhookEventFactory,
 )
 
@@ -119,3 +120,62 @@ def test_a_webhook_event_can_point_at_a_payment() -> None:
     webhook = WebhookEventFactory(payment=payment)
 
     assert list(payment.webhook_events.all()) == [webhook]
+
+
+def test_a_refund_string_names_the_payment_kind_and_amount() -> None:
+    refund = RefundFactory()
+
+    assert str(refund) == f"{refund.payment_id} CUSTOMER_CANCEL 230.00 (REQUESTED)"
+
+
+def test_a_refund_starts_requested_with_no_provider_answer() -> None:
+    refund = RefundFactory()
+
+    assert refund.status == Refund.Status.REQUESTED
+    assert refund.fee_amount == Decimal("0.00")
+    assert refund.attempt_count == 0
+    assert refund.provider_refund_id == ""
+    assert refund.processed_at is None
+
+
+def test_refund_amount_must_be_above_zero() -> None:
+    with pytest.raises(IntegrityError):
+        RefundFactory(amount=Decimal("0.00"))
+
+
+def test_refund_fee_cannot_be_negative() -> None:
+    with pytest.raises(IntegrityError):
+        RefundFactory(fee_amount=Decimal("-0.01"), amount=Decimal("230.01"))
+
+
+def test_a_shop_cancellation_cannot_keep_a_fee() -> None:
+    with pytest.raises(IntegrityError):
+        RefundFactory(
+            kind=Refund.Kind.SHOP_CANCEL,
+            fee_amount=Decimal("1.00"),
+            amount=Decimal("229.00"),
+        )
+
+
+def test_a_processed_refund_needs_a_processed_time() -> None:
+    with pytest.raises(IntegrityError):
+        RefundFactory(status=Refund.Status.PROCESSED, processed_at=None)
+
+
+def test_an_open_refund_cannot_have_a_processed_time() -> None:
+    with pytest.raises(IntegrityError):
+        RefundFactory(processed_at=timezone.now())
+
+
+def test_a_payment_can_have_only_one_open_refund() -> None:
+    refund = RefundFactory()
+
+    with pytest.raises(IntegrityError):
+        RefundFactory(payment=refund.payment)
+
+
+def test_a_refund_idempotency_key_is_unique() -> None:
+    RefundFactory(idempotency_key="refund-same")
+
+    with pytest.raises(IntegrityError):
+        RefundFactory(idempotency_key="refund-same")

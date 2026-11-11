@@ -104,6 +104,16 @@ def test_a_cod_order_cannot_carry_a_credit_part() -> None:
         )
 
 
+def test_the_refund_fee_percent_cannot_be_negative() -> None:
+    with pytest.raises(IntegrityError):
+        OrderFactory(refund_fee_percent=Decimal("-0.01"))
+
+
+def test_the_refund_fee_percent_cannot_be_above_ten() -> None:
+    with pytest.raises(IntegrityError):
+        OrderFactory(refund_fee_percent=Decimal("10.01"))
+
+
 def test_order_str_is_the_order_number() -> None:
     assert str(OrderFactory(order_number="BS/26-27/000042")) == "BS/26-27/000042"
 

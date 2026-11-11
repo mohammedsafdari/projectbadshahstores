@@ -77,6 +77,7 @@ def _change_data(row: ShopSettings, **overrides: Any) -> dict[str, Any]:
         "delivery_fee": str(row.delivery_fee),
         "free_delivery_threshold": str(row.free_delivery_threshold),
         "cod_cap": str(row.cod_cap),
+        "refund_fee_percent": str(row.refund_fee_percent),
         "same_day_cutoff": row.same_day_cutoff.strftime("%H:%M"),
         "reservation_minutes": str(row.reservation_minutes),
         "online_stock_buffer": str(row.online_stock_buffer),
@@ -110,6 +111,7 @@ def test_load_creates_the_row_with_the_documented_defaults() -> None:
     assert row.delivery_fee == Decimal("30.00")
     assert row.free_delivery_threshold == Decimal("500.00")
     assert row.cod_cap == Decimal("2000.00")
+    assert row.refund_fee_percent == Decimal("0.00")
     assert row.same_day_cutoff == time(17, 0)
     assert row.reservation_minutes == 15
     assert row.online_stock_buffer == 0
@@ -142,6 +144,15 @@ def test_a_second_row_with_another_pk_is_refused() -> None:
 def test_negative_money_fields_are_refused(field: str) -> None:
     row = ShopSettings.load()
     setattr(row, field, Decimal("-1.00"))
+
+    with pytest.raises(ValidationError):
+        row.full_clean()
+
+
+@pytest.mark.parametrize("percent", [Decimal("-0.01"), Decimal("10.01")])
+def test_a_refund_fee_percent_outside_zero_to_ten_is_refused(percent: Decimal) -> None:
+    row = ShopSettings.load()
+    row.refund_fee_percent = percent
 
     with pytest.raises(ValidationError):
         row.full_clean()

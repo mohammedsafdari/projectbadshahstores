@@ -20,13 +20,25 @@ from django.conf import settings
 if TYPE_CHECKING:
     from apps.orders.models import Order
 
-# The two kinds of event this slice understands. Refunds arrive in Slice 41.
+# The payment events this project understands (D77) and the refund events it
+# adds in D78. A provider's own names never leave its module.
 PAYMENT_CAPTURED = "payment.captured"
 PAYMENT_FAILED = "payment.failed"
+REFUND_PROCESSED = "refund.processed"
+REFUND_FAILED = "refund.failed"
+REFUND_PENDING = "refund.pending"
+# A refund event the shop has no rule for. It is stored and explained instead
+# of being silently dropped (D78).
+REFUND_UNKNOWN = "refund.unknown"
+REFUND_KINDS = (REFUND_PROCESSED, REFUND_FAILED)
 
 
 class PaymentGatewayError(RuntimeError):
     """Base error for a gateway refusal or a broken gateway reply."""
+
+
+class RefundRejectedError(PaymentGatewayError):
+    """The provider refused the refund itself (a 4xx), so retrying cannot help."""
 
 
 class GatewayNotConfigured(PaymentGatewayError):
@@ -64,6 +76,22 @@ class GatewayEvent:
     safe: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class GatewayRefund:
+    """One provider refund, copied into provider-neutral values.
+
+    ``kind`` is one of ``REFUND_PROCESSED``, ``REFUND_FAILED`` or
+    ``REFUND_PENDING``. The amount is the money going back to the customer,
+    which is the payment amount minus any cancellation fee (D78).
+    """
+
+    gateway_refund_id: str
+    gateway_payment_id: str
+    kind: str
+    amount: Decimal
+    safe: dict[str, object] = field(default_factory=dict)
+
+
 class PaymentGateway(Protocol):
     """The small surface every provider module must offer."""
 
@@ -88,6 +116,21 @@ class PaymentGateway(Protocol):
 
     def fetch_order_payments(self, gateway_order_id: str) -> list[GatewayEvent]:
         """The captured and failed payments the provider has for one order."""
+
+    def create_refund(
+        self,
+        gateway_payment_id: str,
+        amount: Decimal,
+        idempotency_key: str,
+    ) -> GatewayRefund:
+        """Ask the provider to send ``amount`` back for one captured payment.
+
+        ``idempotency_key`` is stable for the whole refund, so a retried call
+        cannot send the money twice.
+        """
+
+    def fetch_payment_refunds(self, gateway_payment_id: str) -> list[GatewayRefund]:
+        """The refunds the provider holds for one captured payment."""
 
 
 def get_gateway(name: str | None = None):

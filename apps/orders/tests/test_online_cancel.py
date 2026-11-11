@@ -1,4 +1,4 @@
-"""Tests for cancelling an order that has an online payment (D77)."""
+"""Tests for cancelling an order that has an online payment (D77, D78)."""
 
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ from apps.orders.models import Order
 from apps.orders.services import (
     InvalidTransitionError,
     OrderNotFoundError,
-    OrderPaidOnlineError,
     cancel_order_by_customer,
     transition_order,
 )
 from apps.orders.tests.factories import OrderFactory
-from apps.payments.models import Payment
+from apps.payments.fake_gateway import FakeGateway
+from apps.payments.models import Payment, Refund
 from apps.payments.tests.factories import CapturedPaymentFactory
 from apps.payments.tests.helpers import NOW, clear_settings, reset_settings
 from tests.factories import UserFactory
@@ -49,18 +49,55 @@ def _paid_order(user, **overrides):
     return order, payment
 
 
-def test_a_customer_cannot_cancel_an_order_that_is_paid_online() -> None:
+def test_a_customer_can_cancel_an_order_that_is_paid_online() -> None:
     user = UserFactory()
     order, payment = _paid_order(user)
 
-    with pytest.raises(OrderPaidOnlineError):
-        cancel_order_by_customer(user, order.pk, now=NOW)
+    cancelled = cancel_order_by_customer(user, order.pk, now=NOW)
 
     order.refresh_from_db()
     payment.refresh_from_db()
-    assert order.status == Order.Status.CONFIRMED
+    refund = Refund.objects.get(payment=payment)
+    assert cancelled.status == Order.Status.CANCELLED
+    assert order.status == Order.Status.CANCELLED
+    # The money stays captured until the provider says it went back (D78).
     assert payment.status == Payment.Status.CAPTURED
-    assert payment.needs_refund is False
+    assert payment.needs_refund is True
+    assert refund.kind == Refund.Kind.CUSTOMER_CANCEL
+    assert refund.status == Refund.Status.REQUESTED
+    assert refund.amount == Decimal("230.00")
+    assert refund.fee_amount == Decimal("0.00")
+
+
+def test_a_customer_cancellation_keeps_the_orders_fee_percent() -> None:
+    user = UserFactory()
+    order, payment = _paid_order(user, refund_fee_percent=Decimal("2.50"))
+
+    cancel_order_by_customer(user, order.pk, now=NOW)
+
+    refund = Refund.objects.get(payment=payment)
+    # 2.50% of 230.00 is 5.75, so 224.25 goes back and the two add up.
+    assert refund.fee_amount == Decimal("5.75")
+    assert refund.amount == Decimal("224.25")
+    assert refund.amount + refund.fee_amount == payment.amount
+
+
+def test_a_staff_cancellation_never_keeps_a_fee() -> None:
+    user = UserFactory()
+    order, payment = _paid_order(user, refund_fee_percent=Decimal("5.00"))
+
+    transition_order(
+        order.pk,
+        Order.Status.CANCELLED,
+        actor=UserFactory(is_staff=True),
+        reason="Stock is damaged",
+        now=NOW,
+    )
+
+    refund = Refund.objects.get(payment=payment)
+    assert refund.kind == Refund.Kind.SHOP_CANCEL
+    assert refund.fee_amount == Decimal("0.00")
+    assert refund.amount == payment.amount
 
 
 def test_staff_can_cancel_a_paid_online_order_and_it_asks_for_a_refund() -> None:
@@ -77,9 +114,13 @@ def test_staff_can_cancel_a_paid_online_order_and_it_asks_for_a_refund() -> None
     )
 
     payment.refresh_from_db()
+    refund = Refund.objects.get(payment=payment)
     assert cancelled.status == Order.Status.CANCELLED
     assert payment.status == Payment.Status.CAPTURED
     assert payment.needs_refund is True
+    assert refund.kind == Refund.Kind.SHOP_CANCEL
+    assert refund.amount == payment.amount
+    assert refund.fee_amount == Decimal("0.00")
 
 
 def test_a_staff_cancellation_moves_the_payment_updated_at() -> None:
@@ -170,6 +211,26 @@ def test_an_already_cancelled_order_is_refused() -> None:
 
     with pytest.raises(InvalidTransitionError):
         cancel_order_by_customer(user, order.pk, now=NOW)
+
+
+def test_a_customer_cancellation_refunds_through_the_task_after_commit(
+    django_capture_on_commit_callbacks,
+    settings,
+) -> None:
+    settings.PAYMENT_PROVIDER = "fake"
+    FakeGateway.reset()
+    user = UserFactory()
+    order, payment = _paid_order(user)
+
+    # The provider call is queued on commit, so this block is what sends it.
+    with django_capture_on_commit_callbacks(execute=True):
+        cancel_order_by_customer(user, order.pk, now=NOW)
+
+    payment.refresh_from_db()
+    refund = Refund.objects.get(payment=payment)
+    assert refund.status == Refund.Status.PROCESSED
+    assert payment.needs_refund is False
+    FakeGateway.reset()
 
 
 @pytest.mark.django_db(transaction=True)

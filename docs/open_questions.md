@@ -29,6 +29,8 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] DLT registration for SMS/WhatsApp templates — provider/regulator — owner
 - [ ] MSG91 DLT entity fee quote (a few thousand rupees, unverified) plus the entity, header and template registration — owner/provider; ask again before Phase 7; default in use: the fee is unverified (D76)
 - [ ] Email provider credentials — Brevo free, 300 emails a day shared with transactional email, with SPF and DKIM on the domain — owner when ready (D76)
+- [ ] Cancellation fee percent kept from a customer-cancelled online order (`ShopSettings.refund_fee_percent`, copied to each order) — owner; ask again before launch; default in use: 0%, so the whole payment goes back (D78)
+- [ ] Does the live gateway report refunds and settlements through the same API the test mode does, and is a settlement report available? — provider; ask again at KYC time; default in use: refunds are checked through the provider's refund API only, never a bank statement (D78)
 
 ## Catalog and inventory
 - [ ] Which variants are sold loose by weight (pulses, dry fruits, masalas), and in what smallest step? The owner will send the exact list later and staff will mark the variants in the admin (Slice 29c) — owner; ask again before production data entry; default in use: nothing is loose until `is_sold_loose` is set per variant (D42, D55)

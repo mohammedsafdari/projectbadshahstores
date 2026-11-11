@@ -8,7 +8,7 @@ import factory
 from django.utils import timezone
 
 from apps.orders.tests.factories import OrderFactory
-from apps.payments.models import Payment, WebhookEvent
+from apps.payments.models import Payment, Refund, WebhookEvent
 
 
 class PaymentFactory(factory.django.DjangoModelFactory):
@@ -48,6 +48,27 @@ class FailedPaymentFactory(PaymentFactory):
     method = "upi"
     failure_reason = "Payment failed"
     failed_at = factory.LazyFunction(timezone.now)
+
+
+class RefundFactory(factory.django.DjangoModelFactory):
+    """A refund row for a captured payment (D78)."""
+
+    class Meta:
+        model = Refund
+
+    payment = factory.SubFactory(CapturedPaymentFactory)
+    kind = Refund.Kind.CUSTOMER_CANCEL
+    status = Refund.Status.REQUESTED
+    amount = Decimal("230.00")
+    fee_amount = Decimal("0.00")
+    idempotency_key = factory.Sequence(lambda n: f"refund-test-{n + 1}")
+    provider_refund_id = ""
+    attempt_count = 0
+    last_attempt_at = None
+    sent_at = None
+    processed_at = None
+    failure_reason = ""
+    raw_response = factory.LazyFunction(dict)
 
 
 class WebhookEventFactory(factory.django.DjangoModelFactory):

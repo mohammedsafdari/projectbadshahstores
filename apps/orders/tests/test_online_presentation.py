@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from apps.orders.models import Order
 from apps.orders.presentation import (
-    PAID_CANNOT_CANCEL_MESSAGE,
+    CANCEL_REFUND_HELP,
     PAID_ONLINE_LABEL,
     PAY_ONLINE_LABEL,
     PAYMENT_FAILED_MESSAGE,
@@ -17,6 +17,7 @@ from apps.orders.presentation import (
     page_text,
     paid_online_sentence,
     payment_method_label,
+    refund_sentence,
     status_sentence,
     timeline_label,
 )
@@ -61,11 +62,30 @@ def test_the_payment_failed_message_offers_both_ways_forward() -> None:
     assert "update your cart" in message
 
 
-def test_the_paid_cancel_message_asks_the_customer_to_call() -> None:
-    message = str(PAID_CANNOT_CANCEL_MESSAGE)
+def test_a_pending_refund_says_the_money_is_on_its_way() -> None:
+    message = refund_sentence(Decimal("224.25"), Decimal("5.75"), "SENT")
 
-    assert "online payment" in message
-    assert "call the shop" in message
+    assert message == "We are sending ₹224.25 back to you."
+
+
+def test_a_processed_refund_says_the_money_went_back_and_names_the_fee() -> None:
+    message = refund_sentence(Decimal("224.25"), Decimal("5.75"), "PROCESSED")
+
+    assert message == ("We have refunded ₹224.25 to you. A cancellation fee of ₹5.75 was kept.")
+
+
+def test_a_processed_refund_without_a_fee_does_not_mention_one() -> None:
+    message = refund_sentence(Decimal("230.00"), Decimal("0.00"), "PROCESSED")
+
+    assert message == "We have refunded ₹230.00 to you."
+    assert "fee" not in message
+
+
+def test_a_failed_refund_asks_the_customer_to_contact_the_shop() -> None:
+    message = refund_sentence(Decimal("230.00"), Decimal("0.00"), "FAILED")
+
+    assert "could not be completed" in message
+    assert "contact us" in message
 
 
 def test_an_online_order_has_a_payment_method_label() -> None:
@@ -90,7 +110,14 @@ def test_the_shared_page_text_carries_every_new_label() -> None:
     assert text["try_again_button"] == "Try again"
     assert text["update_cart_link"] == "Update cart"
     assert text["payment_failed_message"] == str(PAYMENT_FAILED_MESSAGE)
-    assert text["paid_cannot_cancel_message"] == str(PAID_CANNOT_CANCEL_MESSAGE)
+    assert text["cancel_refund_help"] == str(CANCEL_REFUND_HELP)
+
+
+def test_the_cancel_page_help_does_not_promise_a_free_refund_or_a_day_count() -> None:
+    message = str(CANCEL_REFUND_HELP)
+
+    assert "same payment method" in message
+    assert "cancellation fee" in message
 
 
 def test_the_online_payment_method_does_not_reuse_the_khata_label() -> None:

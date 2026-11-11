@@ -59,7 +59,8 @@ from apps.orders.state import (
     can_transition,
 )
 from apps.payments.gateway import online_payment_available
-from apps.payments.models import Payment
+from apps.payments.models import Payment, Refund
+from apps.payments.refunds import ensure_refund, send_refund_later
 
 # The status moves that tell the customer something (D69). Every other move,
 # including CONFIRMED and PACKING, sends nothing.
@@ -126,10 +127,6 @@ class OnlinePaymentUnavailableError(OrderError):
     """The customer chose online payment but no gateway is configured (D77)."""
 
 
-class OrderPaidOnlineError(OrderError):
-    """A customer cannot cancel an order whose online part is already paid."""
-
-
 class OrderCreditUnavailableError(OrderError):
     """The customer has no active credit account (D68)."""
 
@@ -194,11 +191,18 @@ def _cancel_pending_items(order: Order) -> None:
         item.save(update_fields=["item_status", "updated_at"])
 
 
-def _mark_captured_payments_for_refund(order: Order) -> None:
-    """Flag any captured online payment so Slice 41 can refund it.
+def _refund_captured_payments(
+    order: Order,
+    *,
+    kind: str,
+    now: datetime,
+) -> None:
+    """Flag and queue a refund for every captured online payment (D78).
 
     A cancellation never makes money disappear: the payment row stays
-    ``CAPTURED`` and ``needs_refund`` records the duty.
+    ``CAPTURED`` and ``needs_refund`` records the duty until the provider says
+    the money went back. The send itself runs after this transaction commits,
+    so the provider never sees a cancellation that later rolls back.
     """
     rows = (
         Payment.objects.select_for_update()
@@ -206,10 +210,11 @@ def _mark_captured_payments_for_refund(order: Order) -> None:
         .order_by("pk")
     )
     for payment in rows:
-        if payment.needs_refund:
-            continue
-        payment.needs_refund = True
-        payment.save(update_fields=["needs_refund", "updated_at"])
+        if not payment.needs_refund:
+            payment.needs_refund = True
+            payment.save(update_fields=["needs_refund", "updated_at"])
+        refund = ensure_refund(payment, kind=kind, now=now)
+        send_refund_later(refund.pk)
 
 
 def _apply_transition(
@@ -222,6 +227,7 @@ def _apply_transition(
     now: datetime,
     require_cancel_reason: bool,
     notify: bool = True,
+    refund_kind: str = Refund.Kind.SHOP_CANCEL,
 ) -> Order:
     """Apply one move to an already locked order and write its log row.
 
@@ -285,7 +291,7 @@ def _apply_transition(
         # Give the credit back for a cancelled credit order (D68). This does
         # nothing for a COD order that was never charged.
         reverse_order_charge(order, actor=actor, now=now)
-        _mark_captured_payments_for_refund(order)
+        _refund_captured_payments(order, kind=refund_kind, now=now)
 
     event = STATUS_EVENTS.get(to_status)
     if notify and event is not None:
@@ -418,7 +424,9 @@ def cancel_order_by_customer(
     """Cancel the customer's own order while it is PLACED or CONFIRMED.
 
     Another customer's order is reported as not found, so an id cannot confirm
-    that somebody else's order exists. The reason is optional here.
+    that somebody else's order exists. The reason is optional here. A paid
+    online order is cancelled too: the money goes back through a refund after
+    the cancellation commits (D78).
     """
     resolved_now = now if now is not None else timezone.now()
     with transaction.atomic():
@@ -427,12 +435,6 @@ def cancel_order_by_customer(
             raise OrderNotFoundError("Order not found.")
         if order.status not in CUSTOMER_CANCELLABLE:
             raise InvalidTransitionError("The customer can no longer cancel this order.")
-        # Money already captured online cannot be released by the customer;
-        # the shop must start a refund (D77, refunds in Slice 41).
-        if Payment.objects.filter(order=order, status=Payment.Status.CAPTURED).exists():
-            raise OrderPaidOnlineError(
-                "This order has an online payment. Please call the shop to cancel."
-            )
         return _apply_transition(
             order,
             Order.Status.CANCELLED,
@@ -441,6 +443,7 @@ def cancel_order_by_customer(
             reason=reason,
             now=resolved_now,
             require_cancel_reason=False,
+            refund_kind=Refund.Kind.CUSTOMER_CANCEL,
         )
 
 
@@ -602,6 +605,9 @@ def place_order(
             savings_total=summary.savings_total,
             credit_applied=credit_applied,
             online_amount=online_amount,
+            # The fee percent is frozen on the order now, so changing the shop
+            # setting later never rewrites an old order (D78).
+            refund_fee_percent=settings.refund_fee_percent,
             # Whatever the khata and online parts do not cover is collected at
             # the door; an online order collects nothing there.
             amount_due_on_delivery=cash_due,

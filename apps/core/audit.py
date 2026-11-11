@@ -136,6 +136,7 @@ AUDITED_SHOP_SETTINGS_FIELDS: tuple[str, ...] = (
     "delivery_fee",
     "free_delivery_threshold",
     "cod_cap",
+    "refund_fee_percent",
     "same_day_cutoff",
     "reservation_minutes",
     "online_stock_buffer",

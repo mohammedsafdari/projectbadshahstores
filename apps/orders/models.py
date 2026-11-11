@@ -97,6 +97,14 @@ class Order(TimeStampedModel):
         default=Decimal("0.00"),
     )
     amount_due_on_delivery = models.DecimalField(max_digits=12, decimal_places=2)
+    # The percent kept from a refund when the customer cancels a paid online
+    # order. It is copied from ShopSettings at placement and never changes
+    # afterwards, so an old order always refunds on its own terms (D78).
+    refund_fee_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
 
     promised_delivery_date = models.DateField()
     delivery_is_same_day = models.BooleanField(default=False)
@@ -192,6 +200,15 @@ class Order(TimeStampedModel):
                     )
                 ),
                 name="order_payment_split_matches_method",
+            ),
+            # The refund fee is a percentage, never below zero or above ten.
+            models.CheckConstraint(
+                condition=models.Q(refund_fee_percent__gte=0),
+                name="order_refund_fee_percent_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(refund_fee_percent__lte=10),
+                name="order_refund_fee_percent_lte_10",
             ),
             # cancelled_at is set exactly when the status is CANCELLED.
             models.CheckConstraint(

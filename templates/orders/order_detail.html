@@ -32,8 +32,8 @@
     </dl>
   </div>
 
-  {% if paid_cannot_cancel %}
-    <p data-paid-cannot-cancel class="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ paid_cannot_cancel_text }}</p>
+  {% if refund_text %}
+    <p data-refund-text class="mt-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">{{ refund_text }}</p>
   {% endif %}
 
   <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">

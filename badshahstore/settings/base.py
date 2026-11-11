@@ -185,6 +185,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.payments.tasks.expire_unpaid_online_orders",
         "schedule": 300.0,
     },
+    # Refunds and payment reconciliation (D78). The task is idempotent, so a
+    # missed or repeated run is safe.
+    "send-pending-refunds": {
+        "task": "apps.payments.tasks.send_pending_refunds",
+        "schedule": 300.0,
+    },
 }
 
 
@@ -260,6 +266,13 @@ PAYMENT_ENABLED_METHODS = _clean_host_list(env("PAYMENT_ENABLED_METHODS", defaul
 # How long an unpaid online order keeps its stock after the normal reservation
 # window before it is cancelled and the cart is restored.
 PAYMENT_GRACE_MINUTES = env.int("PAYMENT_GRACE_MINUTES", default=30)
+# Refunds (D78). A refund is sent at most this many times before it is marked
+# FAILED and left for a person. A SENT refund is checked again after this many
+# minutes, and reconciliation only touches money captured before the minimum
+# age, so an in-flight capture is never raced.
+REFUND_MAX_ATTEMPTS = env.int("REFUND_MAX_ATTEMPTS", default=3)
+REFUND_STALE_MINUTES = env.int("REFUND_STALE_MINUTES", default=30)
+PAYMENT_RECONCILE_MIN_AGE_MINUTES = env.int("PAYMENT_RECONCILE_MIN_AGE_MINUTES", default=15)
 # The absolute site address used in messages (for example the cart link after
 # a failed payment). Blank means the link is left relative.
 SITE_BASE_URL = env("SITE_BASE_URL", default="")

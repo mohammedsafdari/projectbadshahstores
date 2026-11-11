@@ -46,13 +46,16 @@ from apps.orders.services import (
 from apps.payments.gateway import (
     PAYMENT_CAPTURED,
     PAYMENT_FAILED,
+    REFUND_KINDS,
+    REFUND_UNKNOWN,
     GatewayEvent,
     GatewayNotConfigured,
     PaymentGatewayError,
     PaymentSession,
     get_gateway,
 )
-from apps.payments.models import Payment, WebhookEvent
+from apps.payments.models import Payment, Refund, WebhookEvent
+from apps.payments.refunds import apply_gateway_refund
 
 logger = logging.getLogger(__name__)
 
@@ -359,6 +362,21 @@ def handle_gateway_event(
                 payload=event.safe,
             )
 
+        if event.kind == REFUND_UNKNOWN:
+            # A signed refund event this project has no rule for. It is kept
+            # for support and never changes money (D78).
+            webhook.error = "Unknown refund event"
+            webhook.processed_at = resolved_now
+            webhook.save(update_fields=["error", "processed_at", "updated_at"])
+            logger.warning(
+                "Unknown refund event ignored: event=%s provider_event=%s",
+                event_id,
+                event.safe.get("provider_event", ""),
+            )
+            return webhook
+        if event.kind in REFUND_KINDS:
+            return _apply_refund_event(webhook, event, now=resolved_now)
+
         # The order is locked before the payment, the same order the expiry
         # job uses. The payment row is found without a lock first, only to
         # learn its order id.
@@ -383,6 +401,63 @@ def handle_gateway_event(
         webhook.processed_at = resolved_now
         webhook.save(update_fields=["payment", "error", "processed_at", "updated_at"])
         return webhook
+
+
+def _apply_refund_event(
+    webhook: WebhookEvent,
+    event: GatewayEvent,
+    *,
+    now: datetime,
+) -> WebhookEvent:
+    """Apply one verified refund event onto its locked refund row (D78).
+
+    The payment is found by the provider payment id, because a refund event
+    names the payment and the refund, not the provider order. The lock order
+    is the order, then the payment, then the refund.
+    """
+    looked_up = Payment.objects.filter(gateway_payment_id=event.gateway_payment_id).first()
+    if looked_up is None:
+        webhook.error = "Payment not found"
+        webhook.processed_at = now
+        webhook.save(update_fields=["error", "processed_at", "updated_at"])
+        return webhook
+
+    order = Order.objects.select_for_update().filter(pk=looked_up.order_id).first()
+    payment = Payment.objects.select_for_update().filter(pk=looked_up.pk).first()
+    if order is None or payment is None:
+        webhook.error = "Payment not found"
+        webhook.processed_at = now
+        webhook.save(update_fields=["payment", "error", "processed_at", "updated_at"])
+        return webhook
+    webhook.payment = payment
+
+    refund = Refund.objects.select_for_update().filter(payment=payment).order_by("pk").first()
+    if refund is None:
+        webhook.error = "Refund not found"
+        webhook.processed_at = now
+        webhook.save(update_fields=["payment", "error", "processed_at", "updated_at"])
+        logger.warning("Refund event without a refund row: event=%s", event.event_id)
+        return webhook
+
+    # A wrong amount changes nothing here; it is reported in the webhook row.
+    webhook.error = (
+        apply_gateway_refund(
+            refund,
+            payment,
+            kind=event.kind,
+            amount=event.amount,
+            provider_refund_id=str(event.safe.get("refund_id", "")),
+            safe=event.safe,
+            failure_reason=str(event.safe.get("error_description", "")),
+            now=now,
+        )
+        or ""
+    )
+    webhook.processed_at = now
+    webhook.save(update_fields=["payment", "error", "processed_at", "updated_at"])
+    if webhook.error:
+        logger.warning("Refund event amount mismatch: event=%s", event.event_id)
+    return webhook
 
 
 def refresh_payment_from_gateway(

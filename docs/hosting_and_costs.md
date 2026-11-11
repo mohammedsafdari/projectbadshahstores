@@ -74,3 +74,6 @@ One-time costs: the DLT entity fee (a few thousand rupees, unverified) and the d
 - [ ] Domain registrar price, Cloudflare DNS and SPF/DKIM records on the real domain.
 - [ ] GST treatment of hosting and SMS invoices confirmed with the CA.
 - [ ] A last search of the UI and the docs for any "UPI is free" claim.
+- [ ] Confirm that the live gateway reports refunds through the same API the test mode does, and
+      whether a settlement report is available. Until then reconciliation asks the refund API only
+      (D78), and the cancellation fee percent stays 0 (the whole payment goes back).

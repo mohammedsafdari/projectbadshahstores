@@ -129,9 +129,16 @@ PAYMENT_FAILED_MESSAGE = _("The payment did not go through. You can try again or
 PAY_NOW_BUTTON = _("Pay now")
 TRY_AGAIN_BUTTON = _("Try again")
 UPDATE_CART_LINK = _("Update cart")
-PAID_CANNOT_CANCEL_MESSAGE = _(
-    "This order has an online payment. Please call the shop to cancel it."
+# The cancel page explains the money before the customer confirms (D78).
+CANCEL_REFUND_HELP = _(
+    "If you paid online, we send the money back to the same payment method. "
+    "Any cancellation fee we keep is shown on your order."
 )
+# The order page says where the money is (D78).
+REFUND_SENDING_SENTENCE = _("We are sending %(amount)s back to you.")
+REFUND_DONE_SENTENCE = _("We have refunded %(amount)s to you.")
+REFUND_FEE_SENTENCE = _("A cancellation fee of %(fee)s was kept.")
+REFUND_FAILED_SENTENCE = _("The refund could not be completed. Please contact us.")
 PAYMENT_RETURN_TITLE = _("Payment")
 PAYMENT_CONFIRMING_HEADING = _("Checking your payment")
 PAYMENT_CONFIRMING_MESSAGE = _(
@@ -283,6 +290,23 @@ def credit_returned_sentence(amount: Decimal) -> str:
     return str(_("%(amount)s was returned to your khata.") % {"amount": money(amount)})
 
 
+def refund_sentence(amount: Decimal, fee: Decimal, status: str) -> str:
+    """Where the money is for a cancelled paid order (D78).
+
+    ``status`` is a plain stored string, not the enum, because that is what the
+    database returns. A failed refund asks the customer to contact the shop.
+    """
+    if status == "FAILED":
+        return str(REFUND_FAILED_SENTENCE)
+    if status == "PROCESSED":
+        done = str(REFUND_DONE_SENTENCE % {"amount": money(amount)})
+        if fee > Decimal("0.00"):
+            # One space joins the two sentences; both end with a full stop.
+            return f"{done} {REFUND_FEE_SENTENCE % {'fee': money(fee)}}"
+        return done
+    return str(REFUND_SENDING_SENTENCE % {"amount": money(amount)})
+
+
 def payment_method_label(value: str) -> str:
     """The plain label for one payment method."""
     # A value read from the form is a plain str, so compare it with each
@@ -428,7 +452,7 @@ def page_text() -> dict[str, str]:
         "pay_now_button": str(PAY_NOW_BUTTON),
         "try_again_button": str(TRY_AGAIN_BUTTON),
         "update_cart_link": str(UPDATE_CART_LINK),
-        "paid_cannot_cancel_message": str(PAID_CANNOT_CANCEL_MESSAGE),
+        "cancel_refund_help": str(CANCEL_REFUND_HELP),
         "payment_return_title": str(PAYMENT_RETURN_TITLE),
         "payment_confirming_heading": str(PAYMENT_CONFIRMING_HEADING),
         "payment_confirming_message": str(PAYMENT_CONFIRMING_MESSAGE),

@@ -19,6 +19,10 @@ EVENT_DELIVERED = "ORDER_DELIVERED"
 EVENT_STAFF_NEW_ORDER = "STAFF_NEW_ORDER"
 # A failed online payment that will not be retried (D77).
 EVENT_PAYMENT_FAILED = "ORDER_PAYMENT_FAILED"
+# The provider has sent the money back (D78). The staff event asks a person to
+# look at a refund the provider refused.
+EVENT_REFUND_PROCESSED = "ORDER_REFUND_PROCESSED"
+EVENT_STAFF_REFUND_FAILED = "STAFF_REFUND_FAILED"
 
 # The customer events. The staff event is email only.
 CUSTOMER_EVENTS = (
@@ -27,6 +31,7 @@ CUSTOMER_EVENTS = (
     EVENT_OUT_FOR_DELIVERY,
     EVENT_DELIVERED,
     EVENT_PAYMENT_FAILED,
+    EVENT_REFUND_PROCESSED,
 )
 
 # The brand name in every text. It is a constant, not a setting, because the
@@ -61,6 +66,7 @@ _SUBJECT_WORDS = {
     EVENT_OUT_FOR_DELIVERY: "out for delivery",
     EVENT_DELIVERED: "delivered",
     EVENT_PAYMENT_FAILED: "payment failed",
+    EVENT_REFUND_PROCESSED: "refunded",
 }
 
 
@@ -88,6 +94,10 @@ class OrderNotice:
     credit_applied: Decimal = Decimal("0.00")
     # Absolute cart link used when a failed payment sends the customer back.
     cart_url: str = ""
+    # The money sent back and the fee the shop kept (D78). Both default to
+    # zero, so every other event keeps its old wording.
+    refund_amount: Decimal = Decimal("0.00")
+    refund_fee: Decimal = Decimal("0.00")
 
 
 def _amount(value: Decimal) -> str:
@@ -162,6 +172,19 @@ def _customer_sentence(event: str, notice: OrderNotice) -> str:
         )
     if event == EVENT_CANCELLED:
         return f"Order {notice.order_number} is cancelled. Call us if you have questions."
+    if event == EVENT_REFUND_PROCESSED:
+        # The fee is mentioned only when the shop kept one, so a shop
+        # cancellation never shows a fee line (D78).
+        if notice.refund_fee > Decimal("0.00"):
+            return (
+                f"Order {notice.order_number} is cancelled. "
+                f"Rs {_amount(notice.refund_amount)} has been refunded and a "
+                f"Rs {_amount(notice.refund_fee)} cancellation fee was kept."
+            )
+        return (
+            f"Order {notice.order_number} is cancelled. "
+            f"Rs {_amount(notice.refund_amount)} has been refunded to you."
+        )
     if event == EVENT_PAYMENT_FAILED:
         link = notice.cart_url or "your cart"
         return (
@@ -199,6 +222,11 @@ def email_subject(event: str, notice: OrderNotice) -> str:
             f"New order {notice.order_number}: Rs {_amount(notice.grand_total)} "
             f"({_short_payment_name(notice)})"
         )
+    if event == EVENT_STAFF_REFUND_FAILED:
+        return (
+            f"{SHOP_NAME}: refund failed for order {notice.order_number} "
+            f"(Rs {_amount(notice.refund_amount)})"
+        )
     # dict.get returns None for an unknown key instead of raising KeyError.
     word = _SUBJECT_WORDS.get(event)
     if word is None:
@@ -232,10 +260,28 @@ def _staff_email_body(notice: OrderNotice) -> str:
     return "\n".join(lines)
 
 
+def _staff_refund_failed_body(notice: OrderNotice) -> str:
+    """The plain-text email asking the shop to look at a refused refund."""
+    lines = [
+        f"Refund failed for order {notice.order_number}",
+        "",
+        f"Refund: Rs {_amount(notice.refund_amount)}",
+    ]
+    if notice.refund_fee > Decimal("0.00"):
+        lines.append(f"Cancellation fee kept: Rs {_amount(notice.refund_fee)}")
+    lines += [
+        "",
+        "Please open the refund in the admin and check the payment provider.",
+    ]
+    return "\n".join(lines)
+
+
 def email_body(event: str, notice: OrderNotice) -> str:
     """The plain-text email body for one customer or staff event (D69)."""
     if event == EVENT_STAFF_NEW_ORDER:
         return _staff_email_body(notice)
+    if event == EVENT_STAFF_REFUND_FAILED:
+        return _staff_refund_failed_body(notice)
     if event not in CUSTOMER_EVENTS:
         raise ValueError(f"No email body for event {event!r}.")
     lines = [
@@ -247,10 +293,16 @@ def email_body(event: str, notice: OrderNotice) -> str:
         f"Total: Rs {_amount(notice.grand_total)}",
     ]
     # A failed payment must not be described as if the money had arrived.
-    if event != EVENT_PAYMENT_FAILED:
+    if event not in (EVENT_PAYMENT_FAILED, EVENT_REFUND_PROCESSED):
         lines.append(f"Payment: {_payment_name(notice)}")
+    if event == EVENT_REFUND_PROCESSED:
+        lines.append(f"Refunded: Rs {_amount(notice.refund_amount)}")
+        if notice.refund_fee > Decimal("0.00"):
+            lines.append(f"Cancellation fee kept: Rs {_amount(notice.refund_fee)}")
+    else:
+        # A cancelled and refunded order has no delivery left to promise.
+        lines.append(f"Delivery: {_date(notice.promised_delivery_date)}")
     lines += [
-        f"Delivery: {_date(notice.promised_delivery_date)}",
         "",
         "Thank you,",
         SHOP_NAME,

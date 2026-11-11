@@ -41,6 +41,7 @@ class Capability(TextChoices):
     AUDIT_READ = "AUDIT_READ", "Read the audit log"
     EXPORT_CSV = "EXPORT_CSV", "Export variants to CSV"
     VIEW_PAYMENTS = "VIEW_PAYMENTS", "View online payments"
+    REFUND_PAYMENTS = "REFUND_PAYMENTS", "Refund an online payment"
 
 
 # The default rights of each role, used until the owner stores an override.
