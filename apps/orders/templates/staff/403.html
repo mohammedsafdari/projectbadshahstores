@@ -1,0 +1,11 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "No access" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "You do not have permission to open this page" %}</h1>
+  <p class="mt-2 text-base">
+    {% translate "Your role does not include this right. Ask the owner to change your role in the staff permission matrix." %}
+  </p>
+{% endblock content %}

@@ -79,8 +79,36 @@ class CreditEntryAdminForm(forms.Form):
     note = forms.CharField(max_length=200, required=False)
 
 
+UNVERIFIED_CREDIT_MESSAGE = (
+    "The customer must verify the phone number (and the email, if any) before getting credit."
+)
+
+
+class CreditAccountAdminForm(forms.ModelForm):
+    """Refuse a positive limit for an unverified customer with a form error.
+
+    The service raises the same refusal, but a form error keeps the admin page
+    usable instead of showing a crash page.
+    """
+
+    class Meta:
+        model = CreditAccount
+        fields = ["user", "credit_limit", "balance", "is_active"]
+
+    def clean(self):
+        # django-stubs types super().clean() as possibly None; Django itself
+        # always returns the cleaned data here.
+        cleaned = super().clean() or {}
+        user = cleaned.get("user")
+        limit = cleaned.get("credit_limit")
+        if user is not None and limit is not None and limit > 0 and not user.is_ready_for_delivery:
+            raise forms.ValidationError(UNVERIFIED_CREDIT_MESSAGE)
+        return cleaned
+
+
 @admin.register(CreditAccount)
 class CreditAccountAdmin(admin.ModelAdmin):
+    form = CreditAccountAdminForm
     list_display = (
         "user",
         "user_name",
@@ -102,13 +130,30 @@ class CreditAccountAdmin(admin.ModelAdmin):
     def available_credit_display(self, obj: CreditAccount) -> str:
         return f"{available_credit(obj.user):.2f}"
 
+    @admin.display(description="Verification")
+    def verification_state(self, obj: CreditAccount | None) -> str:
+        """Whether this customer may be given credit (D71, D79)."""
+        if obj is None:
+            # The add page has no saved account yet.
+            return ""
+        if obj.user.is_ready_for_delivery:
+            return "Verified"
+        missing: list[str] = []
+        if obj.user.phone_verified_at is None:
+            missing.append("phone")
+        if obj.user.email and obj.user.email_verified_at is None:
+            missing.append("email")
+        return f"Not verified: {', '.join(missing)}"
+
     def get_readonly_fields(
         self,
         request: HttpRequest,
         obj: CreditAccount | None = None,
     ) -> tuple[str, ...]:
-        # The balance is written only by the services, never by staff.
-        return ("balance",)
+        # The balance is written only by the services, never by staff; the
+        # verification state is read-only information for the person giving
+        # credit (D79).
+        return ("balance", "verification_state")
 
     def save_model(
         self,

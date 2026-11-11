@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 
 from apps.core.models import TimeStampedModel
@@ -149,6 +150,18 @@ class Refund(TimeStampedModel):
     sent_at = models.DateTimeField(null=True, blank=True)
     processed_at = models.DateTimeField(null=True, blank=True)
     failure_reason = models.CharField(max_length=200, blank=True, default="")
+    # A refund the shop paid outside the gateway (D79 amendment). The actor,
+    # the time and a required note are stored so the money can be audited; no
+    # provider call is made for this refund.
+    marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="refunds_marked_by_hand",
+    )
+    marked_at = models.DateTimeField(null=True, blank=True)
+    marked_note = models.CharField(max_length=200, blank=True, default="")
     raw_response = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -190,6 +203,14 @@ class Refund(TimeStampedModel):
             models.UniqueConstraint(
                 fields=["idempotency_key"],
                 name="refund_idempotency_key_unique",
+            ),
+            # A by-hand refund carries both the actor and the time, or neither.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(marked_by__isnull=True, marked_at__isnull=True)
+                    | models.Q(marked_by__isnull=False, marked_at__isnull=False)
+                ),
+                name="refund_marked_fields_together",
             ),
         ]
 

@@ -1,0 +1,44 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Record a credit payment" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "Record a credit payment" %}</h1>
+  <p class="mt-1 text-base">{{ customer.full_name|default:customer.phone }} · {{ customer.phone }}</p>
+  <p class="text-sm">{% translate "Balance" %}: {{ balance_text }} · {% translate "Limit" %}: {{ limit_text }}</p>
+
+  {% if error %}
+    <p role="alert" class="mt-3 rounded border border-red-300 bg-red-50 p-3 text-base">{{ error }}</p>
+  {% endif %}
+
+  {% if stage == "confirm" %}
+    <section class="mt-4 rounded border-2 border-gray-900 bg-white p-3">
+      <h2 class="text-lg font-bold">{% translate "Check before saving" %}</h2>
+      <p class="mt-2 text-base">{% translate "Customer" %}: <strong>{{ customer.full_name|default:customer.phone }}</strong></p>
+      <p class="text-base">{% translate "Amount" %}: <strong>₹{{ form.amount.value }}</strong></p>
+      <p class="mt-1 text-sm">
+        {% translate "Mode" %}: {{ form.mode.value }} ·
+        {% translate "Date" %}: {{ form.entry_date.value }}
+      </p>
+      <form method="post" action="{{ action_url }}" class="mt-3">
+        {% csrf_token %}
+        <input type="hidden" name="amount" value="{{ form.amount.value }}">
+        <input type="hidden" name="mode" value="{{ form.mode.value }}">
+        <input type="hidden" name="entry_date" value="{{ form.entry_date.value }}">
+        <input type="hidden" name="reference" value="{{ form.reference.value }}">
+        <input type="hidden" name="note" value="{{ form.note.value }}">
+        <input type="hidden" name="confirm" value="1">
+        <button type="submit" class="rounded bg-gray-900 px-4 py-3 text-sm font-medium text-white">{% translate "Confirm payment" %}</button>
+        <a href="{{ dues_url }}" class="ml-2 inline-block px-4 py-3 text-sm underline">{% translate "Cancel" %}</a>
+      </form>
+    </section>
+  {% else %}
+    <form method="post" action="{{ action_url }}" class="mt-4 space-y-3 rounded border border-gray-300 bg-white p-3 text-base">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit" class="rounded bg-gray-900 px-4 py-3 text-sm font-medium text-white">{% translate "Continue" %}</button>
+      <a href="{{ dues_url }}" class="ml-2 inline-block px-4 py-3 text-sm underline">{% translate "Back to dues" %}</a>
+    </form>
+  {% endif %}
+{% endblock content %}

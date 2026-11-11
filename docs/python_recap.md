@@ -314,3 +314,11 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 - `datetime.combine(day, time.min, tzinfo=shop_zone)` is the first moment of a day in the shop's time zone, and the day after it is the end of that day; .NET comparison: `day.ToDateTime(TimeOnly.MinValue, zone)`.
 - `sum((row.amount for row in rows), Decimal("0.00"))` adds money with a start value, so an empty list gives zero instead of an error; .NET comparison: `rows.Sum(x => x.Amount, 0m)`.
 - `PermissionError` is a built-in exception, so the staff services subclass it instead of inventing a new base class; .NET comparison: `UnauthorizedAccessException`.
+
+## New in Slice 42b
+
+- `staff_required(Capability.X)` is a decorator factory: it takes the right, returns a decorator, and that decorator returns the wrapped view; .NET comparison: an authorization filter attribute written by hand.
+- `@wraps(view)` copies the wrapped view's name and docstring onto the wrapper, so Django and a failed test show the real view name; .NET comparison: keeping the method name when building a delegate wrapper.
+- `Callable[[Callable[..., HttpResponse]], Callable[..., HttpResponse]]` is the type of a decorator that keeps a view's shape; `...` means "any arguments"; .NET comparison: a `Func<Func<..., HttpResponse>, Func<..., HttpResponse>>`.
+- `forms.DecimalField(min_value=Decimal("0.01"))` refuses a zero or negative amount before the service runs; .NET comparison: a `[Range]` validation attribute.
+- `f"₹{value:.2f}"` formats money to two places inside an f-string; .NET comparison: `value.ToString("F2")`.

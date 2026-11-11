@@ -52,6 +52,14 @@ class RefundNotFoundError(RefundError):
     """No refund matches the id."""
 
 
+class RefundNoteRequiredError(RefundError):
+    """A refund marked by hand must say why."""
+
+
+class RefundAlreadySettledError(RefundError):
+    """This refund is already processed, or the provider is sending it."""
+
+
 @dataclass(frozen=True)
 class _Claim:
     """What the provider call needs, copied while the rows were locked."""
@@ -331,8 +339,13 @@ def _claim_refund(refund_id: int, *, now: datetime) -> _Claim | None:
         refund.attempt_count += 1
         refund.last_attempt_at = now
         refund.failure_reason = ""
+        # The claim marker: a second worker sees SENT and stops before calling
+        # the provider, so one refund is never sent twice (D79 amendment). A
+        # provider error puts it back to REQUESTED below.
+        refund.status = Refund.Status.SENT
         refund.save(
             update_fields=[
+                "status",
                 "attempt_count",
                 "last_attempt_at",
                 "failure_reason",
@@ -364,8 +377,11 @@ def _record_attempt_failure(
         if not retryable or refund.attempt_count >= max_attempts:
             _mark_failed_locked(refund, reason, now)
             return refund
+        # The claim moved it to SENT; a retryable failure hands it back to the
+        # next reconciliation run.
+        refund.status = Refund.Status.REQUESTED
         refund.failure_reason = reason[:200]
-        refund.save(update_fields=["failure_reason", "updated_at"])
+        refund.save(update_fields=["status", "failure_reason", "updated_at"])
         logger.warning("Refund attempt failed: refund=%s", refund.pk)
         return refund
 
@@ -379,9 +395,12 @@ def _record_result(claim: _Claim, result: GatewayRefund, *, now: datetime) -> Re
         payment, refund = locked
         if result.amount != refund.amount:
             # A wrong amount is a provider fault, never a reason to mark the
-            # refund done. It stays REQUESTED for the next reconciliation run.
+            # refund done. The claim left it SENT, so hand it back to the next
+            # reconciliation run; a webhook that already finished it stays done.
+            if refund.status == Refund.Status.SENT:
+                refund.status = Refund.Status.REQUESTED
             refund.failure_reason = "The provider refunded a different amount."
-            refund.save(update_fields=["failure_reason", "updated_at"])
+            refund.save(update_fields=["status", "failure_reason", "updated_at"])
             logger.warning("Refund amount mismatch: refund=%s", refund.pk)
             return refund
         _apply_refund_status(
@@ -598,3 +617,93 @@ def reconcile_refunds(now: datetime | None = None) -> int:
 
     logger.info("Reconciled %s refund action(s).", handled)
     return handled
+
+
+def retry_refund(
+    refund_id: int,
+    *,
+    gateway=None,
+    now: datetime | None = None,
+) -> Refund:
+    """Reset one FAILED refund and send it again, on a staff click (D79).
+
+    A FAILED refund is never retried automatically (D78); this explicit action
+    clears the failure, resets the attempt count and hands the refund to
+    ``send_refund``. Any other status is left to ``send_refund``, which changes
+    nothing.
+    """
+    resolved_now = _now(now)
+    with transaction.atomic():
+        locked = _lock_claim_rows(refund_id)
+        if locked is None:
+            raise RefundNotFoundError("Refund not found.")
+        _payment, refund = locked
+        if refund.status == Refund.Status.FAILED:
+            refund.status = Refund.Status.REQUESTED
+            refund.attempt_count = 0
+            refund.failure_reason = ""
+            refund.raw_response = {}
+            refund.save(
+                update_fields=[
+                    "status",
+                    "attempt_count",
+                    "failure_reason",
+                    "raw_response",
+                    "updated_at",
+                ]
+            )
+    # The provider call runs outside every lock, inside send_refund.
+    return send_refund(refund_id, gateway=gateway, now=resolved_now)
+
+
+def mark_refunded_by_hand(
+    refund_id: int,
+    *,
+    actor,
+    note: str,
+    now: datetime | None = None,
+) -> Refund:
+    """Record a refund the shop paid outside the gateway (D79).
+
+    The money is marked PROCESSED with the actor, the time and a required note,
+    and no provider call is made. A refund that is already processed, or that
+    the provider is already sending, is refused so a second payment cannot be
+    recorded.
+    """
+    cleaned = (note or "").strip()
+    if not cleaned:
+        raise RefundNoteRequiredError("A refund marked by hand needs a note.")
+    resolved_now = _now(now)
+    with transaction.atomic():
+        locked = _lock_claim_rows(refund_id)
+        if locked is None:
+            raise RefundNotFoundError("Refund not found.")
+        payment, refund = locked
+        if refund.status == Refund.Status.PROCESSED:
+            raise RefundAlreadySettledError("This refund is already processed.")
+        if refund.status == Refund.Status.SENT:
+            raise RefundAlreadySettledError("The provider is already sending this refund.")
+        refund.status = Refund.Status.PROCESSED
+        refund.processed_at = resolved_now
+        if refund.sent_at is None:
+            refund.sent_at = resolved_now
+        refund.failure_reason = ""
+        refund.marked_by = actor
+        refund.marked_at = resolved_now
+        refund.marked_note = cleaned[:200]
+        refund.save(
+            update_fields=[
+                "status",
+                "processed_at",
+                "sent_at",
+                "failure_reason",
+                "marked_by",
+                "marked_at",
+                "marked_note",
+                "updated_at",
+            ]
+        )
+        payment.needs_refund = False
+        payment.save(update_fields=["needs_refund", "updated_at"])
+        _notify_later(payment.order_id, EVENT_REFUND_PROCESSED)
+    return refund

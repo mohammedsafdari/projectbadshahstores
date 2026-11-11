@@ -13,13 +13,16 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.urls import reverse
 
+from apps.accounts.models import User
 from apps.core.services import get_shop_settings
 from apps.notifications.messages import (
     CUSTOMER_EVENTS,
+    EVENT_CREDIT_REMINDER,
     EVENT_REFUND_PROCESSED,
     EVENT_STAFF_NEW_ORDER,
     EVENT_STAFF_REFUND_FAILED,
     OrderNotice,
+    credit_reminder_text,
     email_body,
     email_subject,
     sms_text,
@@ -152,6 +155,29 @@ def _send_customer_email(order: Order, event: str, notice: OrderNotice) -> None:
             event,
             order.pk,
         )
+
+
+def notify_credit_reminder(user: User, balance: Decimal) -> bool:
+    """Send one manual credit reminder SMS; return False when it was skipped.
+
+    A reminder is never automatic: a staff member presses the button. The
+    console SMS backend prints the text until a real backend and the DLT
+    registration exist. Every failure is logged and never raised.
+    """
+    if not settings.ORDER_SMS_ENABLED:
+        return False
+    try:
+        get_sms_backend().send_message(user.phone, credit_reminder_text(balance))
+    except Exception:
+        # The log line carries the event and the user id, never the phone or
+        # the message text.
+        logger.exception(
+            "Credit reminder failed: event=%s user_id=%s channel=sms",
+            EVENT_CREDIT_REMINDER,
+            user.pk,
+        )
+        return False
+    return True
 
 
 def _send_staff_email(notice: OrderNotice, order_id: int, event: str) -> None:

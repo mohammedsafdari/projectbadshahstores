@@ -54,6 +54,10 @@ class InvalidCreditAmountError(CreditError):
     """A limit, amount, mode, date or note fails its rule."""
 
 
+class CreditCustomerNotVerifiedError(CreditError):
+    """The customer has not verified the phone, or the email when there is one."""
+
+
 def _clean_amount(value: Decimal | int, *, field: str) -> Decimal:
     """Return ``value`` as a two-place Decimal, or refuse it.
 
@@ -75,9 +79,9 @@ def _clean_amount(value: Decimal | int, *, field: str) -> Decimal:
     return amount.quantize(TWO_PLACES)
 
 
-def _lock_user(user: User) -> None:
-    """Lock the user row, the first lock in the fixed order (D67 point 11)."""
-    User.objects.select_for_update().get(pk=user.pk)
+def _lock_user(user: User) -> User:
+    """Lock and return the user row, the first lock in the fixed order (D67)."""
+    return User.objects.select_for_update().get(pk=user.pk)
 
 
 def _locked_account(user_id: int, *, require_active: bool) -> CreditAccount:
@@ -96,7 +100,15 @@ def set_credit_limit(user: User, limit: Decimal | int, *, actor: User | None) ->
     if value < 0:
         raise InvalidCreditAmountError("The credit limit cannot be negative.")
     with transaction.atomic():
-        _lock_user(user)
+        locked_user = _lock_user(user)
+        # Credit is never given to an unverified customer (D71, D79 amendment).
+        # Only a positive limit is refused; zero stays allowed, and an
+        # existing account is never changed by this check.
+        if value > ZERO and not locked_user.is_ready_for_delivery:
+            raise CreditCustomerNotVerifiedError(
+                "The customer must verify the phone number (and the email, if any) "
+                "before getting credit."
+            )
         account = CreditAccount.objects.select_for_update().filter(user=user).first()
         if account is None:
             account = CreditAccount.objects.create(user=user, credit_limit=value)

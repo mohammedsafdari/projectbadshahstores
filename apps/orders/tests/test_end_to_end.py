@@ -14,6 +14,7 @@ from decimal import Decimal
 import pytest
 from django.test import Client
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.cart.models import CartItem
@@ -135,6 +136,10 @@ def test_guest_signs_up_shops_and_cancels_a_cod_order() -> None:
 
 def test_otp_customer_places_a_credit_order_and_the_cancel_returns_the_credit() -> None:
     user = User.objects.create_user(phone=PHONE)
+    # Credit needs a verified customer (D71, D79 amendment); the OTP login
+    # below is the real verification step, so the setup marks it done first.
+    user.phone_verified_at = timezone.now()
+    user.save(update_fields=["phone_verified_at"])
     staff = UserFactory(is_staff=True)
     account = set_credit_limit(user, Decimal("1000.00"), actor=staff)
     serve()

@@ -12,9 +12,9 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] GSTIN — [TO BE FILLED: GSTIN] — owner/CA
 - [ ] Default own-brand packaged-food GST rate — recorded assumption is 5%; confirm with CA — CA
 - [ ] HSN codes and GST rates per product/variant — to be filled per variant at data entry; confirm mapping with CA — CA/owner
-- [ ] Rounding rule for CGST/SGST and invoice totals — needed by Phase 5 (invoices); default in use: each amount rounded half-up to paise, SGST is the remainder of CGST (Slice 13c) — CA/legal
+- [ ] Rounding rule for CGST/SGST and invoice totals — ask again before the invoice slice (moved from Phase 5, 11 November 2026); default in use: each amount rounded half-up to paise, SGST is the remainder of CGST (Slice 13c) — CA/legal
 - [ ] HSN code format — variants accept 4 to 8 digits (Slice 13a); confirm with CA — CA/legal
-- [ ] Invoice number prefix and 16-character GST rule — recorded assumption `INV/...`; confirm with CA — CA
+- [ ] Invoice number prefix and 16-character GST rule — recorded assumption `INV/...`; ask again before the invoice slice; confirm with CA — CA
 - [ ] FSSAI licence number — [TO BE FILLED: FSSAI number] — owner/CA
 - [ ] FSSAI licence expiry — [TO BE FILLED] — owner/CA
 - [ ] Grievance officer name and contact — [TO BE FILLED] — owner/legal
@@ -46,7 +46,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Photo files are not deleted from disk when an image row or a product is deleted — developer; a clean-up job is needed before production; default in use: files are left in place
 - [ ] When to add resized and WebP versions of photos — developer; planned for the storefront slices (23 and 25) or Phase 6; default in use: originals only
 - [ ] Production hardening of the stock ledger: a Postgres trigger or a restricted database role so movement rows cannot be changed with raw SQL — developer; before production; default in use: the Django-level guard only (D42)
-- [ ] Purchase cost per received lot, for stock valuation — owner/CA; needed by Phase 5 reports; default in use: `ProductVariant.cost_price`
+- [ ] Purchase cost per received lot, for stock valuation — owner/CA; ask again before the invoice slice (moved from Phase 5 reports, 11 November 2026); default in use: `ProductVariant.cost_price`
 - [ ] Should a purchase with an expiry date in the past be refused or only warned about? — owner; default in use: allowed, no warning; the Receive page accepts a past date (D43, D45)
 - [ ] Should every damage or write-off entry need a reason (expired, broken, lost)? — owner; default in use: yes, the reason is required (D43)
 - [ ] Who records in-store sales in the ledger (`IN_STORE_SALE`): the billing-software import in Slice 20, or nothing yet? — owner; needed before Slice 20; default in use: nothing writes `IN_STORE_SALE` yet (D43)
@@ -70,11 +70,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [x] Who is the stock master while the shop sells in store and online? — answered (D55, 3 Nov 2026; the route and the export confirmed in D63, 6 Nov 2026): the billing software is the main stock source, the website is refreshed by regular imports and the physical count happens at the production stage — owner
 - [ ] Do we need partial files (for example only sku_code and prices)? — owner; low priority; ask again at Slice 21; default in use: every column of the export must be present (D47)
 - [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before Phase 5; default in use: yes, refused, to catch a dropped zero (D47)
-- [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before Phase 5; default in use: own prefix `INV/...` (see the invoice prefix item above)
-- [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before Phase 5 (extends the rounding item above); default in use: our half-up rule (Slice 13c)
+- [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before the invoice slice; default in use: own prefix `INV/...` (see the invoice prefix item above)
+- [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before the invoice slice (extends the rounding item above); default in use: our half-up rule (Slice 13c)
 
 ### Added in Slice 22 (seed catalogue, D49)
-- [ ] GST conflict in the billing item master: the tax columns say 5% on every row, the HSN text carries 5, 12 or 18. The seed uses 5% and marks it unconfirmed — CA/owner; ask again before Phase 5; default in use: 5% from the tax columns, no rate built into the code
+- [ ] GST conflict in the billing item master: the tax columns say 5% on every row, the HSN text carries 5, 12 or 18. The seed uses 5% and marks it unconfirmed — CA/owner; ask again before the invoice slice (moved from Phase 5, 11 November 2026); default in use: 5% from the tax columns, no rate built into the code
 - [ ] 15 billing rows are not loaded (2 with MRP 0, 12 with selling rate above MRP, 1 with a 5-digit HSN); they are listed in `apps/catalog/seed_data/nestle_review.csv`. Please read the real MRP and HSN from the packs — owner; ask again before launch (Phase 7); default in use: not loaded (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] Export of the rest of the shop (staples, spices, tea, own-brand, about 45 items) in the same billing format — owner; ask again before launch (Phase 7); default in use: `demo.csv` with `DEMO-` SKUs and provisional HSN/GST, loaded only with `--demo` (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] The rest of the category tree beyond the five starter categories (chocolates-confectionery, noodles-soups, milk-dairy, tea-coffee, spices-masalas); slugs become URLs — owner; ask again before launch (Phase 7); default in use: the five starter categories (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
@@ -112,7 +112,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 37a
 - [ ] Which customers get credit and at what limit? — owner; before launch; default in use: no customer has credit until the owner sets a limit in the admin
-- [ ] Should customers get payment reminders or a dues list? — owner; ask again before Phase 5; default in use: none
+- [x] Should customers get payment reminders or a dues list? — answered (D79 amendment, 11 November 2026): staff see a dues list sorted by the largest balance and can send a manual reminder; there are no automatic reminders — owner
 
 ### Added in Slice 37b
 - [x] Should a credit customer be able to pay part of an order on credit and the rest in cash? — answered (D74, 9 November 2026): yes. The order uses as much available credit as it needs, and the rest is cash on delivery; the customer ticks one khata checkbox and cannot type an amount — owner
@@ -130,14 +130,22 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Per-IP limit and bot protection for sign-up and login — owner; ask again before launch; default in use: none
 
 ### Added in Slice 38g
-- [ ] Orders and verification state for staff in Phase 5 (see docs/phase5_minimum.md) — owner; ask again before Phase 5; default in use: as listed in that file
+- [x] Orders and verification state for staff in Phase 5 (see docs/phase5_minimum.md) — answered (Slice 42b, 11 November 2026): the staff order list, pick list, detail, delivery list and cash page exist, and the credit admin shows the verification state — owner
 
 ### Added in Slice 42a (staff order actions, D79)
-- [ ] Should the send-out need both `SEND_OUT` and `START_PACKING`? — owner; ask again before the staff screens go live; default in use: `SEND_OUT` alone, because a packer holds both by default (D79)
-- [ ] Should the unpaid list of the daily cash reconciliation be limited to one delivery day, or list every order that still owes cash? — owner; ask again before the staff screens go live; default in use: every order that still owes cash, listed until it is collected or cancelled (D79)
-- [ ] Should the reconciliation compare the day's cash with the money in the till, or is the grand total enough? — owner; ask again before the staff screens go live; default in use: the grand total only, with no "handed over" step (D79)
-- [ ] Should a delivery person be able to open the order list and the cash reconciliation? The `DELIVERY` role has `DELIVER_COD` only, so today they cannot — owner; ask again before the staff screens go live; default in use: the matrix default stands (D75, D79)
-- [ ] Should the cash collected at the door be read as a note (a slip of paper per order) instead of typed? — owner; ask again before the staff screens go live; default in use: typed on the screen (D79)
+- [x] Should the send-out need both `SEND_OUT` and `START_PACKING`? — answered (owner chose the default, 11 November 2026): `SEND_OUT` alone, because a packer holds both by default (D79) — owner
+- [x] Should the unpaid list of the daily cash reconciliation be limited to one delivery day, or list every order that still owes cash? — answered (owner chose the default, 11 November 2026): every order that still owes cash, listed until it is collected or cancelled (D79) — owner
+- [x] Should the reconciliation compare the day's cash with the money in the till, or is the grand total enough? — answered (owner chose the default, 11 November 2026): the grand total only, with no "handed over" step (D79) — owner
+- [x] Should a delivery person be able to open the order list and the cash reconciliation? The `DELIVERY` role has `DELIVER_COD` only, so today they cannot — answered (Slice 42b, 11 November 2026): the cash page opens with `DELIVER_COD`; the order list still needs `VIEW_ORDERS`, so a delivery person cannot open it — owner
+- [x] Should the cash collected at the door be read as a note (a slip of paper per order) instead of typed? — answered (owner chose the default, 11 November 2026): typed on the screen (D79) — owner
+
+### Added in Slice 42b (staff screens, D79 amendment)
+- [ ] DLT template text for the credit reminder (`EVENT_CREDIT_REMINDER`): "Badshah Stores: Your credit account has Rs <amount> pending. Please pay at the shop." (`<amount>` is the balance with two decimals) — owner; ask again before real SMS; default in use: the console SMS backend
+- [ ] Should the credit reminder also go by email when the customer has an address? — owner; ask again before real SMS; default in use: SMS only
+- [ ] Should "Send refund now" be limited to the owner and manager, or is `REFUND_PAYMENTS` enough? — owner; ask again before the staff screens go live; default in use: `REFUND_PAYMENTS` decides (manager and owner by default)
+- [ ] Should the by-hand refund note be a fixed list of reasons (cash at the counter, UPI transfer, other) instead of free text? — owner; ask again before the staff screens go live; default in use: free text of up to 200 characters, required
+- [ ] Should a refund marked by hand send the customer the processed-refund message? — owner; ask again before the staff screens go live; default in use: yes, the existing `EVENT_REFUND_PROCESSED` message
+- [ ] Should the dues page list a customer whose balance has just reached zero? — owner; low priority; ask again before launch; default in use: only a positive balance is listed
 
 ### Added in Slice 39
 - [ ] Should capabilities be settable per person (an override on `User`) instead of only per role? — owner; ask again before Phase 5; default in use: per role only (D75)

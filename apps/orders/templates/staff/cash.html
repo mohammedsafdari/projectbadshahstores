@@ -1,0 +1,46 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Cash" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "Cash reconciliation" %}</h1>
+
+  <form method="get" action="{% url 'staff_cash' %}" class="mt-3 flex flex-wrap items-end gap-2 text-sm">
+    <label class="block">{% translate "Day" %}
+      <input type="date" name="day" value="{{ day|date:'Y-m-d' }}" class="mt-1 rounded border border-gray-400 px-3 py-2">
+    </label>
+    <button type="submit" class="rounded bg-gray-900 px-4 py-3 font-medium text-white">{% translate "Show day" %}</button>
+  </form>
+
+  <p class="mt-4 text-lg">{% translate "Grand total" %}: <strong>{{ grand_total_text }}</strong></p>
+
+  {% for row in collectors %}
+    <p class="mt-1 text-base">
+      {{ row.collected_by.full_name|default:row.collected_by.phone }}{% if row.collected_by.full_name %} · {{ row.collected_by.phone }}{% endif %} ·
+      {{ row.collection_count }} {% translate "collections" %} · ₹{{ row.total }}
+    </p>
+  {% empty %}
+    <p class="mt-1 rounded border border-gray-300 bg-white p-4 text-sm">
+      {% translate "No cash collected on this day." %}
+    </p>
+  {% endfor %}
+
+  <section class="mt-6">
+    <h2 class="text-lg font-bold">{% translate "Orders that still owe cash" %}</h2>
+    {% for order in unpaid_orders %}
+      <p class="mt-1 text-base">
+        {% if can_view_orders %}
+          <a class="underline" href="{% url 'staff_order_detail' order.order_number %}">{{ order.order_number }}</a>
+        {% else %}
+          {{ order.order_number }}
+        {% endif %}
+        · {{ order.ship_name }} · ₹{{ order.amount_due_on_delivery }}
+      </p>
+    {% empty %}
+      <p class="mt-1 rounded border border-gray-300 bg-white p-4 text-sm">
+        {% translate "Every cash order has been collected." %}
+      </p>
+    {% endfor %}
+  </section>
+{% endblock content %}

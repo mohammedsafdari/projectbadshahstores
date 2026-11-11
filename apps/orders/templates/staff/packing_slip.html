@@ -1,0 +1,46 @@
+{% load i18n %}
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% translate "Packing slip" %} {{ order.order_number }}</title>
+  <style>
+    body { font-family: sans-serif; margin: 1rem; color: #111; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    .notice { border: 2px solid #111; padding: 0.5rem; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border-bottom: 1px solid #999; padding: 0.4rem; text-align: left; }
+    @media print { body { margin: 0.5rem; } }
+  </style>
+</head>
+<body>
+  <h1>{% translate "Packing slip" %}</h1>
+  <p class="notice">{% translate "Packing slip. Not a tax invoice." %}</p>
+
+  <p><strong>{% translate "Order" %}:</strong> {{ order.order_number }}</p>
+  <p><strong>{% translate "Delivery day" %}:</strong> {{ order.promised_delivery_date }}</p>
+  <p><strong>{% translate "Deliver to" %}:</strong> {{ order.ship_name }}, {{ order.ship_phone }}</p>
+  <p>{{ order.ship_line1 }}{% if order.ship_line2 %}, {{ order.ship_line2 }}{% endif %}</p>
+  <p>{{ order.ship_city }}, {{ order.ship_state }} {{ order.ship_pincode }}</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>{% translate "Item" %}</th>
+        <th>{% translate "Quantity" %}</th>
+        <th>{% translate "SKU" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+        <tr>
+          <td>{{ line.name }}</td>
+          <td>{{ line.quantity }}</td>
+          <td>{{ line.sku }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

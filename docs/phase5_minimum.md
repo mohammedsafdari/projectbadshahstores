@@ -1,32 +1,33 @@
 # What the soft launch needs (COD plus credit)
 
 A checklist for the smallest Phase 5 that can run the shop every day with cash on delivery and
-credit (khata), and for the owner tasks that take the longest to arrange. Nothing here is built
-yet unless it says so. Tick an item only when it works in production and someone has tried it.
+credit (khata), and for the owner tasks that take the longest to arrange. An item is ticked when
+it is built and its tests cover it; the production trial (someone uses it for a real day) is a
+separate step and is not ticked here.
 
 ## 1. Software, minimal Phase 5
 
-- [ ] Staff order list: filters by status, delivery day and payment method; each row shows the
+- [x] Staff order list: filters by status, delivery day and payment method; each row shows the
       customer, the amount, the payment method and the verification state.
-- [ ] The order list shows the delivery gate refusal for an order that cannot go out yet, with
+- [x] The order list shows the delivery gate refusal for an order that cannot go out yet, with
       the reason (unverified phone or email), so staff know what to ask the customer.
-- [ ] Search the order list by order number or by phone.
-- [ ] Pick list per delivery day: one printable or on-screen list of the items to pick, grouped
+- [x] Search the order list by order number or by phone.
+- [x] Pick list per delivery day: one printable or on-screen list of the items to pick, grouped
       by order, with quantities and pack labels.
-- [ ] Packing a picked order consumes its stock reservations and writes the `SALE`
+- [x] Packing a picked order consumes its stock reservations and writes the `SALE`
       `InventoryMovement` for each line (the Phase 4 writer the reservation code waits for).
-- [ ] Move an order to out for delivery from the staff screen, with the gate error shown in plain
+- [x] Move an order to out for delivery from the staff screen, with the gate error shown in plain
       words instead of a crash when the customer is not verified.
-- [ ] Move an order to delivered from the staff screen.
-- [ ] Record COD cash collected: the amount, who collected it and when; one daily reconciliation
+- [x] Move an order to delivered from the staff screen.
+- [x] Record COD cash collected: the amount, who collected it and when; one daily reconciliation
       list that adds up the collected orders and shows any order still unpaid.
-- [ ] Staff cancel with a reason on screen (the `cancel_order_by_customer` rules and the audit
+- [x] Staff cancel with a reason on screen (the `cancel_order_by_customer` rules and the audit
       path exist; the staff screen is missing).
-- [ ] Basic roles (owner, staff, delivery) with per-screen permissions, so a delivery person sees
-      only the delivery list and a packer cannot read the ledger or the cost prices.
-- [ ] Credit payments received entered by staff, through `record_payment`, with the customer and
+- [x] Basic roles (owner, staff, delivery) with per-screen permissions, so a delivery person sees
+      only the delivery list and the cash page and a packer cannot read the ledger or the cost prices.
+- [x] Credit payments received entered by staff, through `record_payment`, with the customer and
       the amount visible before saving.
-- [ ] The verification state is visible while staff create or review a credit account, so credit
+- [x] The verification state is visible while staff create or review a credit account, so credit
       is never given to an unverified customer by accident.
 
 ## 2. Owner tasks that cost lead time

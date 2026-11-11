@@ -23,6 +23,9 @@ EVENT_PAYMENT_FAILED = "ORDER_PAYMENT_FAILED"
 # look at a refund the provider refused.
 EVENT_REFUND_PROCESSED = "ORDER_REFUND_PROCESSED"
 EVENT_STAFF_REFUND_FAILED = "STAFF_REFUND_FAILED"
+# A manual credit reminder a staff member sends from the dues screen (D79).
+# The customer is not tied to one order, so it has its own builder below.
+EVENT_CREDIT_REMINDER = "CREDIT_PAYMENT_REMINDER"
 
 # The customer events. The staff event is email only.
 CUSTOMER_EVENTS = (
@@ -213,6 +216,17 @@ def sms_text(event: str, notice: OrderNotice) -> str:
     if event not in CUSTOMER_EVENTS:
         raise ValueError(f"No SMS text for event {event!r}.")
     return f"{SHOP_NAME}: {_customer_sentence(event, notice)}"
+
+
+def credit_reminder_text(balance: Decimal) -> str:
+    """The exact SMS wording of one manual credit reminder (D79).
+
+    The text is listed in ``docs/open_questions.md`` for the DLT registration.
+    """
+    return (
+        f"{SHOP_NAME}: Your credit account has Rs {_amount(balance)} pending. "
+        "Please pay at the shop."
+    )
 
 
 def email_subject(event: str, notice: OrderNotice) -> str:

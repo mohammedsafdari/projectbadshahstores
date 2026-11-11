@@ -15,10 +15,15 @@ from decimal import Decimal
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.accounts.capabilities import Capability
+from apps.accounts.capabilities import Capability, has_capability
 from apps.accounts.models import User
 from apps.orders.models import CodCollection, Order
-from apps.orders.staff_services import delivery_gate_reason, require_capability
+from apps.orders.services import OrderNotFoundError
+from apps.orders.staff_services import (
+    StaffPermissionError,
+    delivery_gate_reason,
+    require_capability,
+)
 
 # The statuses of an order that is finished: it will never go out again, so
 # the delivery gate has nothing to say about it.
@@ -245,7 +250,14 @@ def cash_reconciliation(actor: User, day: date) -> ReconciliationResult:
     limited to the day: an order that still owes cash is listed until it is
     collected or cancelled.
     """
-    require_capability(actor, Capability.VIEW_ORDERS)
+    # The delivery role may read the cash page by itself (D79 amendment), so
+    # this one query accepts either the order right or the delivery right.
+    if not (
+        has_capability(actor, Capability.VIEW_ORDERS)
+        or has_capability(actor, Capability.DELIVER_COD)
+    ):
+        label = Capability(Capability.DELIVER_COD).label
+        raise StaffPermissionError(f"You do not have the right to {label.lower()}.")
     # The day is the shop's day, not the server's, so the two ends of the
     # day are worked out in the shop time zone.
     shop_zone = timezone.get_current_timezone()
@@ -287,4 +299,41 @@ def cash_reconciliation(actor: User, day: date) -> ReconciliationResult:
         collectors=collectors,
         grand_total=grand_total,
         unpaid_orders=unpaid,
+    )
+
+
+def get_staff_order(
+    actor: User,
+    order_number: str,
+    *,
+    capability: str = Capability.VIEW_ORDERS,
+) -> Order:
+    """One order by its printed number, behind the caller's capability.
+
+    The number contains slashes, so the caller uses a ``path`` route and this
+    lookup by the exact stored value. The order arrives with its lines, its
+    status log and its payments already fetched.
+    """
+    require_capability(actor, capability)
+    order = (
+        Order.objects.filter(order_number=order_number)
+        .select_related("user")
+        .prefetch_related("items", "status_logs", "payments")
+        .first()
+    )
+    if order is None:
+        raise OrderNotFoundError("Order not found.")
+    return order
+
+
+def delivery_orders_for_day(actor: User, day: date) -> list[Order]:
+    """Every order out for delivery on one day, in order-number order."""
+    require_capability(actor, Capability.DELIVER_COD)
+    return list(
+        Order.objects.filter(
+            status=Order.Status.OUT_FOR_DELIVERY,
+            promised_delivery_date=day,
+        )
+        .select_related("user")
+        .order_by("order_number", "pk")
     )
