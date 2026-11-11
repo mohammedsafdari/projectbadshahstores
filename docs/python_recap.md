@@ -306,3 +306,11 @@ return has_capability(request.user, Capability.EXPORT_CSV) or base.has_view_perm
 Slice 39b: `right in Capability.values` checks whether a string is one of a `TextChoices` class's values,
 so one tuple can hold either a capability or a Django permission name (`apps/inventory/admin.py`, `_allowed`).
 .NET comparison: `Enum.IsDefined` before choosing which check to run.
+
+## New in Slice 42a
+
+- `grouped.setdefault(row.collected_by_id, []).append(row)` adds a row to the list of a key and creates that list the first time; .NET comparison: `dict[key] ??= new List<T>();`.
+- `sorted(totals.values(), key=lambda total: total.sku_code)` puts a block of rows in a fixed order; .NET comparison: `values.OrderBy(t => t.SkuCode)`.
+- `datetime.combine(day, time.min, tzinfo=shop_zone)` is the first moment of a day in the shop's time zone, and the day after it is the end of that day; .NET comparison: `day.ToDateTime(TimeOnly.MinValue, zone)`.
+- `sum((row.amount for row in rows), Decimal("0.00"))` adds money with a start value, so an empty list gives zero instead of an error; .NET comparison: `rows.Sum(x => x.Amount, 0m)`.
+- `PermissionError` is a built-in exception, so the staff services subclass it instead of inventing a new base class; .NET comparison: `UnauthorizedAccessException`.

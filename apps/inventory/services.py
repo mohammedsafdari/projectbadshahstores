@@ -5,6 +5,8 @@ function, ``_record_movement``, so the guards here stay single-source (ADR D43).
 """
 
 import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -106,6 +108,20 @@ def _sum_on_hand(variant: ProductVariant) -> Decimal:
     if total is None:
         return Decimal("0")
     return total
+
+
+def _on_hand_by_variant(variant_ids: Sequence[int]) -> dict[int, Decimal]:
+    """Current on-hand for several variants in one grouped query (ADR D42)."""
+    if not variant_ids:
+        return {}
+    rows = (
+        InventoryMovement.objects.filter(variant_id__in=list(variant_ids))
+        .values("variant_id")
+        .annotate(total=Sum("quantity_change"))
+    )
+    # A variant with no movement at all is not in the result, so the
+    # comprehension gives it zero.
+    return {row["variant_id"]: row["total"] or Decimal("0") for row in rows}
 
 
 def get_on_hand(variant: ProductVariant) -> Decimal:
@@ -300,3 +316,115 @@ def count_stock(
             expiry_date=None,
             created_by=created_by,
         )
+
+
+@dataclass(frozen=True)
+class StockMovementLine:
+    """One variant and amount for a movement that leaves or returns stock."""
+
+    variant_id: int
+    quantity: Decimal
+
+
+def _write_movements(
+    *,
+    lines: Sequence[StockMovementLine],
+    movement_type: str,
+    sign: int,
+    reason: str,
+    created_by: User | None,
+) -> list[InventoryMovement]:
+    """Write one movement per line, locking the variants in ascending pk order.
+
+    The lock order is the fixed one of the whole system (D43, D67): the
+    variants are locked by ascending ``pk``, so two sales of overlapping
+    items cannot deadlock each other. A sale never takes the on-hand below
+    zero (D8); a return only adds stock.
+    """
+    if not lines:
+        raise InventoryError("A stock movement needs at least one line.")
+    variant_ids = [line.variant_id for line in lines]
+    if len(set(variant_ids)) != len(variant_ids):
+        raise InventoryError("A variant may appear only once per movement.")
+
+    with transaction.atomic():
+        variants = {
+            variant.pk: variant for variant in ProductVariant.objects.filter(pk__in=variant_ids)
+        }
+        if set(variants) != set(variant_ids):
+            raise InventoryError("One or more variants do not exist.")
+
+        locked: dict[int, ProductVariant] = {}
+        for variant_id in sorted(variant_ids):
+            locked[variant_id] = _lock_variant(variants[variant_id])
+
+        cleaned_reason = _clean_text(
+            reason, name="Reason", max_length=REASON_MAX_LENGTH, required=False
+        )
+
+        on_hand = _on_hand_by_variant(variant_ids)
+        movements: list[InventoryMovement] = []
+        for line in lines:
+            variant = locked[line.variant_id]
+            quantity = _clean_quantity(line.quantity, variant=variant)
+            if quantity <= 0:
+                raise InventoryError("A stock movement needs a quantity above zero.")
+            if sign < 0 and on_hand[line.variant_id] < quantity:
+                raise InsufficientStockError(
+                    f"Only {on_hand[line.variant_id]} of variant {line.variant_id} is in stock."
+                )
+            movements.append(
+                _record_movement(
+                    variant=variant,
+                    movement_type=movement_type,
+                    # ``sign`` is -1 for a sale and 1 for a return.
+                    quantity_change=quantity * sign,
+                    reason=cleaned_reason,
+                    supplier=None,
+                    batch_number="",
+                    expiry_date=None,
+                    created_by=created_by,
+                )
+            )
+        return movements
+
+
+def record_sales(
+    *,
+    lines: Sequence[StockMovementLine],
+    reason: str = "",
+    created_by: User | None = None,
+) -> list[InventoryMovement]:
+    """Record one ``SALE`` movement per line: the stock leaves the shop (D79).
+
+    This is the single writer the reservation code has been waiting for
+    (D7, D63): the order service calls it inside the same transaction that
+    consumes the hold, so the ledger and the hold always agree.
+    """
+    return _write_movements(
+        lines=lines,
+        movement_type=InventoryMovement.MovementType.SALE,
+        sign=-1,
+        reason=reason,
+        created_by=created_by,
+    )
+
+
+def record_returns(
+    *,
+    lines: Sequence[StockMovementLine],
+    reason: str = "",
+    created_by: User | None = None,
+) -> list[InventoryMovement]:
+    """Record one ``RETURN`` movement per line: the stock comes back (D79).
+
+    A cancelled order that had already been sent out gives its goods back to
+    the shop this way.
+    """
+    return _write_movements(
+        lines=lines,
+        movement_type=InventoryMovement.MovementType.RETURN,
+        sign=1,
+        reason=reason,
+        created_by=created_by,
+    )

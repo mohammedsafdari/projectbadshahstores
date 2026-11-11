@@ -13,6 +13,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.catalog.models import ProductVariant
 from apps.core.models import AppendOnlyError, TimeStampedModel
@@ -359,3 +360,41 @@ class OrderStatusLog(TimeStampedModel):
 
     def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
         raise AppendOnlyError("Order status log entries cannot be deleted.")
+
+
+class CodCollection(TimeStampedModel):
+    """The cash one staff member collected at the door for one order (D79).
+
+    There is at most one row per order: the one-to-one column is the
+    "one collection per order" rule in the database itself. The amount is
+    always ``Decimal`` and always above zero, and the foreign keys are
+    ``PROTECT`` so a collected amount and the staff member who took it can
+    never be deleted by accident.
+    """
+
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.PROTECT,
+        related_name="cod_collection",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    collected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="cod_collections",
+    )
+    # The moment the cash was taken. The service sets it; the default only
+    # covers a row made outside the service.
+    collected_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-collected_at", "-pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="codcollection_amount_gt_0",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.order_id} {self.amount}"

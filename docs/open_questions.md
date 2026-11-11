@@ -132,6 +132,13 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 ### Added in Slice 38g
 - [ ] Orders and verification state for staff in Phase 5 (see docs/phase5_minimum.md) — owner; ask again before Phase 5; default in use: as listed in that file
 
+### Added in Slice 42a (staff order actions, D79)
+- [ ] Should the send-out need both `SEND_OUT` and `START_PACKING`? — owner; ask again before the staff screens go live; default in use: `SEND_OUT` alone, because a packer holds both by default (D79)
+- [ ] Should the unpaid list of the daily cash reconciliation be limited to one delivery day, or list every order that still owes cash? — owner; ask again before the staff screens go live; default in use: every order that still owes cash, listed until it is collected or cancelled (D79)
+- [ ] Should the reconciliation compare the day's cash with the money in the till, or is the grand total enough? — owner; ask again before the staff screens go live; default in use: the grand total only, with no "handed over" step (D79)
+- [ ] Should a delivery person be able to open the order list and the cash reconciliation? The `DELIVERY` role has `DELIVER_COD` only, so today they cannot — owner; ask again before the staff screens go live; default in use: the matrix default stands (D75, D79)
+- [ ] Should the cash collected at the door be read as a note (a slip of paper per order) instead of typed? — owner; ask again before the staff screens go live; default in use: typed on the screen (D79)
+
 ### Added in Slice 39
 - [ ] Should capabilities be settable per person (an override on `User`) instead of only per role? — owner; ask again before Phase 5; default in use: per role only (D75)
 - [ ] Should a cash part above the COD cap be allowed when the customer agrees, or should the order always be refused? — owner; low priority; ask again before Phase 5; default in use: refused (D74)
