@@ -26,6 +26,16 @@ def _client(user: User) -> Client:
     return client
 
 
+def _view_orders_only() -> User:
+    viewer = staff(User.ROLE_MEMBER)
+    RoleCapability.objects.create(
+        role=User.ROLE_MEMBER,
+        capability=Capability.VIEW_ORDERS,
+        allowed=True,
+    )
+    return viewer
+
+
 def test_order_list_anonymous_redirects_to_login() -> None:
     response = Client().get(reverse("staff_order_list"))
 
@@ -231,3 +241,27 @@ def test_packing_slip_says_not_a_tax_invoice() -> None:
 
     assert response.status_code == 200
     assert "Packing slip. Not a tax invoice." in response.content.decode()
+
+
+def test_send_out_post_with_only_view_orders_is_403() -> None:
+    order = OrderFactory(status=Order.Status.PACKING)
+
+    response = _client(_view_orders_only()).post(
+        reverse("staff_send_out", args=[order.order_number])
+    )
+
+    assert response.status_code == 403
+    order.refresh_from_db()
+    assert order.status == Order.Status.PACKING
+
+
+def test_start_packing_post_with_only_view_orders_is_403() -> None:
+    order = OrderFactory(status=Order.Status.CONFIRMED)
+
+    response = _client(_view_orders_only()).post(
+        reverse("staff_start_packing", args=[order.order_number])
+    )
+
+    assert response.status_code == 403
+    order.refresh_from_db()
+    assert order.status == Order.Status.CONFIRMED

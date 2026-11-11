@@ -327,13 +327,17 @@ def get_staff_order(
 
 
 def delivery_orders_for_day(actor: User, day: date) -> list[Order]:
-    """Every order out for delivery on one day, in order-number order."""
+    """Every order out for delivery today or earlier, oldest promise first.
+
+    A future delivery day is never shown, so an overdue order stays on the
+    list until it is delivered (Slice 42c).
+    """
     require_capability(actor, Capability.DELIVER_COD)
     return list(
         Order.objects.filter(
             status=Order.Status.OUT_FOR_DELIVERY,
-            promised_delivery_date=day,
+            promised_delivery_date__lte=day,
         )
         .select_related("user")
-        .order_by("order_number", "pk")
+        .order_by("promised_delivery_date", "order_number", "pk")
     )

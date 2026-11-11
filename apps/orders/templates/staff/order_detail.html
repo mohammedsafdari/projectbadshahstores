@@ -54,6 +54,11 @@
           {% translate "fee" %} {{ refund.fee_amount }}
         </p>
       {% endif %}
+      {% if refund_stuck %}
+        <p class="mt-2 text-base">
+          {% translate "Check the payment provider's dashboard before marking this as paid by hand." %}
+        </p>
+      {% endif %}
       {% if can_send_refund %}
         <form method="post" action="{{ refund_url }}" class="mt-2">{% csrf_token %}
           <button type="submit" class="rounded bg-gray-900 px-4 py-3 text-sm font-medium text-white">{% translate "Send refund now" %}</button>

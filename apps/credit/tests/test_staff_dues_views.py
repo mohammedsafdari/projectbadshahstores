@@ -194,3 +194,29 @@ def test_reminder_to_customer_without_balance_is_refused() -> None:
     assert response.status_code == 200
     assert "no pending balance" in response.content.decode().lower()
     notify.assert_not_called()
+
+
+def test_dues_list_hides_customers_with_no_balance() -> None:
+    CreditAccountFactory(
+        user=UserFactory(full_name="Settled Customer"),
+        balance=Decimal("0.00"),
+    )
+
+    html = _client(staff(User.ROLE_MANAGER)).get(reverse("staff_credit_dues")).content.decode()
+
+    assert "Settled Customer" not in html
+
+
+def test_confirm_step_disables_the_button_on_submit() -> None:
+    account = CreditAccountFactory(balance=Decimal("500.00"))
+    client = _client(staff(User.ROLE_MANAGER))
+
+    response = client.post(
+        reverse("staff_record_credit_payment", args=[account.pk]),
+        _payment_data(),
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'onsubmit="this.querySelector' in html
+    assert "disabled = true" in html

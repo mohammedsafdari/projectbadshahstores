@@ -39,6 +39,11 @@ from apps.payments.models import Payment, Refund
 
 logger = logging.getLogger(__name__)
 
+# A SENT refund is still with the provider for this long. After that, a crash
+# between the claim and the provider call may have left it unsent, so a person
+# may record it by hand (D79 amendment, Slice 42c).
+REFUND_STUCK_AFTER = timedelta(minutes=30)
+
 
 class RefundError(ValueError):
     """Base error for every refund refusal."""
@@ -72,6 +77,21 @@ class _Claim:
 
 def _now(now: datetime | None) -> datetime:
     return now if now is not None else timezone.now()
+
+
+def refund_is_stuck(refund: Refund | None, *, now: datetime | None = None) -> bool:
+    """Whether a SENT refund is old enough to record by hand (Slice 42c).
+
+    A missing attempt time also counts as stuck: the claim may have crashed
+    before writing it. Exactly ``REFUND_STUCK_AFTER`` old is not yet stuck, so
+    the boundary is refused.
+    """
+    if refund is None or refund.status != Refund.Status.SENT:
+        return False
+    attempted = refund.last_attempt_at
+    if attempted is None:
+        return True
+    return attempted < _now(now) - REFUND_STUCK_AFTER
 
 
 def _fee_for(payment: Payment, kind: str) -> Decimal:
@@ -667,8 +687,9 @@ def mark_refunded_by_hand(
 
     The money is marked PROCESSED with the actor, the time and a required note,
     and no provider call is made. A refund that is already processed, or that
-    the provider is already sending, is refused so a second payment cannot be
-    recorded.
+    the provider may still be sending, is refused so a second payment cannot be
+    recorded. A SENT refund is stuck only when its last attempt is missing or
+    older than ``REFUND_STUCK_AFTER``; exactly at the limit is still refused.
     """
     cleaned = (note or "").strip()
     if not cleaned:
@@ -681,7 +702,7 @@ def mark_refunded_by_hand(
         payment, refund = locked
         if refund.status == Refund.Status.PROCESSED:
             raise RefundAlreadySettledError("This refund is already processed.")
-        if refund.status == Refund.Status.SENT:
+        if refund.status == Refund.Status.SENT and not refund_is_stuck(refund, now=resolved_now):
             raise RefundAlreadySettledError("The provider is already sending this refund.")
         refund.status = Refund.Status.PROCESSED
         refund.processed_at = resolved_now

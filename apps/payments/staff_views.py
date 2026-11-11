@@ -37,6 +37,7 @@ REFUND_PROCESSED_MESSAGE = _("The refund is processed.")
 REFUND_PENDING_MESSAGE = _("The refund was not completed yet. Try again.")
 REFUND_FAILED_MESSAGE = _("The refund failed. Mark it as paid by hand if you paid it yourself.")
 REFUND_BY_HAND_MESSAGE = _("The refund was marked as paid by hand.")
+REFUND_ALREADY_SENT_MESSAGE = _("This refund was already sent to the provider.")
 
 
 def _refund_result_message(status: str) -> str:
@@ -63,6 +64,11 @@ def send_refund_now(request: HttpRequest, order_number: str) -> HttpResponse:
     refund = latest_refund(order)
     if refund is None:
         messages.error(request, NO_REFUND_MESSAGE)
+        return redirect("staff_order_detail", order_number=order.order_number)
+    if refund.status == Refund.Status.SENT:
+        # The provider may already have the money; sending again could refund
+        # it twice. A person must check the provider instead (Slice 42c).
+        messages.info(request, REFUND_ALREADY_SENT_MESSAGE)
         return redirect("staff_order_detail", order_number=order.order_number)
     try:
         # A FAILED refund is never retried automatically (D78), so this

@@ -179,3 +179,51 @@ def test_packer_cannot_open_cash_page() -> None:
     response = _client(staff(User.ROLE_PACKER)).get(reverse("staff_cash"))
 
     assert response.status_code == 403
+
+
+def test_delivery_list_shows_overdue_orders_from_earlier_days() -> None:
+    overdue = OrderFactory(
+        order_number="BS/26-27/000914",
+        status=Order.Status.OUT_FOR_DELIVERY,
+        promised_delivery_date=TODAY - timedelta(days=2),
+    )
+
+    html = _client(staff(User.ROLE_DELIVERY)).get(reverse("staff_delivery_list")).content.decode()
+
+    assert overdue.order_number in html
+    assert overdue.promised_delivery_date.isoformat() in html
+
+
+def test_delivery_list_excludes_orders_promised_for_a_future_day() -> None:
+    future = OrderFactory(
+        order_number="BS/26-27/000915",
+        status=Order.Status.OUT_FOR_DELIVERY,
+        promised_delivery_date=TODAY + timedelta(days=1),
+    )
+
+    html = _client(staff(User.ROLE_DELIVERY)).get(reverse("staff_delivery_list")).content.decode()
+
+    assert future.order_number not in html
+
+
+def test_delivery_list_orders_overdue_first_then_by_number() -> None:
+    oldest_high = OrderFactory(
+        order_number="BS/26-27/000999",
+        status=Order.Status.OUT_FOR_DELIVERY,
+        promised_delivery_date=TODAY - timedelta(days=2),
+    )
+    oldest_low = OrderFactory(
+        order_number="BS/26-27/000998",
+        status=Order.Status.OUT_FOR_DELIVERY,
+        promised_delivery_date=TODAY - timedelta(days=2),
+    )
+    today = OrderFactory(
+        order_number="BS/26-27/000001",
+        status=Order.Status.OUT_FOR_DELIVERY,
+        promised_delivery_date=TODAY,
+    )
+
+    html = _client(staff(User.ROLE_DELIVERY)).get(reverse("staff_delivery_list")).content.decode()
+
+    assert html.index(oldest_low.order_number) < html.index(oldest_high.order_number)
+    assert html.index(oldest_high.order_number) < html.index(today.order_number)

@@ -322,3 +322,7 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 - `Callable[[Callable[..., HttpResponse]], Callable[..., HttpResponse]]` is the type of a decorator that keeps a view's shape; `...` means "any arguments"; .NET comparison: a `Func<Func<..., HttpResponse>, Func<..., HttpResponse>>`.
 - `forms.DecimalField(min_value=Decimal("0.01"))` refuses a zero or negative amount before the service runs; .NET comparison: a `[Range]` validation attribute.
 - `f"₹{value:.2f}"` formats money to two places inside an f-string; .NET comparison: `value.ToString("F2")`.
+
+## New in Slice 42c
+- `promised_delivery_date__lte=day` keeps an overdue order on the list, and `refund_is_stuck` compares `last_attempt_at` with `now - REFUND_STUCK_AFTER`; .NET comparison: `x <= day` and `x < DateTime.Now - TimeSpan.FromMinutes(30)`.
+- The confirm form's inline `onsubmit` disables its submit button after the first click; .NET comparison: a client-side `OnClientClick` guard that is only convenience, never the server rule.

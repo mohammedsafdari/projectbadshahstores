@@ -147,6 +147,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Should a refund marked by hand send the customer the processed-refund message? — owner; ask again before the staff screens go live; default in use: yes, the existing `EVENT_REFUND_PROCESSED` message
 - [ ] Should the dues page list a customer whose balance has just reached zero? — owner; low priority; ask again before launch; default in use: only a positive balance is listed
 
+### Added in Slice 42c (closing the 42b test gaps)
+- [ ] Should the credit payment confirm step get a server-side double-submit token? — owner; ask again before the staff screens go live; default in use: only an inline `onsubmit` disables the button, so the same fields can still be posted twice
+- [ ] Should a stuck SENT refund also get an automatic check against the provider, instead of a person looking at its dashboard? — owner; ask again before the staff screens go live; default in use: a person checks the dashboard and marks the refund by hand; no automatic retry or provider call is added
+
 ### Added in Slice 39
 - [ ] Should capabilities be settable per person (an override on `User`) instead of only per role? — owner; ask again before Phase 5; default in use: per role only (D75)
 - [ ] Should a cash part above the COD cap be allowed when the customer agrees, or should the order always be refused? — owner; low priority; ask again before Phase 5; default in use: refused (D74)

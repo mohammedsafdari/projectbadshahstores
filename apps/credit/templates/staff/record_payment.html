@@ -21,7 +21,8 @@
         {% translate "Mode" %}: {{ form.mode.value }} ·
         {% translate "Date" %}: {{ form.entry_date.value }}
       </p>
-      <form method="post" action="{{ action_url }}" class="mt-3">
+      <form method="post" action="{{ action_url }}" class="mt-3"
+            onsubmit="this.querySelector('button[type=submit]').disabled = true;">
         {% csrf_token %}
         <input type="hidden" name="amount" value="{{ form.amount.value }}">
         <input type="hidden" name="mode" value="{{ form.mode.value }}">

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -12,13 +13,20 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts.models import User
+from apps.accounts.capabilities import Capability
+from apps.accounts.models import RoleCapability, User
 from apps.orders.models import Order
 from apps.orders.tests.factories import OrderFactory
 from apps.orders.tests.staff_helpers import staff
 from apps.payments.fake_gateway import FakeGateway
 from apps.payments.models import Payment, Refund
-from apps.payments.refunds import send_refund
+from apps.payments.refunds import (
+    REFUND_STUCK_AFTER,
+    RefundAlreadySettledError,
+    mark_refunded_by_hand,
+    retry_refund,
+    send_refund,
+)
 from apps.payments.tests.factories import CapturedPaymentFactory, RefundFactory
 
 pytestmark = pytest.mark.django_db
@@ -219,3 +227,196 @@ def test_two_workers_cannot_send_the_same_refund() -> None:
     assert gateway.calls == 1
     assert refund.attempt_count == 1
     assert refund.status == Refund.Status.PROCESSED
+
+
+def test_mark_by_hand_with_only_view_orders_is_403() -> None:
+    viewer = staff(User.ROLE_MEMBER)
+    RoleCapability.objects.create(
+        role=User.ROLE_MEMBER,
+        capability=Capability.VIEW_ORDERS,
+        allowed=True,
+    )
+    order, payment = _cancelled_online_order()
+    refund = RefundFactory(payment=payment, status=Refund.Status.REQUESTED)
+
+    response = _client(viewer).post(
+        _url("staff_mark_refunded_by_hand", order),
+        {"note": "Paid at the counter"},
+    )
+
+    assert response.status_code == 403
+    refund.refresh_from_db()
+    assert refund.status == Refund.Status.REQUESTED
+    assert refund.marked_by_id is None
+
+
+def test_mark_by_hand_refused_for_a_recently_sent_refund() -> None:
+    actor = staff(User.ROLE_MANAGER)
+    _order, payment = _cancelled_online_order()
+    now = timezone.now()
+    refund = RefundFactory(
+        payment=payment,
+        status=Refund.Status.SENT,
+        last_attempt_at=now - timedelta(minutes=5),
+    )
+    before = refund.updated_at
+
+    with pytest.raises(RefundAlreadySettledError):
+        mark_refunded_by_hand(
+            refund.pk,
+            actor=actor,
+            note="Paid at the counter",
+            now=now,
+        )
+
+    refund.refresh_from_db()
+    assert refund.status == Refund.Status.SENT
+    assert refund.marked_by_id is None
+    assert refund.marked_at is None
+    assert refund.marked_note == ""
+    assert refund.updated_at == before
+    payment.refresh_from_db()
+    assert payment.needs_refund is True
+
+
+def test_mark_by_hand_allowed_for_a_refund_stuck_in_sent() -> None:
+    actor = staff(User.ROLE_MANAGER)
+    _order, payment = _cancelled_online_order()
+    now = timezone.now()
+    refund = RefundFactory(
+        payment=payment,
+        status=Refund.Status.SENT,
+        last_attempt_at=now - timedelta(minutes=31),
+    )
+
+    marked = mark_refunded_by_hand(
+        refund.pk,
+        actor=actor,
+        note="Paid by UPI at the counter",
+        now=now,
+    )
+
+    assert marked.status == Refund.Status.PROCESSED
+    assert marked.marked_by_id == actor.pk
+    assert marked.marked_at == now
+    assert marked.marked_note == "Paid by UPI at the counter"
+    assert marked.processed_at == now
+    payment.refresh_from_db()
+    assert payment.needs_refund is False
+
+
+def test_mark_by_hand_stuck_sent_without_attempt_time_is_allowed() -> None:
+    actor = staff(User.ROLE_MANAGER)
+    _order, payment = _cancelled_online_order()
+    now = timezone.now()
+    refund = RefundFactory(
+        payment=payment,
+        status=Refund.Status.SENT,
+        last_attempt_at=None,
+    )
+
+    marked = mark_refunded_by_hand(
+        refund.pk,
+        actor=actor,
+        note="Cash returned at the counter",
+        now=now,
+    )
+
+    assert marked.status == Refund.Status.PROCESSED
+    assert marked.marked_by_id == actor.pk
+
+
+def test_mark_by_hand_exactly_at_the_stuck_limit_is_refused() -> None:
+    actor = staff(User.ROLE_MANAGER)
+    _order, payment = _cancelled_online_order()
+    now = timezone.now()
+    refund = RefundFactory(
+        payment=payment,
+        status=Refund.Status.SENT,
+        last_attempt_at=now - REFUND_STUCK_AFTER,
+    )
+
+    with pytest.raises(RefundAlreadySettledError):
+        mark_refunded_by_hand(
+            refund.pk,
+            actor=actor,
+            note="Paid at the counter",
+            now=now,
+        )
+
+    refund.refresh_from_db()
+    assert refund.status == Refund.Status.SENT
+    assert refund.marked_by_id is None
+
+
+def test_send_refund_now_does_not_resend_a_sent_refund() -> None:
+    order, payment = _cancelled_online_order()
+    refund = RefundFactory(
+        payment=payment,
+        status=Refund.Status.SENT,
+        last_attempt_at=timezone.now(),
+    )
+
+    with (
+        patch("apps.payments.staff_views.send_refund") as send,
+        patch("apps.payments.refunds.get_gateway") as gateway,
+    ):
+        response = _client(staff(User.ROLE_MANAGER)).post(
+            _url("staff_send_refund", order),
+            follow=True,
+        )
+
+    assert response.status_code == 200
+    send.assert_not_called()
+    gateway.assert_not_called()
+    assert "already sent" in response.content.decode()
+    refund.refresh_from_db()
+    assert refund.status == Refund.Status.SENT
+
+
+def test_retry_resets_attempt_count_before_sending() -> None:
+    FakeGateway.reset()
+    _order, payment = _cancelled_online_order()
+    refund = RefundFactory(
+        payment=payment,
+        status=Refund.Status.FAILED,
+        amount=Decimal("230.00"),
+        attempt_count=5,
+        failure_reason="The provider refused it",
+    )
+
+    retry_refund(refund.pk, gateway=FakeGateway())
+
+    refund.refresh_from_db()
+    assert refund.attempt_count == 1
+    assert refund.status == Refund.Status.PROCESSED
+
+
+def test_order_detail_warns_about_a_stuck_sent_refund() -> None:
+    now = timezone.now()
+    stuck_order, stuck_payment = _cancelled_online_order()
+    RefundFactory(
+        payment=stuck_payment,
+        status=Refund.Status.SENT,
+        last_attempt_at=now - timedelta(minutes=31),
+    )
+    recent_order, recent_payment = _cancelled_online_order()
+    RefundFactory(
+        payment=recent_payment,
+        status=Refund.Status.SENT,
+        last_attempt_at=now - timedelta(minutes=5),
+    )
+    client = _client(staff(User.ROLE_MANAGER))
+    warning_start = "Check the payment provider"
+    warning_end = "dashboard before marking this as paid by hand."
+
+    stuck_html = client.get(
+        reverse("staff_order_detail", args=[stuck_order.order_number])
+    ).content.decode()
+    recent_html = client.get(
+        reverse("staff_order_detail", args=[recent_order.order_number])
+    ).content.decode()
+
+    assert warning_start in stuck_html
+    assert warning_end in stuck_html
+    assert warning_start not in recent_html

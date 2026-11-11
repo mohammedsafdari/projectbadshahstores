@@ -57,7 +57,7 @@ from apps.orders.staff_services import (
     staff_cancel_order,
     start_packing,
 )
-from apps.payments.refunds import latest_refund
+from apps.payments.refunds import latest_refund, refund_is_stuck
 
 LOGIN_URL = reverse_lazy("account_login")
 
@@ -286,10 +286,10 @@ def _detail_context(user: User, order: Order, *, error: str | None = None) -> di
     refund = latest_refund(order)
     flags = _action_flags(user, order)
     can_refund = has_capability(user, Capability.REFUND_PAYMENTS)
-    refund_open = refund is not None and refund.status in (
-        "REQUESTED",
-        "FAILED",
-    )
+    refund_stuck = refund_is_stuck(refund)
+    refund_open = refund is not None and (refund.status in ("REQUESTED", "FAILED") or refund_stuck)
+    can_send = refund is not None and refund.status in ("REQUESTED", "FAILED") and can_refund
+    can_mark = refund_open and can_refund
     return {
         "order": order,
         "customer": order.user,
@@ -312,8 +312,9 @@ def _detail_context(user: User, order: Order, *, error: str | None = None) -> di
         "gate_reason": delivery_gate_reason(order.user),
         "refund": refund,
         "refund_open": refund_open,
-        "can_send_refund": refund_open and can_refund,
-        "can_mark_by_hand": refund_open and can_refund,
+        "refund_stuck": refund_stuck,
+        "can_send_refund": can_send,
+        "can_mark_by_hand": can_mark,
         "slip_url": reverse("staff_packing_slip", args=[order.order_number]),
         "detail_url": reverse("staff_order_detail", args=[order.order_number]),
         "start_url": reverse("staff_start_packing", args=[order.order_number]),
