@@ -23,7 +23,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 ## Payments and notifications
 - [ ] Razorpay test-mode keys — provider — owner when ready; test mode needs no activation, and the live account stays inactive until close to launch because the 0% platform-fee window starts at activation (D76)
 - [ ] Live payment gateway: Razorpay or Cashfree, chosen at KYC time, with Cashfree's AMC in writing if it is chosen (third parties report ₹4,999 a year) — owner/provider; ask again before the Phase 4 wrap-up; default in use: Razorpay stays for Phase 4 in test mode (D76)
-- [ ] Bank confirmation that the shop's UPI QR counts as a small-merchant QR, so receipts up to ₹1 lakh a month stay at zero MDR — owner/bank; ask again before Phase 5 COD/QR collection; default in use: not confirmed (D76)
+- [ ] Bank confirmation that the shop's UPI QR counts as a small-merchant QR, so receipts up to ₹1 lakh a month stay at zero MDR — owner/bank; ask again before launch (Phase 7); default in use: not confirmed (D76)
 - [ ] COD policy: cap ₹2,000 at checkout only (recorded); revisit if policy changes — owner
 - [x] SMS/WhatsApp provider choice — decided (D76, 10 November 2026): SMS is MSG91 behind the abstraction, with DLT registration first; WhatsApp is only the free `wa.me` button in the MVP, with no WhatsApp Business API — owner
 - [ ] DLT registration for SMS/WhatsApp templates — provider/regulator — owner
@@ -60,7 +60,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Should low stock or near expiry also send a message (WhatsApp, SMS or email)? — owner; default in use: screens only, notifications wait for Phase 6 (D45)
 - [ ] Should the Adjust page refuse to take stock below zero? — owner/developer; default in use: no, `adjust_stock` allows it and logs a warning (D43); Damage cannot go below zero
 - [ ] Do you need to know how much of each received lot is left (batch-level stock)? — owner; default in use: no, the Expiring lots screen shows the variant's total (D42, D45)
-- [ ] Should the CSV export hide `cost_price` from some staff (for example packers) or from everyone except the owner? — owner; ask again before Phase 5; default in use: the `EXPORT_CSV` capability decides who may export (owner and manager by default, D75), and the file still includes `cost_price` (D46)
+- [ ] Should the CSV export hide `cost_price` from some staff (for example packers) or from everyone except the owner? — owner; ask again before launch (Phase 7); default in use: the `EXPORT_CSV` capability decides who may export (owner and manager by default, D75), and the file still includes `cost_price` (D46)
 - [ ] Should every CSV export be logged (who downloaded the catalogue, when)? — owner/developer; default in use: no (D46)
 - [ ] Would an `.xlsx` export be better than CSV for the staff (Excel mangles barcodes and HSN codes in CSV)? — owner; default in use: CSV only, import will validate barcodes and HSN codes (D46)
 - [ ] Do you want a separate stock-level export (on-hand per SKU) for the billing software or stock counts? — owner; needed by Slice 20; default in use: no stock column in the catalogue export (D46)
@@ -69,7 +69,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 Each item says when to ask again. At the start of every slice, Claude lists the items whose "ask again before" point is that slice (or earlier) and asks them first.
 - [x] Who is the stock master while the shop sells in store and online? — answered (D55, 3 Nov 2026; the route and the export confirmed in D63, 6 Nov 2026): the billing software is the main stock source, the website is refreshed by regular imports and the physical count happens at the production stage — owner
 - [ ] Do we need partial files (for example only sku_code and prices)? — owner; low priority; ask again at Slice 21; default in use: every column of the export must be present (D47)
-- [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before Phase 5; default in use: yes, refused, to catch a dropped zero (D47)
+- [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before launch (Phase 7); default in use: yes, refused, to catch a dropped zero (D47)
 - [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before the invoice slice; default in use: own prefix `INV/...` (see the invoice prefix item above)
 - [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before the invoice slice (extends the rounding item above); default in use: our half-up rule (Slice 13c)
 
@@ -80,7 +80,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] The rest of the category tree beyond the five starter categories (chocolates-confectionery, noodles-soups, milk-dairy, tea-coffee, spices-masalas); slugs become URLs — owner; ask again before launch (Phase 7); default in use: the five starter categories (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] Pack weights in grams for KitKat, Munch and Milkybar rows (the billing names carry price points such as "10/"), so unit prices and grouping work — owner; low priority; ask again before launch (Phase 7); default in use: unit PACKET, pack size 1 (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] Are the two 1 kg Everyday milk powder rows (03302 at 600 and 03304 at 500) the same pack? — owner; low priority; ask again before launch (Phase 7); default in use: 03302 is not loaded (MRP problem and bad HSN) (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
-- [ ] How to enter real purchase rates (cost price) without committing them to the public repository (a private CSV import) — owner/developer; ask again before Phase 5 reports; default in use: cost_price blank in every committed seed file
+- [ ] How to enter real purchase rates (cost price) without committing them to the public repository (a private CSV import) — owner/developer; ask again before the reports slice; default in use: cost_price blank in every committed seed file
 - [ ] Billing stock is unusable (45 of 55 rows negative, none positive). A physical count is needed before launch to start the ledger — owner; ask again before Phase 3; default in use: the website ledger starts from received stock and counts (D43)
 - [ ] Check diet type (veg mark) on the packs of all 33 real products — owner; low priority; ask again before launch (Phase 7); default in use: VEG on every real row (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] Product names with price points ("KitKat ₹10 pack") go stale when an MRP changes; decide on a naming rule once pack weights are known — owner; low priority; ask again before launch (Phase 7); default in use: price point in the name (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
@@ -120,7 +120,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 ### Added in Slice 38
 - [ ] DLT templates for the six order message texts (D69) — owner; ask again before real SMS; default in use: the console SMS backend
 - [ ] Real SMTP provider and sender address for order emails — owner; ask again before launch; default in use: console email in development, off in production
-- [ ] Should the customer get the cancel message when staff cancel an order? — owner; ask again before Phase 5; default in use: yes (D69)
+- [x] Should the customer get the cancel message when staff cancel an order? — answered (Slice 42a, 11 November 2026): yes, built in 42a (D69); default in use: yes (D69) — owner
 
 ### Added in Slice 38e
 - [x] How staff and superusers may use the shop login (OTP and/or password) while /admin keeps its own separate sign-in — answered (D72, 8 November 2026): separate accounts; a staff phone gets its own customer row and /admin keeps the staff-only natural key — owner
