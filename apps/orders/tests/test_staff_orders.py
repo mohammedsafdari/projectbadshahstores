@@ -73,6 +73,22 @@ def test_order_list_searches_by_phone() -> None:
     assert [row.order.pk for row in rows] == [wanted.pk]
 
 
+def test_order_list_search_finds_the_phone_frozen_on_the_order() -> None:
+    actor = staff()
+    customer = UserFactory(phone="+919000000004")
+    # The address phone of the order is not the phone of the account.
+    wanted = OrderFactory(user=customer, ship_phone="+919000000005")
+    other = OrderFactory(ship_phone="+919000000006")
+
+    by_address_phone = list_staff_orders(actor, search="+919000000005")
+    by_account_phone = list_staff_orders(actor, search="+919000000004")
+
+    assert [row.order.pk for row in by_address_phone] == [wanted.pk]
+    assert [row.order.pk for row in by_account_phone] == [wanted.pk]
+    assert other.pk not in [row.order.pk for row in by_address_phone]
+    assert other.pk not in [row.order.pk for row in by_account_phone]
+
+
 def test_order_list_row_shows_customer_amount_method_and_verification() -> None:
     actor = staff()
     customer = UserFactory(full_name="Asha Sharma")

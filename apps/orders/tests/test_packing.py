@@ -14,7 +14,7 @@ import pytest
 
 from apps.catalog.models import ProductVariant
 from apps.inventory.models import InventoryMovement, StockReservation
-from apps.inventory.services import get_on_hand
+from apps.inventory.services import InsufficientStockError, adjust_stock, get_on_hand
 from apps.orders.models import Order, OrderItem, OrderStatusLog
 from apps.orders.services import CustomerNotVerifiedError, InvalidTransitionError
 from apps.orders.staff_services import (
@@ -199,6 +199,65 @@ def test_send_out_with_expired_reservation_changes_nothing() -> None:
     assert order.status == Order.Status.PACKING
     assert hold.status == StockReservation.Status.ACTIVE
     assert not _sale_movements().exists()
+
+
+def test_send_out_refuses_when_hold_quantity_differs_from_the_order_line() -> None:
+    customer = UserFactory()
+    row = stocked_variant()
+    group = uuid4()
+    # The hold is for two, but the order line is for three.
+    hold = hold_for(row, customer, group=group, quantity="2")
+    order = OrderFactory(
+        user=customer,
+        status=Order.Status.PACKING,
+        checkout_group=group,
+    )
+    OrderItemFactory(order=order, variant=row, quantity_ordered=Decimal("3"))
+
+    with pytest.raises(StockHoldUnavailableError):
+        pack_and_send_out(order.pk, actor=staff(), now=NOW)
+
+    order.refresh_from_db()
+    hold.refresh_from_db()
+    assert order.status == Order.Status.PACKING
+    assert hold.status == StockReservation.Status.ACTIVE
+    assert not _sale_movements().exists()
+    assert get_on_hand(row) == Decimal("10")
+
+
+def test_send_out_refuses_when_stock_on_hand_is_short() -> None:
+    order, row, hold = order_with_hold(quantity="2")
+    # The stock is taken away after the hold was taken, so the shop no longer
+    # has what the order needs.
+    adjust_stock(
+        variant=row,
+        quantity_change=Decimal("-9"),
+        reason="Sold in the shop",
+    )
+
+    with pytest.raises(InsufficientStockError):
+        pack_and_send_out(order.pk, actor=staff(), now=NOW)
+
+    order.refresh_from_db()
+    hold.refresh_from_db()
+    assert order.status == Order.Status.PACKING
+    # The hold that was consumed is rolled back with the refused sale.
+    assert hold.status == StockReservation.Status.ACTIVE
+    assert hold.consumed_at is None
+    assert not _sale_movements().exists()
+
+
+def test_send_out_refuses_a_hold_that_has_expired_with_a_plain_message() -> None:
+    # The model only allows an expiry on a checkout hold, so an active hold
+    # with an expiry in the past is an expired checkout hold.
+    order, _row, hold = expired_hold_order()
+
+    with pytest.raises(StockHoldUnavailableError) as error:
+        pack_and_send_out(order.pk, actor=staff(), now=NOW)
+
+    assert "expired" in str(error.value)
+    hold.refresh_from_db()
+    assert hold.status == StockReservation.Status.ACTIVE
 
 
 def test_send_out_is_atomic_when_one_line_fails() -> None:

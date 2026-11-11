@@ -116,6 +116,24 @@ def test_deliver_online_paid_order_needs_no_cash() -> None:
     assert not CodCollection.objects.exists()
 
 
+def test_deliver_order_with_no_cash_due_refuses_a_cash_amount() -> None:
+    # A khata order owes nothing at the door, so there is no cash to collect
+    # and an amount must not be accepted for it.
+    order = _out_for_delivery_order(payment_method=Order.PaymentMethod.CREDIT)
+
+    with pytest.raises(CodAmountMismatchError):
+        mark_delivered(
+            order.pk,
+            actor=staff(),
+            collected_amount=Decimal("230.00"),
+            now=NOW,
+        )
+
+    order.refresh_from_db()
+    assert order.status == Order.Status.OUT_FOR_DELIVERY
+    assert not CodCollection.objects.exists()
+
+
 def test_deliver_moves_to_delivered() -> None:
     order = _out_for_delivery_order()
 
