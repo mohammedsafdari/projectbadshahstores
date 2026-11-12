@@ -349,6 +349,25 @@ def test_mark_by_hand_exactly_at_the_stuck_limit_is_refused() -> None:
     assert refund.marked_by_id is None
 
 
+def test_by_hand_note_is_stored_cut_to_200_characters() -> None:
+    actor = staff(User.ROLE_MANAGER)
+    _order, payment = _cancelled_online_order()
+    refund = RefundFactory(payment=payment, status=Refund.Status.REQUESTED)
+    long_note = "Paid at the counter. " * 20
+
+    marked = mark_refunded_by_hand(
+        refund.pk,
+        actor=actor,
+        note=long_note,
+        now=timezone.now(),
+    )
+
+    # The column holds 200 characters, so the note is cut rather than refused.
+    assert len(long_note) > 200
+    assert len(marked.marked_note) == 200
+    assert marked.marked_note == long_note[:200]
+
+
 def test_send_refund_now_does_not_resend_a_sent_refund() -> None:
     order, payment = _cancelled_online_order()
     refund = RefundFactory(

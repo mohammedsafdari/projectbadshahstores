@@ -31,6 +31,7 @@ from apps.accounts.models import User
 from apps.inventory.models import StockReservation
 from apps.inventory.reservations import consume_reservation
 from apps.inventory.services import StockMovementLine, record_returns, record_sales
+from apps.orders.invoices import issue_invoice, mark_invoice_cancelled
 from apps.orders.models import CodCollection, Order, OrderItem
 from apps.orders.services import (
     CancelReasonRequiredError,
@@ -215,6 +216,11 @@ def pack_and_send_out(order_id: int, *, actor: User, now: datetime | None = None
             item.item_status = OrderItem.ItemStatus.FULFILLED
             item.save(update_fields=["quantity_fulfilled", "item_status", "updated_at"])
 
+        # The GST tax invoice is issued inside this transaction, after the sale
+        # is written and before the status moves (D13, D80). A refusal rolls
+        # the whole send-out back, so no stock, hold or number is left behind.
+        issue_invoice(order, actor=actor, now=resolved_now)
+
         # ``transition_order`` loads the order again, so the object it returns
         # is the one with the new status. The caller gets that one.
         updated = transition_order(
@@ -374,6 +380,10 @@ def staff_cancel_order(
                 created_by=actor,
             )
             _cancel_fulfilled_items(order)
+
+        # A cancelled invoice keeps its number and is marked, never deleted or
+        # renumbered (D14, D80). An order that never got one writes nothing.
+        mark_invoice_cancelled(order, cleaned_reason, now=resolved_now)
 
         # ``transition_order`` loads the order again, so the object it
         # returns is the one with the new status.

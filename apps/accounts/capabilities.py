@@ -42,6 +42,7 @@ class Capability(TextChoices):
     EXPORT_CSV = "EXPORT_CSV", "Export variants to CSV"
     VIEW_PAYMENTS = "VIEW_PAYMENTS", "View online payments"
     REFUND_PAYMENTS = "REFUND_PAYMENTS", "Refund an online payment"
+    VIEW_INVOICES = "VIEW_INVOICES", "View invoices"
 
 
 # The default rights of each role, used until the owner stores an override.

@@ -102,8 +102,13 @@ These live in `DeliveryZone`, `DeliverySlotDefinition`, and `ShopSettings`. Logi
 - Invoice numbers: `INV/26-27/000001`; max 16 characters (GST rule, to be confirmed by CA); sequential and gapless.
 
 ### Invoices and refunds
-- Invoice generated at packing/dispatch using fulfilled quantities.
-- Refunds after an invoice need a credit note (`CreditNote` model later; noted in docs, not built in MVP).
+- Built in Slice 43 (D80). `orders.Invoice` is one to one with `Order` (`PROTECT`): `invoice_number` (unique, 16 characters, `INV/26-27/000001`), `issued_at`, the frozen seller (`seller_name`, `seller_address`, `seller_gstin`, `seller_state`, `seller_state_code`), the frozen buyer (`buyer_name`, `buyer_phone`, `buyer_address`), `place_of_supply`, `taxable_total`, `cgst_total`, `sgst_total`, `gst_total`, `delivery_fee`, `grand_total`, `cancelled_at` and `cancel_reason`. The named constraints are `invoice_money_gte_0`, `invoice_cgst_plus_sgst_matches` and `invoice_grand_total_matches`.
+- `orders.InvoiceLine` holds `description`, `hsn_code`, `unit`, `quantity`, `rate`, `gst_rate_percent`, `taxable_value`, `cgst`, `sgst`, `line_total` and `is_fee_line`, under `invoiceline_money_gte_0` and `invoiceline_total_matches`. The delivery charge is the one line with `is_fee_line=True`, taxed at `ShopSettings.delivery_fee_gst_percent` (default 18.00, unconfirmed).
+- The invoice is generated at send-out from the fulfilled quantities, inside the same transaction as the `SALE` movements (`apps/orders/invoices.py`). Its number comes from `next_number`, so it is sequential and gapless, and a rolled-back send-out gives the number back. Every printed value is frozen, so a later edit to the settings or the catalogue never changes an issued invoice.
+- `mark_invoice_cancelled` marks a cancelled order's invoice with the reason and keeps its number; nothing is deleted or renumbered. The customer cancel path cannot reach a sent-out order, so it has no hook.
+- Pages: `/staff/orders/<order number>/invoice/` and `/staff/orders/<order number>/invoice.pdf` need `Capability.VIEW_INVOICES` (owner and manager by default), and `/orders/<checkout group>/invoice.pdf` is the order owner's own copy. `apps/orders/invoice_pdf.py` draws the PDF with reportlab; `pdf_text` replaces a character the built-in fonts cannot draw with `?` and prices print as `Rs. 1234.56`.
+- `python manage.py check_invoice_integrity` reports a line sum that differs, a sent-out order with no invoice and a gap in a number series, read-only (D80).
+- Refunds after an invoice need a credit note (`CreditNote` model later; noted in docs, not built in MVP, and still an open question).
 
 ### Payments
 

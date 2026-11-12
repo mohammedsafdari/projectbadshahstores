@@ -93,6 +93,7 @@ ORDER_DETAIL_HEADING = _("Order details")
 TIMELINE_HEADING = _("Order progress")
 BACK_TO_ORDERS_LINK = _("All my orders")
 VIEW_THIS_ORDER_LINK = _("View this order")
+INVOICE_LINK = _("View GST invoice (PDF)")
 CANCEL_ORDER_LINK = _("Cancel this order")
 CANCEL_TITLE = _("Cancel order")
 CANCEL_HEADING = _("Cancel this order?")
@@ -474,6 +475,7 @@ def page_text() -> dict[str, str]:
         "timeline_heading": str(TIMELINE_HEADING),
         "back_to_orders_link": str(BACK_TO_ORDERS_LINK),
         "view_this_order_link": str(VIEW_THIS_ORDER_LINK),
+        "invoice_link": str(INVOICE_LINK),
         "cancel_order_link": str(CANCEL_ORDER_LINK),
         "cancel_title": str(CANCEL_TITLE),
         "cancel_heading": str(CANCEL_HEADING),

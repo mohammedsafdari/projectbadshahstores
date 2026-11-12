@@ -32,7 +32,8 @@ from apps.credit.services import available_credit
 from apps.delivery.services import address_is_served, get_delivery_promise
 from apps.inventory.reservations import ReservationShortfallError
 from apps.orders.forms import CancelOrderForm, CheckoutForm
-from apps.orders.models import Order
+from apps.orders.invoice_pdf import invoice_pdf_response
+from apps.orders.models import Invoice, Order
 from apps.orders.presentation import (
     ADDRESS_NOT_FOUND_MESSAGE,
     ADDRESS_NOT_SERVED_MESSAGE,
@@ -612,10 +613,36 @@ def order_detail(request: HttpRequest, group: UUID) -> HttpResponse:
                 credit_returned_sentence(order.credit_applied) if cancelled_credit else ""
             ),
             "orders_url": reverse("order_list"),
+            # The invoice link is shown only once one was issued (D80).
+            "invoice_url": (
+                reverse("order_invoice_pdf", args=[order.checkout_group])
+                if Invoice.objects.filter(order=order).exists()
+                else ""
+            ),
             "verification_items": pending_verifications(user),
             "verification_heading": str(BANNER_HEADING),
         },
     )
+
+
+@login_required(login_url=LOGIN_URL)
+@require_http_methods(["GET"])
+@never_cache
+def order_invoice_pdf(request: HttpRequest, group: UUID) -> HttpResponse:
+    """The customer's own copy of the GST invoice, as a PDF (D80).
+
+    Only the owner of the order sees it: another customer's group is a plain
+    404, exactly like every other order page (D18, D70).
+    """
+    user = _current_user(request)
+    try:
+        order = get_user_order_by_group(user, group)
+    except OrderNotFoundError:
+        raise Http404("Order not found.") from None
+    invoice = Invoice.objects.filter(order=order).first()
+    if invoice is None:
+        raise Http404("This order has no invoice.")
+    return invoice_pdf_response(invoice)
 
 
 def _render_cancel(request: HttpRequest, order: Order, form: CancelOrderForm) -> HttpResponse:

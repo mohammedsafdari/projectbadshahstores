@@ -326,3 +326,13 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 ## New in Slice 42c
 - `promised_delivery_date__lte=day` keeps an overdue order on the list, and `refund_is_stuck` compares `last_attempt_at` with `now - REFUND_STUCK_AFTER`; .NET comparison: `x <= day` and `x < DateTime.Now - TimeSpan.FromMinutes(30)`.
 - The confirm form's inline `onsubmit` disables its submit button after the first click; .NET comparison: a client-side `OnClientClick` guard that is only convenience, never the server rule.
+
+## New in Slice 43
+- `sum((row[key] for row in rows), ZERO)` adds one money column with a `Decimal` start value, so an empty invoice gives 0.00 instead of an `int`; .NET comparison: `rows.Sum(r => r[key])` with a `0m` seed (`apps/orders/invoices.py`, `_sum`).
+- `buckets.setdefault(rate, [ZERO, ZERO, ZERO])` creates a row's running totals the first time its GST rate is seen; .NET comparison: `if (!map.TryGetValue(...)) map[rate] = new List<decimal>{0m, 0m, 0m};` (`apps/orders/invoice_pdf.py`, `_summary_rows`).
+- `"".join(char if 32 <= ord(char) < 127 else "?" for char in text)` turns any string into text a built-in PDF font can draw; `ord` gives a character's code point; .NET comparison: `(char)c` and `char.IsControl`, then `string.Concat` (`pdf_text`).
+- `Paragraph(escape(pdf_text(text)), style)` is escaped AFTER being made safe, because reportlab reads a little XML in a paragraph and an `&` in a shop name would break the page; .NET comparison: `SecurityElement.Escape` before handing text to a markup renderer.
+- `Invoice.objects.filter(order=order).first()` reads across the reverse one-to-one without raising, where `order.invoice` would raise `Invoice.DoesNotExist`; .NET comparison: a `FirstOrDefault()` instead of a required navigation property.
+- `Order.objects.filter(status__in=..., invoice__isnull=True)` finds rows with no related row at all; .NET comparison: a `LEFT JOIN ... WHERE other.Id IS NULL` written as a navigation filter.
+- A `pytest` fixture in `apps/orders/tests/conftest.py` with `autouse=True` runs before every test in that folder without being imported, which is how the shop details a scanned invoice needs are filled once; .NET comparison: a test-setup base class, but chosen by folder instead of inheritance.
+- `decimal` money is printed with `f"{value:g}"` for a quantity (2.000 becomes 2) and `f"Rs. {value:.2f}"` for an amount; .NET comparison: `ToString("G")` and `ToString("F2")`.

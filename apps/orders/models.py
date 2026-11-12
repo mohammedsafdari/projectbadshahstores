@@ -398,3 +398,132 @@ class CodCollection(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.order_id} {self.amount}"
+
+
+class Invoice(TimeStampedModel):
+    """The one GST tax invoice of one order, frozen when it goes out (D13, D80).
+
+    Every value the printed page shows is copied here, so a later edit to
+    ``ShopSettings`` or to a product can never rewrite an issued invoice. Money
+    is ``Decimal`` and the number is unique: a cancelled invoice keeps its
+    number, because the series must stay gapless (D14).
+    """
+
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.PROTECT,
+        related_name="invoice",
+    )
+    # The GST rule caps an invoice number at 16 characters (D14).
+    invoice_number = models.CharField(max_length=16, unique=True)
+    issued_at = models.DateTimeField()
+
+    # The seller, copied from ShopSettings when the invoice is issued.
+    seller_name = models.CharField(max_length=200)
+    seller_address = models.TextField()
+    seller_gstin = models.CharField(max_length=15)
+    seller_state = models.CharField(max_length=100)
+    seller_state_code = models.CharField(max_length=2)
+
+    # The buyer, copied from the frozen order (D57).
+    buyer_name = models.CharField(max_length=200)
+    buyer_phone = models.CharField(max_length=16)
+    buyer_address = models.TextField()
+    place_of_supply = models.CharField(max_length=100)
+
+    # Totals over every line, the delivery fee line included.
+    taxable_total = models.DecimalField(max_digits=12, decimal_places=2)
+    cgst_total = models.DecimalField(max_digits=12, decimal_places=2)
+    sgst_total = models.DecimalField(max_digits=12, decimal_places=2)
+    gst_total = models.DecimalField(max_digits=12, decimal_places=2)
+    delivery_fee = models.DecimalField(max_digits=12, decimal_places=2)
+    grand_total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    # A cancelled invoice is marked, never deleted or renumbered (D80).
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        ordering = ["-issued_at", "-pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(taxable_total__gte=0)
+                    & models.Q(cgst_total__gte=0)
+                    & models.Q(sgst_total__gte=0)
+                    & models.Q(gst_total__gte=0)
+                    & models.Q(delivery_fee__gte=0)
+                    & models.Q(grand_total__gte=0)
+                ),
+                name="invoice_money_gte_0",
+            ),
+            # The GST total is exactly the two halves added together.
+            models.CheckConstraint(
+                condition=models.Q(cgst_total=models.F("gst_total") - models.F("sgst_total")),
+                name="invoice_cgst_plus_sgst_matches",
+            ),
+            # Each line total is its taxable value plus its CGST and SGST, so
+            # the sum of the line totals is the taxable total plus the GST
+            # total. ``find_invoice_problems`` proves the line sum itself.
+            models.CheckConstraint(
+                condition=models.Q(grand_total=models.F("taxable_total") + models.F("gst_total")),
+                name="invoice_grand_total_matches",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.invoice_number
+
+
+class InvoiceLine(TimeStampedModel):
+    """One printed line of an invoice: a product line or the delivery fee (D80).
+
+    ``rate`` and ``line_total`` include GST, the way the shop prices its goods;
+    ``taxable_value``, ``cgst`` and ``sgst`` are the split inside them.
+    """
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.PROTECT,
+        related_name="lines",
+    )
+    description = models.CharField(max_length=200)
+    # A fee line has no HSN code and no unit, so both may be blank.
+    hsn_code = models.CharField(max_length=8, blank=True, default="")
+    unit = models.CharField(max_length=10, blank=True, default="")
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    rate = models.DecimalField(max_digits=12, decimal_places=2)
+    gst_rate_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    taxable_value = models.DecimalField(max_digits=12, decimal_places=2)
+    cgst = models.DecimalField(max_digits=12, decimal_places=2)
+    sgst = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    # True for the one delivery-fee line, so a report can leave it out.
+    is_fee_line = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(quantity__gte=0)
+                    & models.Q(rate__gte=0)
+                    & models.Q(gst_rate_percent__gte=0)
+                    & models.Q(taxable_value__gte=0)
+                    & models.Q(cgst__gte=0)
+                    & models.Q(sgst__gte=0)
+                    & models.Q(line_total__gte=0)
+                ),
+                name="invoiceline_money_gte_0",
+            ),
+            # The printed total is exactly its parts added together.
+            models.CheckConstraint(
+                condition=models.Q(
+                    line_total=models.F("taxable_value") + models.F("cgst") + models.F("sgst")
+                ),
+                name="invoiceline_total_matches",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.quantity} x {self.description}"

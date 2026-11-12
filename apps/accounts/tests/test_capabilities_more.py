@@ -23,6 +23,7 @@ EXPECTED_CAPABILITIES = {
     "EXPORT_CSV",
     "VIEW_PAYMENTS",
     "REFUND_PAYMENTS",
+    "VIEW_INVOICES",
 }
 
 
@@ -37,9 +38,9 @@ def test_every_capability_has_a_label() -> None:
         assert label != value
 
 
-def test_the_capability_keys_are_exactly_the_twelve_agreed() -> None:
+def test_the_capability_keys_are_exactly_the_thirteen_agreed() -> None:
     assert set(Capability.values) == EXPECTED_CAPABILITIES
-    assert len(Capability.values) == 12
+    assert len(Capability.values) == 13
 
 
 def test_removing_a_manager_capability_takes_effect_at_once() -> None:

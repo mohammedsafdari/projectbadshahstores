@@ -1,0 +1,83 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ invoice.invoice_number }}{% endblock title %}
+
+{% block head_extra %}
+  <style>
+    @media print {
+      @page { margin: 12mm; }
+      main { max-width: 100% !important; }
+      table { font-size: 11px; }
+    }
+  </style>
+{% endblock head_extra %}
+
+{% block content %}
+  <p class="no-print">
+    <a class="text-sm underline" href="{% url 'staff_order_detail' order.order_number %}">{% translate "Back to the order" %}</a>
+    ·
+    <a class="text-sm underline" href="{{ pdf_url }}">{% translate "Download PDF" %}</a>
+  </p>
+
+  <section class="mt-2 rounded border border-gray-300 bg-white p-4">
+    <p class="text-lg font-bold">{{ invoice.seller_name }}</p>
+    <address class="mt-1 not-italic text-sm">
+      {{ invoice.seller_address|linebreaksbr }}<br>
+      {% translate "GSTIN" %}: {{ invoice.seller_gstin }}<br>
+      {% translate "State" %}: {{ invoice.seller_state }} ({{ invoice.seller_state_code }})
+    </address>
+
+    {% if invoice.cancelled_at %}
+      <p role="alert" class="mt-3 rounded border border-red-300 bg-red-50 p-3 text-base font-bold">
+        {% translate "Cancelled" %}{% if invoice.cancel_reason %}: {{ invoice.cancel_reason }}{% endif %}
+      </p>
+    {% endif %}
+
+    <h1 class="mt-4 text-xl font-bold">{% translate "Tax invoice" %}</h1>
+    <p class="mt-1 text-sm">{% translate "Invoice number" %}: {{ invoice.invoice_number }}</p>
+    <p class="text-sm">{% translate "Invoice date" %}: {{ issued_text }}</p>
+
+    <h2 class="mt-4 text-lg font-bold">{% translate "Buyer" %}</h2>
+    <address class="mt-1 not-italic text-sm">
+      {{ invoice.buyer_name }}<br>
+      {{ invoice.buyer_phone }}<br>
+      {{ invoice.buyer_address|linebreaksbr }}
+    </address>
+    <p class="mt-1 text-sm">{% translate "Place of supply" %}: {{ invoice.place_of_supply }}</p>
+  </section>
+
+  <section class="mt-4">
+    <table class="w-full border-collapse text-sm">
+      <thead>
+        <tr class="text-left">
+          <th class="border-b p-2">{% translate "Description" %}</th>
+          <th class="border-b p-2">{% translate "HSN" %}</th>
+          <th class="border-b p-2">{% translate "Quantity" %}</th>
+          <th class="border-b p-2">{% translate "Rate" %}</th>
+          <th class="border-b p-2">{% translate "Taxable" %}</th>
+          <th class="border-b p-2">{% translate "CGST" %}</th>
+          <th class="border-b p-2">{% translate "SGST" %}</th>
+          <th class="border-b p-2">{% translate "Total" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+          <tr>
+            <td class="border-b p-2">{{ line.description }}</td>
+            <td class="border-b p-2">{{ line.hsn }}</td>
+            <td class="border-b p-2">{{ line.quantity }} {{ line.unit }}</td>
+            <td class="border-b p-2">{{ line.rate }}</td>
+            <td class="border-b p-2">{{ line.taxable }}</td>
+            <td class="border-b p-2">{{ line.cgst }}</td>
+            <td class="border-b p-2">{{ line.sgst }}</td>
+            <td class="border-b p-2">{{ line.total }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="mt-2 text-base font-bold">{% translate "Grand total" %}: {{ grand_total_text }}</p>
+  </section>
+
+  <p class="mt-6 text-sm">{% translate "This is a computer-generated invoice." %}</p>
+{% endblock content %}

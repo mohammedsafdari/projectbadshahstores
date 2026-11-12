@@ -43,6 +43,10 @@
       </form>
     {% endif %}
     <a href="{{ slip_url }}" class="rounded border border-gray-400 px-4 py-3 text-sm font-medium">{% translate "Packing slip" %}</a>
+    {% if invoice and can_view_invoices %}
+      <a href="{{ invoice_url }}" class="rounded border border-gray-400 px-4 py-3 text-sm font-medium">{% translate "Invoice" %}</a>
+      <a href="{{ invoice_pdf_url }}" class="rounded border border-gray-400 px-4 py-3 text-sm font-medium">{% translate "Invoice PDF" %}</a>
+    {% endif %}
   </div>
 
   {% if can_send_refund or can_mark_by_hand %}

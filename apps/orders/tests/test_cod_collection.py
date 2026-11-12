@@ -14,6 +14,7 @@ from apps.orders.services import InvalidTransitionError
 from apps.orders.staff_services import (
     CodAmountMismatchError,
     CodAmountRequiredError,
+    CodCollectionExistsError,
     mark_delivered,
 )
 from apps.orders.tests.factories import OrderFactory
@@ -188,6 +189,47 @@ def test_collection_amount_must_be_positive() -> None:
 
     # A database check constraint is reported under the "__all__" key.
     assert "__all__" in error.value.error_dict
+
+
+def test_second_collection_row_raises_exists_error() -> None:
+    order = _out_for_delivery_order()
+    actor = staff()
+    # A row already exists while the order is still out for delivery. That is
+    # the only way the service's own "one collection" check can be reached:
+    # a second delivery is refused by the status first.
+    CodCollection.objects.create(
+        order=order,
+        amount=Decimal("230.00"),
+        collected_by=actor,
+        collected_at=NOW,
+    )
+
+    with pytest.raises(CodCollectionExistsError):
+        mark_delivered(order.pk, actor=actor, collected_amount=Decimal("230.00"), now=NOW)
+
+    order.refresh_from_db()
+    assert order.status == Order.Status.OUT_FOR_DELIVERY
+    assert CodCollection.objects.filter(order=order).count() == 1
+
+
+def test_bool_amount_is_refused_even_when_it_equals_the_due() -> None:
+    # True == 1 in Python, so an order that owes exactly 1.00 is the trap. A
+    # bool is not money and must be refused before the amount is compared to
+    # the amount due, even though the two compare equal.
+    order = _out_for_delivery_order(
+        item_total=Decimal("1.00"),
+        delivery_fee=Decimal("0.00"),
+        grand_total=Decimal("1.00"),
+        amount_due_on_delivery=Decimal("1.00"),
+    )
+    assert Decimal(True) == order.amount_due_on_delivery
+
+    with pytest.raises(CodAmountMismatchError):
+        mark_delivered(order.pk, actor=staff(), collected_amount=True, now=NOW)
+
+    order.refresh_from_db()
+    assert order.status == Order.Status.OUT_FOR_DELIVERY
+    assert not CodCollection.objects.exists()
 
 
 def test_deliver_is_atomic_status_and_cash_together() -> None:

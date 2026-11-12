@@ -40,6 +40,9 @@
     {% if can_cancel %}
       <a data-cancel-link href="{{ cancel_url }}" class="font-medium text-brand-600 hover:text-brand-700">{{ text.cancel_order_link }}</a>
     {% endif %}
+    {% if invoice_url %}
+      <a data-invoice-link href="{{ invoice_url }}" class="font-medium text-brand-600 hover:text-brand-700">{{ text.invoice_link }}</a>
+    {% endif %}
     {% if whatsapp_href %}
       <a data-whatsapp-link href="{{ whatsapp_href }}" target="_blank" rel="noopener" class="font-medium text-brand-600 hover:text-brand-700">{{ text.whatsapp_button }}</a>
     {% endif %}

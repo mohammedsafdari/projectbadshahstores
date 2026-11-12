@@ -36,6 +36,16 @@ urlpatterns = [
         name="staff_packing_slip",
     ),
     path(
+        "orders/<path:order_number>/invoice/",
+        staff_views.invoice_page,
+        name="staff_invoice",
+    ),
+    path(
+        "orders/<path:order_number>/invoice.pdf",
+        staff_views.invoice_pdf,
+        name="staff_invoice_pdf",
+    ),
+    path(
         "orders/<path:order_number>/start-packing/",
         staff_views.start_packing_view,
         name="staff_start_packing",

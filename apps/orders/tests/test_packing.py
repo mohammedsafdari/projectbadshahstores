@@ -7,6 +7,7 @@ agree about.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -280,4 +281,71 @@ def test_send_out_from_confirmed_is_refused() -> None:
 
     order.refresh_from_db()
     assert order.status == Order.Status.CONFIRMED
+    assert not _sale_movements().exists()
+
+
+def test_hold_expiring_exactly_now_is_refused() -> None:
+    customer = UserFactory()
+    row = stocked_variant()
+    group = uuid4()
+    # A checkout hold carries the expiry. The rule is "expires at or before
+    # now", so a hold that expires at exactly this moment is already too late
+    # (D63), the same strict boundary the availability rule uses.
+    hold = hold_for(
+        row,
+        customer,
+        group=group,
+        quantity="2",
+        kind=StockReservation.Kind.CHECKOUT_PENDING_PAYMENT,
+        expires_at=NOW,
+    )
+    order = OrderFactory(
+        user=customer,
+        status=Order.Status.PACKING,
+        checkout_group=group,
+    )
+    OrderItemFactory(order=order, variant=row, quantity_ordered=Decimal("2"))
+
+    with pytest.raises(StockHoldUnavailableError) as error:
+        pack_and_send_out(order.pk, actor=staff(), now=NOW)
+
+    assert "expired" in str(error.value)
+    order.refresh_from_db()
+    hold.refresh_from_db()
+    assert order.status == Order.Status.PACKING
+    assert hold.status == StockReservation.Status.ACTIVE
+    assert not _sale_movements().exists()
+
+
+def test_active_unexpired_hold_of_wrong_kind_is_refused() -> None:
+    customer = UserFactory()
+    row = stocked_variant()
+    group = uuid4()
+    # This hold is active and has not expired, but it was taken for a checkout
+    # that has not paid yet, not for fulfilment. The kind alone must refuse it
+    # (D79), even though the quantity matches the order line.
+    hold = hold_for(
+        row,
+        customer,
+        group=group,
+        quantity="2",
+        kind=StockReservation.Kind.CHECKOUT_PENDING_PAYMENT,
+        expires_at=NOW + timedelta(minutes=30),
+    )
+    order = OrderFactory(
+        user=customer,
+        status=Order.Status.PACKING,
+        checkout_group=group,
+    )
+    OrderItemFactory(order=order, variant=row, quantity_ordered=Decimal("2"))
+
+    with pytest.raises(StockHoldUnavailableError) as error:
+        pack_and_send_out(order.pk, actor=staff(), now=NOW)
+
+    assert "not held for this order" in str(error.value)
+    order.refresh_from_db()
+    hold.refresh_from_db()
+    assert order.status == Order.Status.PACKING
+    assert hold.status == StockReservation.Status.ACTIVE
+    assert hold.consumed_at is None
     assert not _sale_movements().exists()

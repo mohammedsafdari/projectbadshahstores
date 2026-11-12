@@ -54,6 +54,7 @@ def _change_data(row: ShopSettings, **overrides: Any) -> dict[str, Any]:
         "grievance_officer_email": row.grievance_officer_email,
         "minimum_order_value": str(row.minimum_order_value),
         "delivery_fee": str(row.delivery_fee),
+        "delivery_fee_gst_percent": str(row.delivery_fee_gst_percent),
         "free_delivery_threshold": str(row.free_delivery_threshold),
         "cod_cap": str(row.cod_cap),
         "refund_fee_percent": str(row.refund_fee_percent),

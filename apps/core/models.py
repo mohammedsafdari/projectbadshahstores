@@ -146,6 +146,14 @@ class ShopSettings(TimeStampedModel):
         max_digits=10, decimal_places=2, default=Decimal("200.00")
     )
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("30.00"))
+    # The GST rate inside the delivery fee, used by the tax invoice (D80).
+    # REVIEW CAREFULLY: the rate is a business fact and is NOT confirmed yet.
+    delivery_fee_gst_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("18.00"),
+        help_text="UNCONFIRMED: ask your CA",
+    )
     free_delivery_threshold = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal("500.00")
     )
@@ -183,6 +191,15 @@ class ShopSettings(TimeStampedModel):
             models.CheckConstraint(
                 condition=models.Q(delivery_fee__gte=0),
                 name="core_shopsettings_delivery_fee_gte_0",
+            ),
+            # The delivery-fee GST rate is a percentage between 0 and 100.
+            models.CheckConstraint(
+                condition=models.Q(delivery_fee_gst_percent__gte=0),
+                name="core_shopsettings_delivery_fee_gst_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(delivery_fee_gst_percent__lte=100),
+                name="core_shopsettings_delivery_fee_gst_lte_100",
             ),
             models.CheckConstraint(
                 condition=models.Q(free_delivery_threshold__gte=0),

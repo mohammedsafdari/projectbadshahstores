@@ -12,9 +12,9 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] GSTIN — [TO BE FILLED: GSTIN] — owner/CA
 - [ ] Default own-brand packaged-food GST rate — recorded assumption is 5%; confirm with CA — CA
 - [ ] HSN codes and GST rates per product/variant — to be filled per variant at data entry; confirm mapping with CA — CA/owner
-- [ ] Rounding rule for CGST/SGST and invoice totals — ask again before the invoice slice (moved from Phase 5, 11 November 2026); default in use: each amount rounded half-up to paise, SGST is the remainder of CGST (Slice 13c) — CA/legal
-- [ ] HSN code format — variants accept 4 to 8 digits (Slice 13a); confirm with CA — CA/legal
-- [ ] Invoice number prefix and 16-character GST rule — recorded assumption `INV/...`; ask again before the invoice slice; confirm with CA — CA
+- [x] Rounding rule for CGST/SGST and invoice totals — answered (11 November 2026, at the invoice slice): all defaults, so every amount stays rounded half-up to paise and SGST is the remainder of CGST (Slice 13c); the invoice uses `gst_breakdown` unchanged (D80) — CA/legal
+- [x] HSN code format — answered (11 November 2026): all defaults, so variants keep accepting 4 to 8 digits and the invoice prints the code exactly as stored (D80) — CA/legal
+- [x] Invoice number prefix and 16-character GST rule — answered (11 November 2026): all defaults, so the series is `INV/26-27/000001`, the limit is 16 characters and a longer number refuses the send-out (D14, D80) — CA
 - [ ] FSSAI licence number — [TO BE FILLED: FSSAI number] — owner/CA
 - [ ] FSSAI licence expiry — [TO BE FILLED] — owner/CA
 - [ ] Grievance officer name and contact — [TO BE FILLED] — owner/legal
@@ -46,7 +46,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Photo files are not deleted from disk when an image row or a product is deleted — developer; a clean-up job is needed before production; default in use: files are left in place
 - [ ] When to add resized and WebP versions of photos — developer; planned for the storefront slices (23 and 25) or Phase 6; default in use: originals only
 - [ ] Production hardening of the stock ledger: a Postgres trigger or a restricted database role so movement rows cannot be changed with raw SQL — developer; before production; default in use: the Django-level guard only (D42)
-- [ ] Purchase cost per received lot, for stock valuation — owner/CA; ask again before the invoice slice (moved from Phase 5 reports, 11 November 2026); default in use: `ProductVariant.cost_price`
+- [x] Purchase cost per received lot, for stock valuation — answered (11 November 2026): all defaults, so `ProductVariant.cost_price` stays the one cost figure and no invoice prints a cost — owner/CA
 - [ ] Should a purchase with an expiry date in the past be refused or only warned about? — owner; default in use: allowed, no warning; the Receive page accepts a past date (D43, D45)
 - [ ] Should every damage or write-off entry need a reason (expired, broken, lost)? — owner; default in use: yes, the reason is required (D43)
 - [ ] Who records in-store sales in the ledger (`IN_STORE_SALE`): the billing-software import in Slice 20, or nothing yet? — owner; needed before Slice 20; default in use: nothing writes `IN_STORE_SALE` yet (D43)
@@ -70,11 +70,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [x] Who is the stock master while the shop sells in store and online? — answered (D55, 3 Nov 2026; the route and the export confirmed in D63, 6 Nov 2026): the billing software is the main stock source, the website is refreshed by regular imports and the physical count happens at the production stage — owner
 - [ ] Do we need partial files (for example only sku_code and prices)? — owner; low priority; ask again at Slice 21; default in use: every column of the export must be present (D47)
 - [ ] Should the importer refuse HSN codes with 5 or 7 digits (HSN codes have 2, 4, 6 or 8 digits; Excel drops a leading zero)? — CA/legal; ask again before launch (Phase 7); default in use: yes, refused, to catch a dropped zero (D47)
-- [ ] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? GST needs a consecutive series — CA/legal; low priority; ask again before the invoice slice; default in use: own prefix `INV/...` (see the invoice prefix item above)
-- [ ] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22). Which rounding does the CA accept? — CA/legal; low priority; ask again before the invoice slice (extends the rounding item above); default in use: our half-up rule (Slice 13c)
+- [x] Should the online store continue the billing software's invoice series (for example `A006693`) or use its own prefix? — answered (11 November 2026): all defaults, so the website keeps its own `INV/...` series (D80) — CA/legal
+- [x] The billing software's printed GST differs from straight rounding by a paisa on some lines (for example Phenyle 30.00 at 5% prints 28.58 taxable; the invoice GST total is 92.20, our rule gives 92.22) — answered (11 November 2026): all defaults, so our half-up rule stands and the website's invoice will differ by a paisa from the billing software (D80) — CA/legal
 
 ### Added in Slice 22 (seed catalogue, D49)
-- [ ] GST conflict in the billing item master: the tax columns say 5% on every row, the HSN text carries 5, 12 or 18. The seed uses 5% and marks it unconfirmed — CA/owner; ask again before the invoice slice (moved from Phase 5, 11 November 2026); default in use: 5% from the tax columns, no rate built into the code
+- [x] GST conflict in the billing item master: the tax columns say 5% on every row, the HSN text carries 5, 12 or 18 — answered (11 November 2026): all defaults, so the seed keeps 5% and the invoice prints whatever rate the variant carries; no rate is built into the code (D80) — CA/owner
 - [ ] 15 billing rows are not loaded (2 with MRP 0, 12 with selling rate above MRP, 1 with a 5-digit HSN); they are listed in `apps/catalog/seed_data/nestle_review.csv`. Please read the real MRP and HSN from the packs — owner; ask again before launch (Phase 7); default in use: not loaded (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] Export of the rest of the shop (staples, spices, tea, own-brand, about 45 items) in the same billing format — owner; ask again before launch (Phase 7); default in use: `demo.csv` with `DEMO-` SKUs and provisional HSN/GST, loaded only with `--demo` (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
 - [ ] The rest of the category tree beyond the five starter categories (chocolates-confectionery, noodles-soups, milk-dairy, tea-coffee, spices-masalas); slugs become URLs — owner; ask again before launch (Phase 7); default in use: the five starter categories (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
@@ -146,6 +146,13 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Should the by-hand refund note be a fixed list of reasons (cash at the counter, UPI transfer, other) instead of free text? — owner; ask again before the staff screens go live; default in use: free text of up to 200 characters, required
 - [ ] Should a refund marked by hand send the customer the processed-refund message? — owner; ask again before the staff screens go live; default in use: yes, the existing `EVENT_REFUND_PROCESSED` message
 - [ ] Should the dues page list a customer whose balance has just reached zero? — owner; low priority; ask again before launch; default in use: only a positive balance is listed
+
+### Added in Slice 43 (GST tax invoices, D80)
+- [ ] Delivery-fee GST: which rate applies, and is the delivery charge part of the taxable value or exempt? — CA; before the first real invoice; default in use: 18.00% inside the fee, set in `ShopSettings.delivery_fee_gst_percent` with the help text "UNCONFIRMED: ask your CA"
+- [ ] Is the shop a regular GST taxpayer or a composition dealer? A composition dealer issues a bill of supply, not a tax invoice, and the whole invoice page would change — CA; before the first real invoice; default in use: a regular taxpayer's tax invoice with CGST and SGST
+- [ ] How should a cancelled invoice be dealt with: a marked invoice as now, or a credit note with its own number? — CA; before the first real cancellation; default in use: the invoice is marked `Cancelled` and keeps its number, and no credit note is issued
+- [ ] How many HSN digits must the printed invoice show (4, 6 or 8) for each product? — CA; before the first real invoice; default in use: the code stored on the variant, 4 to 8 digits
+- [ ] Bundle a Devanagari font for the invoice and packing-slip PDFs, so a Hindi product name or address prints instead of `?` — developer; before Phase 6; default in use: `pdf_text` replaces every non-ASCII character with `?`
 
 ### Added in Slice 42c (closing the 42b test gaps)
 - [ ] Should the credit payment confirm step get a server-side double-submit token? — owner; ask again before the staff screens go live; default in use: only an inline `onsubmit` disables the button, so the same fields can still be posted twice

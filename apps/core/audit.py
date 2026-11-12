@@ -134,6 +134,7 @@ AUDITED_SHOP_SETTINGS_FIELDS: tuple[str, ...] = (
     "grievance_officer_email",
     "minimum_order_value",
     "delivery_fee",
+    "delivery_fee_gst_percent",
     "free_delivery_threshold",
     "cod_cap",
     "refund_fee_percent",

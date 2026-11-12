@@ -32,7 +32,9 @@ from django.views.decorators.http import require_http_methods, require_POST
 from apps.accounts.capabilities import Capability, has_capability
 from apps.accounts.models import User
 from apps.inventory.services import InsufficientStockError
-from apps.orders.models import Order
+from apps.orders.invoice_pdf import invoice_pdf_response, money_text, quantity_text
+from apps.orders.invoices import InvoiceError
+from apps.orders.models import Invoice, Order
 from apps.orders.presentation import money, timeline_time_text
 from apps.orders.services import (
     CancelReasonRequiredError,
@@ -68,6 +70,9 @@ ACTION_ERRORS = (
     CustomerNotVerifiedError,
     InvalidTransitionError,
     CancelReasonRequiredError,
+    # The send-out issues the tax invoice, so a blank shop GSTIN or a number
+    # past the GST limit is refused on the page, not as a crash (D80).
+    InvoiceError,
 )
 
 # The shelf is short even though the hold was there. The staff member has to
@@ -283,6 +288,7 @@ def pick_list(request: HttpRequest) -> HttpResponse:
 
 def _detail_context(user: User, order: Order, *, error: str | None = None) -> dict[str, Any]:
     """Every value the order detail page prints (D79)."""
+    invoice = Invoice.objects.filter(order=order).first()
     refund = latest_refund(order)
     flags = _action_flags(user, order)
     can_refund = has_capability(user, Capability.REFUND_PAYMENTS)
@@ -316,6 +322,10 @@ def _detail_context(user: User, order: Order, *, error: str | None = None) -> di
         "can_send_refund": can_send,
         "can_mark_by_hand": can_mark,
         "slip_url": reverse("staff_packing_slip", args=[order.order_number]),
+        "invoice": invoice,
+        "invoice_url": reverse("staff_invoice", args=[order.order_number]),
+        "invoice_pdf_url": reverse("staff_invoice_pdf", args=[order.order_number]),
+        "can_view_invoices": has_capability(user, Capability.VIEW_INVOICES),
         "detail_url": reverse("staff_order_detail", args=[order.order_number]),
         "start_url": reverse("staff_start_packing", args=[order.order_number]),
         "send_url": reverse("staff_send_out", args=[order.order_number]),
@@ -355,6 +365,72 @@ def packing_slip(request: HttpRequest, order_number: str) -> HttpResponse:
         "staff/packing_slip.html",
         {"order": order, "lines": _order_lines(order)},
     )
+
+
+def _invoice_or_404(order: Order) -> Invoice:
+    """The order's invoice, or a plain 404 when it has none (D80)."""
+    invoice = Invoice.objects.filter(order=order).first()
+    if invoice is None:
+        raise Http404("This order has no invoice.")
+    return invoice
+
+
+def _invoice_line_rows(invoice: Invoice) -> list[dict[str, object]]:
+    """One small dict per invoice line, so the template only prints values."""
+    return [
+        {
+            "description": line.description,
+            "hsn": line.hsn_code,
+            "unit": line.unit,
+            "quantity": quantity_text(line.quantity),
+            "rate": money_text(line.rate),
+            "taxable": money_text(line.taxable_value),
+            "cgst": money_text(line.cgst),
+            "sgst": money_text(line.sgst),
+            "total": money_text(line.line_total),
+            "is_fee_line": line.is_fee_line,
+        }
+        for line in invoice.lines.all()
+    ]
+
+
+@staff_required(Capability.VIEW_INVOICES)
+@require_http_methods(["GET"])
+@never_cache
+def invoice_page(request: HttpRequest, order_number: str) -> HttpResponse:
+    """The printable GST tax invoice of one order (D80)."""
+    user = _current_user(request)
+    try:
+        order = get_staff_order(user, order_number, capability=Capability.VIEW_INVOICES)
+    except OrderNotFoundError:
+        raise Http404("Order not found.") from None
+    invoice = _invoice_or_404(order)
+    return render(
+        request,
+        "staff/invoice.html",
+        {
+            "invoice": invoice,
+            "order": order,
+            "lines": _invoice_line_rows(invoice),
+            "grand_total_text": money_text(invoice.grand_total),
+            "issued_text": timeline_time_text(invoice.issued_at),
+            "pdf_url": reverse("staff_invoice_pdf", args=[order.order_number]),
+            **_nav_for(user),
+        },
+    )
+
+
+@staff_required(Capability.VIEW_INVOICES)
+@require_http_methods(["GET"])
+@never_cache
+def invoice_pdf(request: HttpRequest, order_number: str) -> HttpResponse:
+    """The same invoice as a PDF download (D80)."""
+    user = _current_user(request)
+    try:
+        order = get_staff_order(user, order_number, capability=Capability.VIEW_INVOICES)
+    except OrderNotFoundError:
+        raise Http404("Order not found.") from None
+    return invoice_pdf_response(_invoice_or_404(order))
 
 
 def _render_detail(
