@@ -336,3 +336,27 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 - `Order.objects.filter(status__in=..., invoice__isnull=True)` finds rows with no related row at all; .NET comparison: a `LEFT JOIN ... WHERE other.Id IS NULL` written as a navigation filter.
 - A `pytest` fixture in `apps/orders/tests/conftest.py` with `autouse=True` runs before every test in that folder without being imported, which is how the shop details a scanned invoice needs are filled once; .NET comparison: a test-setup base class, but chosen by folder instead of inheritance.
 - `decimal` money is printed with `f"{value:g}"` for a quantity (2.000 becomes 2) and `f"Rs. {value:.2f}"` for an amount; .NET comparison: `ToString("G")` and `ToString("F2")`.
+
+## New in Slice 44a
+
+- `models.Q(code=Upper(models.F("code")))` is a check constraint that compares a column with a
+  database function of itself, so the database refuses a lower-case code whatever wrote the row;
+  `Upper` comes from `django.db.models.functions`. .NET comparison: `CHECK (Code = UPPER(Code))` in
+  the table definition (`apps/promotions/models.py`).
+- `select_for_update()` inside `evaluate_coupon` locks the coupon row until the caller's transaction
+  ends, and `for_update=False` keeps an ordinary read on a page that only shows a price; see the
+  section above. Two checkouts of one coupon therefore take turns (`apps/promotions/rules.py`).
+- `@dataclass(frozen=True)` with defaults gives a small read-only result whose `Decimal` fields can be
+  compared without a guard; `ZERO` is a module constant, so every refused result carries the same
+  `Decimal("0.00")` (`CouponResult`).
+- `str(MESSAGES[reason]) % params` fills a translated message: `gettext_lazy` returns a lazy proxy
+  and `%` works on it, but `str()` first makes the type plain so mypy and the tests see a string
+  (`apps/promotions/rules.py`, `_refusal`).
+- `dict.fromkeys(AUDITED_COUPON_FIELDS)` builds the "old" snapshot of a brand-new row: every key is
+  present with `None`, which is exactly what `record_change` needs so it can compare like with like
+  (`apps/promotions/admin.py`).
+- `Count("redemptions", filter=Q(redemptions__released_at__isnull=True))` counts only the matching
+  related rows inside the list query, so the column costs one query for the whole page; .NET
+  comparison: a `COUNT(CASE WHEN ... END)` in the projection.
+- `@pytest.mark.parametrize` with a list of statuses runs one test case per value, so "one test per
+  order status" stays one readable function and still counts twelve cases (`test_coupon_rules.py`).

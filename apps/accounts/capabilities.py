@@ -43,6 +43,7 @@ class Capability(TextChoices):
     VIEW_PAYMENTS = "VIEW_PAYMENTS", "View online payments"
     REFUND_PAYMENTS = "REFUND_PAYMENTS", "Refund an online payment"
     VIEW_INVOICES = "VIEW_INVOICES", "View invoices"
+    MANAGE_PROMOTIONS = "MANAGE_PROMOTIONS", "Manage coupons, banners and featured products"
 
 
 # The default rights of each role, used until the owner stores an override.
