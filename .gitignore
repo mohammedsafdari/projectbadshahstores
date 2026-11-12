@@ -50,3 +50,4 @@ coverage.xml
 .freebuff/
 celerybeat-schedule*
 celerybeat.pid
+tools/review-report.txt
