@@ -6,7 +6,8 @@ import pytest
 from django.test import Client
 from django.urls import reverse
 
-from apps.accounts.models import User
+from apps.accounts.capabilities import Capability
+from apps.accounts.models import RoleCapability, User
 from apps.orders.invoices import mark_invoice_cancelled
 from apps.orders.models import Order
 from apps.orders.tests.invoice_helpers import packing_order, sent_out_order
@@ -68,6 +69,28 @@ def test_a_packer_is_refused_the_invoice_pdf() -> None:
     assert response["Content-Type"] != "application/pdf"
 
 
+def test_the_invoice_page_needs_only_the_invoice_right() -> None:
+    order, _invoice = sent_out_order()
+    packer = staff(User.ROLE_PACKER)
+    # The owner may hand a role the invoice right without the order list.
+    RoleCapability.objects.create(
+        role=User.ROLE_PACKER,
+        capability=Capability.VIEW_INVOICES,
+        allowed=True,
+    )
+    RoleCapability.objects.create(
+        role=User.ROLE_PACKER,
+        capability=Capability.VIEW_ORDERS,
+        allowed=False,
+    )
+
+    response = _client(packer).get(_html_url(order))
+
+    # The page asks for VIEW_INVOICES, so the order lookup behind it must not
+    # quietly demand VIEW_ORDERS as well (D80).
+    assert response.status_code == 200
+
+
 def test_an_anonymous_visitor_is_redirected_from_the_invoice_page() -> None:
     order, _invoice = sent_out_order()
 
@@ -110,6 +133,14 @@ def test_a_stranger_gets_a_404_for_someone_elses_invoice() -> None:
     stranger = UserFactory()
 
     response = _client(stranger).get(_customer_url(order))
+
+    assert response.status_code == 404
+
+
+def test_the_customer_pdf_is_a_404_before_an_invoice_exists() -> None:
+    order, _variants = packing_order()
+
+    response = _client(order.user).get(_customer_url(order))
 
     assert response.status_code == 404
 

@@ -1,0 +1,268 @@
+{
+  "tests": [
+    "apps/orders/tests/test_invoice_issue.py",
+    "apps/orders/tests/test_invoice_hooks.py",
+    "apps/orders/tests/test_invoice_views.py",
+    "apps/orders/tests/test_invoice_pdf.py",
+    "apps/orders/tests/test_invoice_integrity.py",
+    "apps/core/tests/test_shop_settings_invoice_fields.py",
+    "apps/orders/tests/test_packing.py",
+    "apps/orders/tests/test_staff_cancel.py",
+    "apps/orders/tests/test_staff_permissions_matrix.py",
+    "apps/accounts/tests/test_capabilities_more.py"
+  ],
+  "mutations": [
+    {
+      "id": "43-01-fee-line-at-zero",
+      "file": "apps/orders/invoices.py",
+      "old": "    if order.delivery_fee > ZERO:\n",
+      "new": "    if order.delivery_fee >= ZERO:\n",
+      "note": "the fee line is added when delivery_fee >= 0 instead of > 0"
+    },
+    {
+      "id": "43-02-limit-17",
+      "file": "apps/orders/invoices.py",
+      "old": "MAX_INVOICE_NUMBER_LENGTH = 16",
+      "new": "MAX_INVOICE_NUMBER_LENGTH = 17",
+      "note": "the invoice number limit is 17 instead of 16"
+    },
+    {
+      "id": "43-03-limit-15",
+      "file": "apps/orders/invoices.py",
+      "old": "MAX_INVOICE_NUMBER_LENGTH = 16",
+      "new": "MAX_INVOICE_NUMBER_LENGTH = 15",
+      "note": "the invoice number limit is 15 instead of 16"
+    },
+    {
+      "id": "43-04-gstin-loses-upper",
+      "file": "apps/orders/invoices.py",
+      "old": "        seller_gstin=settings.gstin.strip().upper(),",
+      "new": "        seller_gstin=settings.gstin.strip(),",
+      "note": "seller_gstin loses .upper()"
+    },
+    {
+      "id": "43-05-reason-not-cut",
+      "file": "apps/orders/invoices.py",
+      "old": "        invoice.cancel_reason = (reason or \"\").strip()[:200]",
+      "new": "        invoice.cancel_reason = (reason or \"\").strip()",
+      "note": "the cancel reason is not cut to 200 characters"
+    },
+    {
+      "id": "43-06-second-cancel-overwrites",
+      "file": "apps/orders/invoices.py",
+      "old": "        if invoice.cancelled_at is not None:\n            return invoice",
+      "new": "        if False:\n            return invoice",
+      "note": "mark_invoice_cancelled forgets the already-cancelled return"
+    },
+    {
+      "id": "43-07-unfulfilled-invoiced",
+      "file": "apps/orders/invoices.py",
+      "old": "    return [item for item in rows if item.item_status == OrderItem.ItemStatus.FULFILLED]",
+      "new": "    return list(rows)",
+      "note": "an order item that is not FULFILLED is also invoiced"
+    },
+    {
+      "id": "43-08-cgst-sgst-swapped",
+      "file": "apps/catalog/services.py",
+      "old": "    cgst = round_money(gst_amount / 2)",
+      "new": "    cgst = gst_amount - round_money(gst_amount / 2)",
+      "note": "the CGST/SGST split is swapped in the helper that calls gst_breakdown"
+    },
+    {
+      "id": "43-09-no-number-gap",
+      "file": "apps/orders/invoices.py",
+      "old": "        if missing:",
+      "new": "        if False:",
+      "note": "find_invoice_problems skips the number-gap rule"
+    },
+    {
+      "id": "43-10-delivered-not-checked",
+      "file": "apps/orders/invoices.py",
+      "old": "        status__in=(Order.Status.OUT_FOR_DELIVERY, Order.Status.DELIVERED),",
+      "new": "        status__in=(Order.Status.OUT_FOR_DELIVERY,),",
+      "note": "find_invoice_problems skips the missing-invoice rule for DELIVERED"
+    },
+    {
+      "id": "43-11-packer-views-invoices",
+      "file": "apps/accounts/capabilities.py",
+      "old": "            Capability.SEND_OUT,\n        }",
+      "new": "            Capability.SEND_OUT,\n            Capability.VIEW_INVOICES,\n        }",
+      "note": "the packer gets VIEW_INVOICES by default"
+    },
+    {
+      "id": "43-12-ownership-check-gone",
+      "file": "apps/orders/services.py",
+      "old": "        Order.objects.filter(user=user, checkout_group=group)",
+      "new": "        Order.objects.filter(checkout_group=group)",
+      "note": "the customer ownership check on the invoice PDF is removed"
+    },
+    {
+      "id": "43-13-pdf-cancelled-mark-gone",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    if invoice.cancelled_at is not None:",
+      "new": "    if False:",
+      "note": "the PDF Cancelled mark is removed"
+    },
+    {
+      "id": "43-14a-grand-total-one-paisa",
+      "file": "apps/orders/invoices.py",
+      "old": "        grand_total=_sum(rows, \"line_total\"),",
+      "new": "        grand_total=_sum(rows, \"line_total\") + Decimal(\"0.01\"),",
+      "note": "the invoice total is one paisa above the sum of its lines"
+    },
+    {
+      "id": "43-14b-fee-line-one-paisa",
+      "file": "apps/orders/invoices.py",
+      "old": "        \"line_total\": breakdown.price_inclusive,\n        \"is_fee_line\": True,",
+      "new": "        \"line_total\": breakdown.price_inclusive + Decimal(\"0.01\"),\n        \"is_fee_line\": True,",
+      "note": "one paisa is added to the fee line"
+    },
+    {
+      "id": "43-15-line-order-by-name",
+      "file": "apps/orders/invoices.py",
+      "old": "    rows = OrderItem.objects.filter(order=order).order_by(\"pk\")",
+      "new": "    rows = OrderItem.objects.filter(order=order).order_by(\"product_name\")",
+      "note": "the invoice lines are ordered by product name, not by the order"
+    },
+    {
+      "id": "43-16-missing-invoice-is-a-warning",
+      "file": "apps/orders/invoices.py",
+      "old": "                code=\"missing_invoice\",\n                severity=SEVERITY_ERROR,",
+      "new": "                code=\"missing_invoice\",\n                severity=\"WARN\",",
+      "note": "a missing invoice is reported as a warning, so the command exits 0"
+    },
+    {
+      "id": "43-17-mismatch-code-renamed",
+      "file": "apps/orders/invoices.py",
+      "old": "                    code=\"line_sum_mismatch\",",
+      "new": "                    code=\"line_sum_wrong\",",
+      "note": "the line-sum problem uses a different code"
+    },
+    {
+      "id": "43-18-buyer-address-loses-pincode",
+      "file": "apps/orders/invoices.py",
+      "old": "    lines.append(f\"{order.ship_city}, {order.ship_state} {order.ship_pincode}\")",
+      "new": "    lines.append(f\"{order.ship_city}, {order.ship_state}\")",
+      "note": "the frozen buyer address loses the pin code"
+    },
+    {
+      "id": "43-19-address-not-stripped",
+      "file": "apps/orders/invoices.py",
+      "old": "    if not settings.address.strip():",
+      "new": "    if not settings.address:",
+      "note": "a whitespace-only shop address is accepted"
+    },
+    {
+      "id": "43-20-state-code-slice",
+      "file": "apps/orders/invoices.py",
+      "old": "        seller_state_code=settings.gstin.strip()[:2].upper(),",
+      "new": "        seller_state_code=settings.gstin.strip()[2:4].upper(),",
+      "note": "the seller state code is taken from the wrong two characters"
+    },
+    {
+      "id": "43-21-default-prefix-changed",
+      "file": "apps/orders/invoices.py",
+      "old": "DEFAULT_INVOICE_PREFIX = \"INV\"",
+      "new": "DEFAULT_INVOICE_PREFIX = \"INVOICE\"",
+      "note": "a blank prefix falls back to INVOICE instead of INV"
+    },
+    {
+      "id": "43-22-limit-operator-inclusive",
+      "file": "apps/orders/invoices.py",
+      "old": "    if len(number) > MAX_INVOICE_NUMBER_LENGTH:",
+      "new": "    if len(number) >= MAX_INVOICE_NUMBER_LENGTH:",
+      "note": "a number of exactly 16 characters is refused"
+    },
+    {
+      "id": "43-23-cancel-reason-not-saved",
+      "file": "apps/orders/invoices.py",
+      "old": "        invoice.save(update_fields=[\"cancelled_at\", \"cancel_reason\", \"updated_at\"])",
+      "new": "        invoice.save(update_fields=[\"cancelled_at\", \"updated_at\"])",
+      "note": "the cancel reason is not written to the row"
+    },
+    {
+      "id": "43-24-money-one-decimal",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    return f\"Rs. {value:.2f}\"",
+      "new": "    return f\"Rs. {value:.1f}\"",
+      "note": "an amount prints with one decimal place"
+    },
+    {
+      "id": "43-25-summary-cgst-uses-sgst",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "        totals[1] += line.cgst",
+      "new": "        totals[1] += line.sgst",
+      "note": "the GST summary adds SGST into the CGST column"
+    },
+    {
+      "id": "43-26-hsn-column-prints-description",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "                pdf_text(line.hsn_code),",
+      "new": "                pdf_text(line.description),",
+      "note": "the HSN column prints the description instead of the code"
+    },
+    {
+      "id": "43-27-quantity-keeps-zeros",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    return f\"{value.normalize():f}\"",
+      "new": "    return f\"{value:f}\"",
+      "note": "a quantity keeps its trailing zeros"
+    },
+    {
+      "id": "43-28-filename-keeps-slashes",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    filename = pdf_text(invoice.invoice_number).replace(\"/\", \"-\")",
+      "new": "    filename = pdf_text(invoice.invoice_number)",
+      "note": "the PDF file name keeps the slashes of the number"
+    },
+    {
+      "id": "43-29-disposition-attachment",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    response[\"Content-Disposition\"] = f'inline; filename=\"invoice-{filename}.pdf\"'",
+      "new": "    response[\"Content-Disposition\"] = f'attachment; filename=\"invoice-{filename}.pdf\"'",
+      "note": "the PDF is served as an attachment instead of inline"
+    },
+    {
+      "id": "43-30-cancelled-title-changed",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "CANCELLED_TITLE = \"Cancelled\"",
+      "new": "CANCELLED_TITLE = \"Void\"",
+      "note": "the PDF marks a cancelled invoice as Void"
+    },
+    {
+      "id": "43-31-place-of-supply-blank",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    story.append(_paragraph(f\"Place of supply: {invoice.place_of_supply}\", styles[\"Normal\"]))",
+      "new": "    story.append(_paragraph(\"\", styles[\"Normal\"]))",
+      "note": "the PDF no longer prints the place of supply"
+    },
+    {
+      "id": "43-32-staff-page-needs-view-orders",
+      "file": "apps/orders/staff_views.py",
+      "old": "        order = get_staff_order(user, order_number, capability=Capability.VIEW_INVOICES)\n    except OrderNotFoundError:\n        raise Http404(\"Order not found.\") from None\n    invoice = _invoice_or_404(order)",
+      "new": "        order = get_staff_order(user, order_number, capability=Capability.VIEW_ORDERS)\n    except OrderNotFoundError:\n        raise Http404(\"Order not found.\") from None\n    invoice = _invoice_or_404(order)",
+      "note": "the staff invoice page only needs VIEW_ORDERS"
+    },
+    {
+      "id": "43-33-customer-link-always",
+      "file": "apps/orders/views.py",
+      "old": "                if Invoice.objects.filter(order=order).exists()",
+      "new": "                if True",
+      "note": "the customer order page links an invoice before one exists"
+    },
+    {
+      "id": "43-34-customer-pdf-no-404",
+      "file": "apps/orders/views.py",
+      "old": "    invoice = Invoice.objects.filter(order=order).first()\n    if invoice is None:\n        raise Http404(\"This order has no invoice.\")",
+      "new": "    invoice = Invoice.objects.filter(order=order).first()\n    if False:\n        raise Http404(\"This order has no invoice.\")",
+      "note": "a customer PDF for an uninvoiced order no longer 404s"
+    },
+    {
+      "id": "43-35-gross-from-ordered",
+      "file": "apps/orders/invoices.py",
+      "old": "    gross = round_money(item.unit_price * item.quantity_fulfilled)",
+      "new": "    gross = round_money(item.unit_price * item.quantity_ordered)",
+      "note": "the line is priced from the ordered quantity, not the fulfilled one"
+    }
+  ]
+}

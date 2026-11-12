@@ -133,6 +133,16 @@ def test_staff_cancel_stores_the_reason() -> None:
     assert invoice.cancel_reason == "Item was damaged"
 
 
+def test_a_long_cancel_reason_is_cut_to_two_hundred_characters() -> None:
+    order, invoice = sent_out_order()
+    # The row allows 200 characters, so a longer reason is cut, not refused.
+    mark_invoice_cancelled(order, "x" * 250, now=NOW)
+
+    invoice.refresh_from_db()
+    assert len(invoice.cancel_reason) == 200
+    assert invoice.cancel_reason == "x" * 200
+
+
 def test_staff_cancel_of_an_unsent_order_has_no_invoice() -> None:
     order = OrderFactory(status=Order.Status.CONFIRMED)
 

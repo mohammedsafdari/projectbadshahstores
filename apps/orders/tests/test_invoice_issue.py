@@ -19,7 +19,7 @@ from apps.orders.invoices import (
     ShopDetailsMissingError,
     issue_invoice,
 )
-from apps.orders.models import Invoice, Order
+from apps.orders.models import Invoice, Order, OrderItem
 from apps.orders.services import InvalidTransitionError
 from apps.orders.staff_services import pack_and_send_out
 from apps.orders.tests.invoice_helpers import (
@@ -60,6 +60,20 @@ def test_a_number_longer_than_sixteen_characters_is_refused() -> None:
     assert not Invoice.objects.exists()
 
 
+def test_a_seventeen_character_number_is_refused() -> None:
+    # "INVO/26-27/000001" is exactly 17 characters: one past the GST limit, so
+    # the boundary itself must refuse it (D14).
+    fill_shop_details(invoice_number_prefix="INVO")
+    order, _variants = packing_order()
+
+    with pytest.raises(InvoiceNumberTooLongError):
+        pack_and_send_out(order.pk, actor=staff(), now=NOW)
+
+    order.refresh_from_db()
+    assert order.status == Order.Status.PACKING
+    assert not Invoice.objects.exists()
+
+
 def test_two_orders_get_consecutive_numbers() -> None:
     _first_order, first = sent_out_order()
     _second_order, second = sent_out_order()
@@ -87,6 +101,29 @@ def test_a_rolled_back_send_out_leaves_no_gap() -> None:
     assert invoice.invoice_number == "INV/26-27/000001"
 
 
+def test_an_item_that_did_not_go_out_is_not_invoiced() -> None:
+    first = gst_variant(price="95.00", gst="5.00")
+    second = gst_variant(price="41.50", gst="12.00")
+    order, _variants = packing_order(
+        lines=[(first, "2"), (second, "3")],
+        delivery_fee="0.00",
+    )
+    # Only the first line went out (D12), so the cancelled line must not reach
+    # the invoice even when it is issued directly.
+    went_out = order.items.get(variant=first)
+    went_out.item_status = OrderItem.ItemStatus.FULFILLED
+    went_out.quantity_fulfilled = Decimal("2.000")
+    went_out.save(update_fields=["item_status", "quantity_fulfilled", "updated_at"])
+    stayed = order.items.get(variant=second)
+    stayed.item_status = OrderItem.ItemStatus.CANCELLED
+    stayed.save(update_fields=["item_status", "updated_at"])
+
+    invoice = issue_invoice(order, actor=staff(), now=NOW)
+
+    assert invoice.lines.filter(is_fee_line=False).count() == 1
+    assert invoice.lines.get(is_fee_line=False).description == went_out.product_name
+
+
 def test_one_invoice_per_order() -> None:
     order, _invoice = sent_out_order()
 
@@ -110,6 +147,41 @@ def test_the_snapshot_survives_a_shop_settings_edit() -> None:
     invoice.refresh_from_db()
     assert invoice.seller_name == SHOP_NAME
     assert invoice.seller_gstin == SHOP_GSTIN
+
+
+def test_the_lines_follow_the_order_they_were_placed_in() -> None:
+    # The names sort the other way round, so ordering by name would flip them.
+    first = gst_variant(price="95.00", gst="5.00")
+    first.product.name_en = "Zeera biscuit"
+    first.product.save(update_fields=["name_en", "updated_at"])
+    second = gst_variant(price="41.50", gst="12.00")
+    second.product.name_en = "Aata 5 kg"
+    second.product.save(update_fields=["name_en", "updated_at"])
+
+    _order, invoice = sent_out_order(
+        lines=[(first, "2"), (second, "3")],
+        delivery_fee="0.00",
+    )
+
+    names = [line.description for line in invoice.lines.all()]
+    assert names == ["Zeera biscuit", "Aata 5 kg"]
+
+
+def test_the_line_is_priced_from_the_fulfilled_quantity() -> None:
+    row = gst_variant(price="100.00", gst="5.00")
+    order, _variants = packing_order(lines=[(row, "2")], delivery_fee="0.00")
+    # Only one of the two ordered packets went out (D12).
+    item = order.items.get()
+    item.item_status = OrderItem.ItemStatus.FULFILLED
+    item.quantity_fulfilled = Decimal("1.000")
+    item.save(update_fields=["item_status", "quantity_fulfilled", "updated_at"])
+
+    invoice = issue_invoice(order, actor=staff(), now=NOW)
+
+    line = invoice.lines.get(is_fee_line=False)
+    assert line.quantity == Decimal("1.000")
+    assert line.line_total == Decimal("100.00")
+    assert invoice.grand_total == Decimal("100.00")
 
 
 def test_the_snapshot_survives_a_product_edit() -> None:
@@ -272,6 +344,16 @@ def test_the_invoice_is_issued_at_the_given_time() -> None:
     assert invoice.issued_at == NOW
 
 
+def test_the_buyer_address_is_frozen_with_the_pin_code() -> None:
+    order, invoice = sent_out_order()
+
+    assert order.ship_name in invoice.buyer_address
+    assert order.ship_line1 in invoice.buyer_address
+    assert order.ship_city in invoice.buyer_address
+    # A pin code is what the carrier reads, so it must be on the page.
+    assert order.ship_pincode in invoice.buyer_address
+
+
 def test_the_place_of_supply_is_the_buyer_state() -> None:
     order, invoice = sent_out_order()
 
@@ -279,6 +361,16 @@ def test_the_place_of_supply_is_the_buyer_state() -> None:
     assert invoice.place_of_supply == order.ship_state
     assert invoice.buyer_name == order.ship_name
     assert invoice.buyer_phone == order.ship_phone
+
+
+def test_a_lowercase_gstin_is_stored_in_upper_case() -> None:
+    # A GSTIN is printed in capitals, whatever case the settings hold.
+    fill_shop_details(gstin="23aaaaa0000a1z5")
+
+    _order, invoice = sent_out_order()
+
+    assert invoice.seller_gstin == "23AAAAA0000A1Z5"
+    assert invoice.seller_state_code == "23"
 
 
 def test_the_seller_state_code_comes_from_the_gstin() -> None:
