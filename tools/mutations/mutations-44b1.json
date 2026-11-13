@@ -1,0 +1,396 @@
+{
+  "tests": [
+    "apps/promotions/tests/test_coupon_model.py",
+    "apps/promotions/tests/test_coupon_rules.py",
+    "apps/promotions/tests/test_coupon_admin.py",
+    "apps/promotions/tests/test_promotions_capability.py",
+    "apps/promotions/tests/test_coupon_code_constraint.py",
+    "apps/orders/tests/test_invoice_issue.py",
+    "apps/orders/tests/test_invoice_hooks.py",
+    "apps/orders/tests/test_invoice_views.py",
+    "apps/orders/tests/test_invoice_pdf.py",
+    "apps/orders/tests/test_invoice_integrity.py",
+    "apps/orders/tests/test_invoice_discount.py",
+    "apps/orders/tests/test_invoice_discount_allocation.py",
+    "apps/orders/tests/test_place_order_coupon.py",
+    "apps/orders/tests/test_coupon_release.py",
+    "apps/orders/tests/test_order_coupon_fields.py",
+    "apps/orders/tests/test_packing.py",
+    "apps/orders/tests/test_staff_cancel.py",
+    "apps/orders/tests/test_end_to_end.py",
+    "apps/accounts/tests/test_capabilities_more.py"
+  ],
+  "mutations": [
+    {
+      "id": "44b1-01-blank-code-judged",
+      "file": "apps/orders/services.py",
+      "old": "        if coupon_code.strip():\n",
+      "new": "        if coupon_code:\n",
+      "note": "a whitespace code is looked up as if it were a code"
+    },
+    {
+      "id": "44b1-02-no-coupon-lock",
+      "file": "apps/orders/services.py",
+      "old": "                for_update=True,\n",
+      "new": "                for_update=False,\n",
+      "note": "the coupon row is read without its lock"
+    },
+    {
+      "id": "44b1-03-refusal-does-not-raise",
+      "file": "apps/orders/services.py",
+      "old": "            if not coupon.ok:\n",
+      "new": "            if False:\n",
+      "note": "a refused coupon places the order anyway"
+    },
+    {
+      "id": "44b1-04-grand-total-forgets-delivery-discount",
+      "file": "apps/orders/services.py",
+      "old": "        grand_total = round_money(summary.grand_total - discount_total - delivery_discount)\n",
+      "new": "        grand_total = round_money(summary.grand_total - discount_total)\n",
+      "note": "the delivery discount is not taken off the total"
+    },
+    {
+      "id": "44b1-05-grand-total-forgets-item-discount",
+      "file": "apps/orders/services.py",
+      "old": "        grand_total = round_money(summary.grand_total - discount_total - delivery_discount)\n",
+      "new": "        grand_total = round_money(summary.grand_total - delivery_discount)\n",
+      "note": "the item discount is not taken off the total"
+    },
+    {
+      "id": "44b1-06-grand-total-adds-the-item-discount",
+      "file": "apps/orders/services.py",
+      "old": "        grand_total = round_money(summary.grand_total - discount_total - delivery_discount)\n",
+      "new": "        grand_total = round_money(summary.grand_total + discount_total - delivery_discount)\n",
+      "note": "the item discount is added instead of subtracted"
+    },
+    {
+      "id": "44b1-07-credit-uses-cart-total",
+      "file": "apps/orders/services.py",
+      "old": "            credit_applied = min(available, grand_total)\n",
+      "new": "            credit_applied = min(available, summary.grand_total)\n",
+      "note": "the khata part ignores the coupon"
+    },
+    {
+      "id": "44b1-08-remainder-uses-cart-total",
+      "file": "apps/orders/services.py",
+      "old": "        remainder = grand_total - credit_applied\n",
+      "new": "        remainder = summary.grand_total - credit_applied\n",
+      "note": "the cash and online parts ignore the coupon"
+    },
+    {
+      "id": "44b1-09-blank-code-stored",
+      "file": "apps/orders/services.py",
+      "old": "            coupon_code=coupon.code if coupon is not None else \"\",\n",
+      "new": "            coupon_code=\"\",\n",
+      "note": "the order forgets the code that was used"
+    },
+    {
+      "id": "44b1-10-redemption-amounts-swapped",
+      "file": "apps/orders/services.py",
+      "old": "                discount_amount=discount_total,\n                delivery_discount_amount=delivery_discount,\n",
+      "new": "                discount_amount=delivery_discount,\n                delivery_discount_amount=discount_total,\n",
+      "note": "the redemption holds the two amounts the other way round"
+    },
+    {
+      "id": "44b1-11-no-redemption",
+      "file": "apps/orders/services.py",
+      "old": "        if coupon is not None and coupon.coupon_id is not None:\n",
+      "new": "        if False:\n",
+      "note": "no redemption row is written"
+    },
+    {
+      "id": "44b1-12-redemption-without-coupon-id",
+      "file": "apps/orders/services.py",
+      "old": "        if coupon is not None and coupon.coupon_id is not None:\n",
+      "new": "        if coupon is not None:\n",
+      "note": "the redemption is written without checking the coupon id"
+    },
+    {
+      "id": "44b1-13-delivery-discount-as-item-discount",
+      "file": "apps/orders/services.py",
+      "old": "            discount_total = coupon.item_discount\n",
+      "new": "            discount_total = coupon.delivery_discount\n",
+      "note": "the item discount takes the delivery discount's value"
+    },
+    {
+      "id": "44b1-14-item-discount-as-delivery-discount",
+      "file": "apps/orders/services.py",
+      "old": "            delivery_discount = coupon.delivery_discount\n",
+      "new": "            delivery_discount = coupon.item_discount\n",
+      "note": "the delivery discount takes the item discount's value"
+    },
+    {
+      "id": "44b1-15-cod-cap-on-cart-total",
+      "file": "apps/orders/services.py",
+      "old": "        elif remainder > settings.cod_cap:\n",
+      "new": "        elif summary.grand_total > settings.cod_cap:\n",
+      "note": "the cash-on-delivery cap ignores the coupon"
+    },
+    {
+      "id": "44b1-16-cash-due-ignores-khata",
+      "file": "apps/orders/services.py",
+      "old": "        cash_due = remainder\n",
+      "new": "        cash_due = grand_total\n",
+      "note": "the cash at the door ignores the khata part"
+    },
+    {
+      "id": "44b1-17-savings-take-item-total",
+      "file": "apps/orders/services.py",
+      "old": "            savings_total=summary.savings_total,\n",
+      "new": "            savings_total=summary.item_total,\n",
+      "note": "the MRP savings become the item total"
+    },
+    {
+      "id": "44b1-18-no-release-call",
+      "file": "apps/orders/services.py",
+      "old": "        release_redemption(order, now=now)\n",
+      "new": "        # release_redemption(order, now=now)\n",
+      "note": "a cancel never gives the coupon use back"
+    },
+    {
+      "id": "44b1-19-failed-payment-releases",
+      "file": "apps/orders/services.py",
+      "old": "        return _apply_transition(\n            order,\n            PAYMENT_FAILED,\n",
+      "new": "        release_redemption(order, now=resolved_now)\n        return _apply_transition(\n            order,\n            PAYMENT_FAILED,\n",
+      "note": "a failed payment releases the coupon use"
+    },
+    {
+      "id": "44b1-20-release-takes-released-row",
+      "file": "apps/promotions/services.py",
+      "old": "            .filter(order=order, released_at__isnull=True)\n",
+      "new": "            .filter(order=order)\n",
+      "note": "a second release finds the already released row"
+    },
+    {
+      "id": "44b1-21-release-ignores-invoice",
+      "file": "apps/promotions/services.py",
+      "old": "        if Invoice.objects.filter(order=order).exists():\n            return redemption\n",
+      "new": "        if False:\n            return redemption\n",
+      "note": "a sent-out order releases its coupon use"
+    },
+    {
+      "id": "44b1-22-release-never-set",
+      "file": "apps/promotions/services.py",
+      "old": "        redemption.released_at = now\n",
+      "new": "        redemption.released_at = None\n",
+      "note": "the release time is never written"
+    },
+    {
+      "id": "44b1-23-release-not-saved",
+      "file": "apps/promotions/services.py",
+      "old": "        redemption.save(update_fields=[\"released_at\"])\n",
+      "new": "        redemption.save(update_fields=[\"discount_amount\"])\n",
+      "note": "the release time is not saved"
+    },
+    {
+      "id": "44b1-24-allocation-guard-and",
+      "file": "apps/orders/invoices.py",
+      "old": "    if discount <= ZERO or total <= ZERO:\n",
+      "new": "    if discount <= ZERO and total <= ZERO:\n",
+      "note": "a zero discount with a real total is shared out"
+    },
+    {
+      "id": "44b1-25-allocation-no-cap",
+      "file": "apps/orders/invoices.py",
+      "old": "    capped = min(round_money(discount), total)\n",
+      "new": "    capped = round_money(discount)\n",
+      "note": "a discount larger than the goods is not capped"
+    },
+    {
+      "id": "44b1-26-allocation-tie-reversed",
+      "file": "apps/orders/invoices.py",
+      "old": "    order = sorted(range(len(grosses)), key=lambda index: (-fractions[index], index))\n",
+      "new": "    order = sorted(range(len(grosses)), key=lambda index: (-fractions[index], -index))\n",
+      "note": "on a tie the later line takes the paisa"
+    },
+    {
+      "id": "44b1-27-allocation-one-paisa-too-many",
+      "file": "apps/orders/invoices.py",
+      "old": "        if given >= leftover:\n",
+      "new": "        if given > leftover:\n",
+      "note": "one leftover paisa too many is handed out"
+    },
+    {
+      "id": "44b1-28-allocation-round-not-floor",
+      "file": "apps/orders/invoices.py",
+      "old": "        floor = exact.quantize(PAISE, rounding=ROUND_FLOOR)\n",
+      "new": "        floor = round_money(exact)\n",
+      "note": "each share is rounded half-up instead of down"
+    },
+    {
+      "id": "44b1-29-allocation-zero-fraction-gets-paisa",
+      "file": "apps/orders/invoices.py",
+      "old": "        if grosses[index] <= ZERO or fractions[index] <= ZERO:\n",
+      "new": "        if grosses[index] <= ZERO:\n",
+      "note": "a line with no fraction also takes a paisa"
+    },
+    {
+      "id": "44b1-30-allocation-total-is-the-largest-line",
+      "file": "apps/orders/invoices.py",
+      "old": "    total = sum(grosses, ZERO)\n",
+      "new": "    total = max(grosses, default=ZERO)\n",
+      "note": "the shares use the largest line instead of the sum"
+    },
+    {
+      "id": "44b1-31-gst-on-undiscounted-gross",
+      "file": "apps/orders/invoices.py",
+      "old": "    breakdown = gst_breakdown(round_money(gross - discount), item.gst_rate_percent)\n",
+      "new": "    breakdown = gst_breakdown(gross, item.gst_rate_percent)\n",
+      "note": "the GST is worked out before the discount"
+    },
+    {
+      "id": "44b1-32-line-discount-always-zero",
+      "file": "apps/orders/invoices.py",
+      "old": "        \"discount_amount\": discount,\n",
+      "new": "        \"discount_amount\": ZERO,\n",
+      "note": "the line forgets its discount"
+    },
+    {
+      "id": "44b1-33-fee-ignores-delivery-discount",
+      "file": "apps/orders/invoices.py",
+      "old": "    charged_fee = round_money(order.delivery_fee - order.delivery_discount)\n",
+      "new": "    charged_fee = round_money(order.delivery_fee)\n",
+      "note": "the invoice charges the whole fee"
+    },
+    {
+      "id": "44b1-34-fee-line-always-added",
+      "file": "apps/orders/invoices.py",
+      "old": "    if charged_fee > ZERO:\n",
+      "new": "    if charged_fee >= ZERO:\n",
+      "note": "a zero delivery fee still gets a fee line"
+    },
+    {
+      "id": "44b1-35-invoice-discount-zero",
+      "file": "apps/orders/invoices.py",
+      "old": "        discount_total=order.discount_total,\n",
+      "new": "        discount_total=ZERO,\n",
+      "note": "the invoice forgets the discount total"
+    },
+    {
+      "id": "44b1-36-invoice-code-blank",
+      "file": "apps/orders/invoices.py",
+      "old": "        coupon_code=order.coupon_code,\n",
+      "new": "        coupon_code=\"\",\n",
+      "note": "the invoice forgets the coupon code"
+    },
+    {
+      "id": "44b1-37-total-mismatch-rule-removed",
+      "file": "apps/orders/invoices.py",
+      "old": "        # 1c. The invoice total must be the total of the order it came from.\n        if invoice.grand_total != invoice.order.grand_total:\n",
+      "new": "        # 1c. The invoice total must be the total of the order it came from.\n        if False:\n",
+      "note": "an invoice total that differs from its order is not reported"
+    },
+    {
+      "id": "44b1-38-total-mismatch-only-below",
+      "file": "apps/orders/invoices.py",
+      "old": "        if invoice.grand_total != invoice.order.grand_total:\n",
+      "new": "        if invoice.grand_total < invoice.order.grand_total:\n",
+      "note": "an invoice total above its order is not reported"
+    },
+    {
+      "id": "44b1-39-discount-mismatch-inverted",
+      "file": "apps/orders/invoices.py",
+      "old": "        if discount_sum != invoice.discount_total:\n",
+      "new": "        if discount_sum == invoice.discount_total:\n",
+      "note": "a matching discount is reported and a broken one is not"
+    },
+    {
+      "id": "44b1-40-no-fulfilled-line-allowed",
+      "file": "apps/orders/invoices.py",
+      "old": "    if not items:\n",
+      "new": "    if False:\n",
+      "note": "an order with no fulfilled line is invoiced anyway"
+    },
+    {
+      "id": "44b1-41-second-invoice-allowed",
+      "file": "apps/orders/invoices.py",
+      "old": "    if Invoice.objects.filter(order=order).exists():\n",
+      "new": "    if False:\n",
+      "note": "an order can get a second invoice"
+    },
+    {
+      "id": "44b1-42-line-rate-is-line-total",
+      "file": "apps/orders/invoices.py",
+      "old": "        \"rate\": item.unit_price,\n",
+      "new": "        \"rate\": breakdown.price_inclusive,\n",
+      "note": "the printed rate is the discounted line total"
+    },
+    {
+      "id": "44b1-43-pdf-disc-cell-inverted",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "                money_text(line.discount_amount) if line.discount_amount > ZERO else \"\",\n",
+      "new": "                money_text(line.discount_amount) if line.discount_amount <= ZERO else \"\",\n",
+      "note": "a discounted line prints no Disc. amount"
+    },
+    {
+      "id": "44b1-44-pdf-disc-cell-wrong-column",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "                money_text(line.discount_amount) if line.discount_amount > ZERO else \"\",\n",
+      "new": "                money_text(line.taxable_value) if line.discount_amount > ZERO else \"\",\n",
+      "note": "the Disc. cell prints the taxable value"
+    },
+    {
+      "id": "44b1-45-pdf-discount-line-dropped",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    if invoice.discount_total > ZERO:\n",
+      "new": "    if False:\n",
+      "note": "the PDF totals never name the discount"
+    },
+    {
+      "id": "44b1-46-pdf-heading-renamed",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    \"Disc.\",\n",
+      "new": "    \"Discount\",\n",
+      "note": "the column heading changes"
+    },
+    {
+      "id": "44b1-47-staff-page-condition-inverted",
+      "file": "apps/orders/templates/staff/invoice.html",
+      "old": "    {% if invoice.discount_total %}\n",
+      "new": "    {% if not invoice.discount_total %}\n",
+      "note": "the staff page shows the discount only when there is none"
+    },
+    {
+      "id": "44b1-48-staff-page-wrong-cell",
+      "file": "apps/orders/templates/staff/invoice.html",
+      "old": "            <td class=\"border-b p-2\">{{ line.discount }}</td>\n",
+      "new": "            <td class=\"border-b p-2\">{{ line.taxable }}</td>\n",
+      "note": "the staff Disc. column prints the taxable value"
+    },
+    {
+      "id": "44b1-49-send-out-no-invoice",
+      "file": "apps/orders/staff_services.py",
+      "old": "        issue_invoice(order, actor=actor, now=resolved_now)\n",
+      "new": "        # issue_invoice(order, actor=actor, now=resolved_now)\n",
+      "note": "a send-out writes no invoice"
+    },
+    {
+      "id": "44b1-50-send-out-swallows-invoice-refusal",
+      "file": "apps/orders/staff_services.py",
+      "old": "        issue_invoice(order, actor=actor, now=resolved_now)\n",
+      "new": "        try:\n            issue_invoice(order, actor=actor, now=resolved_now)\n        except Exception:\n            pass\n",
+      "note": "a refused invoice no longer stops the send-out"
+    },
+    {
+      "id": "44b1-51-send-out-invoice-before-stock",
+      "file": "apps/orders/staff_services.py",
+      "old": "        # The holds are consumed and the sale is written before the status\n        # moves, so the stock and the order always agree.\n        for item in items:\n            consume_reservation(holds[item.variant_id].pk, now=resolved_now)\n        record_sales(\n            lines=[\n                StockMovementLine(variant_id=item.variant_id, quantity=item.quantity_ordered)\n                for item in items\n            ],\n            reason=f\"Order {order.order_number}\",\n            created_by=actor,\n        )\n        # Nothing is weighed again: the ordered quantity is the fulfilled one.\n        for item in items:\n            item.quantity_fulfilled = item.quantity_ordered\n            item.item_status = OrderItem.ItemStatus.FULFILLED\n            item.save(update_fields=[\"quantity_fulfilled\", \"item_status\", \"updated_at\"])\n\n        # The GST tax invoice is issued inside this transaction, after the sale\n        # is written and before the status moves (D13, D80). A refusal rolls\n        # the whole send-out back, so no stock, hold or number is left behind.\n        issue_invoice(order, actor=actor, now=resolved_now)\n",
+      "new": "        # The GST tax invoice is issued inside this transaction, after the sale\n        # is written and before the status moves (D13, D80). A refusal rolls\n        # the whole send-out back, so no stock, hold or number is left behind.\n        issue_invoice(order, actor=actor, now=resolved_now)\n\n        # The holds are consumed and the sale is written before the status\n        # moves, so the stock and the order always agree.\n        for item in items:\n            consume_reservation(holds[item.variant_id].pk, now=resolved_now)\n        record_sales(\n            lines=[\n                StockMovementLine(variant_id=item.variant_id, quantity=item.quantity_ordered)\n                for item in items\n            ],\n            reason=f\"Order {order.order_number}\",\n            created_by=actor,\n        )\n        # Nothing is weighed again: the ordered quantity is the fulfilled one.\n        for item in items:\n            item.quantity_fulfilled = item.quantity_ordered\n            item.item_status = OrderItem.ItemStatus.FULFILLED\n            item.save(update_fields=[\"quantity_fulfilled\", \"item_status\", \"updated_at\"])\n",
+      "note": "the invoice is issued before the stock is consumed and the sale written"
+    },
+    {
+      "id": "44b1-52-send-out-hold-check-after-stock",
+      "file": "apps/orders/staff_services.py",
+      "old": "        for item in items:\n            _check_hold(holds.get(item.variant_id), item, resolved_now)\n\n        # The holds are consumed and the sale is written before the status\n",
+      "new": "        # The holds are consumed and the sale is written before the status\n",
+      "note": "the hold check is skipped, so a missing hold fails later and differently"
+    },
+    {
+      "id": "44b1-53-release-invoice-check-inverted",
+      "file": "apps/promotions/services.py",
+      "old": "        if Invoice.objects.filter(order=order).exists():\n",
+      "new": "        if not Invoice.objects.filter(order=order).exists():\n",
+      "note": "the release happens only for an order that was sent out"
+    }
+  ]
+}

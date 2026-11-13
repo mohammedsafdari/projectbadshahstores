@@ -15,6 +15,7 @@ from apps.core.models import NumberSeriesCounter
 from apps.inventory.models import StockReservation
 from apps.inventory.reservations import ReservationShortfallError
 from apps.inventory.services import adjust_stock
+from apps.orders import services as order_services
 from apps.orders.models import Order, OrderStatusLog
 from apps.orders.services import (
     CodLimitExceededError,
@@ -194,6 +195,25 @@ def test_a_whitespace_code_is_no_coupon() -> None:
 
 
 # --- the redemption row ------------------------------------------------------
+
+
+def test_the_coupon_is_judged_with_its_row_locked(monkeypatch: pytest.MonkeyPatch) -> None:
+    user, address_row, _row = ready()
+    make_coupon()
+    seen: dict[str, object] = {}
+    real = order_services.evaluate_coupon
+
+    # ``**kwargs`` collects the keyword arguments the service passes on, so the
+    # test sees the lock flag without reaching into the rules module.
+    def _spy(raw_code, **kwargs):
+        seen.update(kwargs)
+        return real(raw_code, **kwargs)
+
+    monkeypatch.setattr(order_services, "evaluate_coupon", _spy)
+
+    place(user, address_row, coupon_code="DIWALI10")
+
+    assert seen["for_update"] is True
 
 
 def test_the_code_is_stored_in_capitals() -> None:

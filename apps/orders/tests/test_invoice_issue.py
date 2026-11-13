@@ -15,6 +15,7 @@ from apps.catalog.services import round_money
 from apps.inventory.models import InventoryMovement, StockReservation
 from apps.orders.invoices import (
     InvoiceAlreadyExistsError,
+    InvoiceLineMissingError,
     InvoiceNumberTooLongError,
     ShopDetailsMissingError,
     issue_invoice,
@@ -33,6 +34,16 @@ from apps.orders.tests.invoice_helpers import (
 from apps.orders.tests.staff_helpers import NOW, staff
 
 pytestmark = pytest.mark.django_db
+
+
+def test_an_order_with_no_fulfilled_line_is_not_invoiced() -> None:
+    # The packing order has items, but every one of them is still pending.
+    order, _variants = packing_order()
+
+    with pytest.raises(InvoiceLineMissingError):
+        issue_invoice(order, actor=staff(), now=NOW)
+
+    assert Invoice.objects.count() == 0
 
 
 def test_invoice_number_has_the_inv_prefix_and_the_financial_year() -> None:

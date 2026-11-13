@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from io import StringIO
 
@@ -12,7 +13,7 @@ from django.test import Client
 from django.urls import reverse
 
 from apps.catalog.models import ProductVariant
-from apps.orders.invoice_pdf import build_invoice_pdf
+from apps.orders.invoice_pdf import _line_rows, build_invoice_pdf
 from apps.orders.invoices import (
     DISCOUNT_MISMATCH,
     TOTAL_MISMATCH,
@@ -361,6 +362,57 @@ def test_a_plain_pdf_shows_no_discount() -> None:
 
     # The "Disc." column heading is always printed; the totals line is not.
     assert b"Discount" not in content
+
+
+def test_the_pdf_prints_each_lines_discount_in_its_own_column() -> None:
+    row = gst_variant(price="100.00", gst="5.00")
+    _order, invoice = _discounted_invoice(lines=[(row, "2")])
+
+    rows = _line_rows(list(invoice.lines.all()))
+
+    # The headings come first; the product line follows, its Disc. cell at 4.
+    assert rows[1][4] == "Rs. 20.00"
+
+
+def test_the_pdf_leaves_the_discount_cell_empty_without_a_discount() -> None:
+    _order, invoice = sent_out_order()
+
+    rows = _line_rows(list(invoice.lines.all()))
+
+    assert rows[1][4] == ""
+
+
+def _row_cells(html: str, marker: str) -> list[str]:
+    """The cells of the first table row that holds this text, tags removed."""
+    for row in re.findall(r"<tr>.*?</tr>", html, re.DOTALL):
+        if marker in row:
+            cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
+            return [re.sub(r"<[^>]+>", "", cell).strip() for cell in cells]
+    raise AssertionError(f"No row with {marker}.")
+
+
+def test_the_staff_page_prints_each_lines_discount_in_its_own_column() -> None:
+    row = gst_variant(price="100.00", gst="5.00")
+    order, invoice = _discounted_invoice(lines=[(row, "2")])
+    line = invoice.lines.get(is_fee_line=False)
+    client = Client()
+    client.force_login(staff())
+
+    html = client.get(reverse("staff_invoice", args=[order.order_number])).content.decode()
+    cells = _row_cells(html, line.description)
+
+    # Description, HSN, quantity, rate, Disc., taxable, CGST, SGST, total.
+    assert cells[4] == "Rs. 20.00"
+    assert cells[5] == "Rs. 171.43"
+
+
+def test_an_invoice_total_above_its_order_is_reported() -> None:
+    order = OrderFactory()
+    _hand_invoice(order, number="INV/26-27/000001", total="1000.00")
+
+    problems = find_invoice_problems()
+
+    assert [problem.code for problem in problems] == [TOTAL_MISMATCH]
 
 
 def test_the_staff_page_shows_the_discount() -> None:
