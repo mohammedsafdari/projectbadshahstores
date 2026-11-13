@@ -82,6 +82,27 @@
       <textarea id="customer-note" name="customer_note" maxlength="300" rows="3" class="mt-2 w-full rounded border border-gray-300 p-2 text-sm">{{ form.customer_note.value|default:"" }}</textarea>
     </section>
 
+    <section data-coupon>
+      <h2 class="text-lg font-semibold text-gray-900">{{ text.coupon_heading }}</h2>
+      {% if coupon_saved_text %}
+        <p data-coupon-applied class="mt-2 text-sm text-green-700">{{ coupon_saved_text }}</p>
+      {% endif %}
+      <div class="mt-3 flex flex-wrap items-end gap-2">
+        <div class="min-w-0 flex-1">
+          <label for="coupon-code" class="block text-sm font-medium text-gray-900">{{ text.coupon_code_label }}</label>
+          <input type="text" id="coupon-code" name="coupon_code" value="{{ coupon_code }}" autocomplete="off"
+                 class="mt-1 w-full rounded border border-gray-300 p-2 text-sm uppercase">
+        </div>
+        <button type="submit" name="coupon_action" value="apply" data-coupon-apply
+                class="rounded border border-brand-500 px-3 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.coupon_apply_button }}</button>
+        <button type="submit" name="coupon_action" value="remove" data-coupon-remove
+                class="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.coupon_remove_button }}</button>
+      </div>
+      {% if coupon_message %}
+        <p data-coupon-message class="mt-2 text-sm font-medium text-green-700">{{ coupon_message }}</p>
+      {% endif %}
+    </section>
+
     <section>
       {% if credit_offered %}
         <h2 class="text-lg font-semibold text-gray-900">{{ text.payment_heading }}</h2>

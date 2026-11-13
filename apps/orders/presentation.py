@@ -44,6 +44,18 @@ FROM_CREDIT_LABEL = _("From credit")
 CASH_ON_DELIVERY_LABEL = _("Cash on delivery")
 DELIVERY_DAY_LABEL = _("Delivery day")
 
+# The coupon box on the checkout page (D83).
+COUPON_HEADING = _("Have a coupon?")
+COUPON_CODE_LABEL = _("Coupon code")
+COUPON_APPLY_BUTTON = _("Apply")
+COUPON_REMOVE_BUTTON = _("Remove")
+COUPON_ROW_LABEL = _("Coupon (%(code)s)")
+DELIVERY_DISCOUNT_LABEL = _("Delivery discount")
+COUPON_APPLIED_SENTENCE = _("Coupon %(code)s applied.")
+COUPON_REMOVED_MESSAGE = _("Coupon removed.")
+COUPON_CODE_REQUIRED = _("Please type a coupon code.")
+COUPON_SAVED_SENTENCE = _("%(code)s is applied. You save %(amount)s.")
+
 SUBSTITUTION_HEADING = _("If an item is not available")
 NOTE_LABEL = _("Note for the shop (optional)")
 NOTE_HELP = _("Up to 300 characters.")
@@ -193,6 +205,21 @@ TIMELINE_LABELS = {
 def money(value: Decimal) -> str:
     """One amount with the rupee sign and two places."""
     return f"₹{value:.2f}"
+
+
+def coupon_row_label(code: str) -> str:
+    """The summary row label for a coupon, with its code (D83)."""
+    return str(COUPON_ROW_LABEL % {"code": code})
+
+
+def coupon_applied_message(code: str) -> str:
+    """The green message after the customer applied this code (D83)."""
+    return str(COUPON_APPLIED_SENTENCE % {"code": code})
+
+
+def coupon_saved_message(code: str, amount: Decimal) -> str:
+    """What this code saves on this cart, shown under the coupon box (D83)."""
+    return str(COUPON_SAVED_SENTENCE % {"code": code, "amount": money(amount)})
 
 
 def cod_sentence(grand_total: Decimal) -> str:
@@ -433,6 +460,16 @@ def page_text() -> dict[str, str]:
         "from_credit_label": str(FROM_CREDIT_LABEL),
         "cash_on_delivery_label": str(CASH_ON_DELIVERY_LABEL),
         "delivery_day_label": str(DELIVERY_DAY_LABEL),
+        "coupon_heading": str(COUPON_HEADING),
+        "coupon_code_label": str(COUPON_CODE_LABEL),
+        "coupon_apply_button": str(COUPON_APPLY_BUTTON),
+        "coupon_remove_button": str(COUPON_REMOVE_BUTTON),
+        "coupon_row_label": str(COUPON_ROW_LABEL),
+        "delivery_discount_label": str(DELIVERY_DISCOUNT_LABEL),
+        "coupon_applied_sentence": str(COUPON_APPLIED_SENTENCE),
+        "coupon_removed_message": str(COUPON_REMOVED_MESSAGE),
+        "coupon_code_required": str(COUPON_CODE_REQUIRED),
+        "coupon_saved_sentence": str(COUPON_SAVED_SENTENCE),
         "substitution_heading": str(SUBSTITUTION_HEADING),
         "note_label": str(NOTE_LABEL),
         "note_help": str(NOTE_HELP),

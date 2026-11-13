@@ -1,6 +1,7 @@
 {# The lines and money totals shared by the checkout and confirmation pages.
-   The view passes `lines` (name, quantity_text, line_total) and `summary`
-   (a cart summary or an order), so this file prints values only. #}
+   The view passes `lines` (name, quantity_text, line_total) and `totals`
+   (item_total, savings_total, delivery_fee, discount_total, delivery_discount,
+   coupon_code, grand_total), so this file prints values only. #}
 <ul data-summary-lines class="mt-4 divide-y divide-gray-200 border-y border-gray-200">
   {% for line in lines %}
     <li data-summary-line class="flex items-start justify-between gap-4 py-3">
@@ -16,21 +17,34 @@
 <dl data-summary-totals class="mt-4 max-w-sm space-y-1 text-sm">
   <div class="flex justify-between">
     <dt class="text-gray-600">{{ text.item_total_label }}</dt>
-    <dd data-item-total class="font-medium text-gray-900">₹{{ summary.item_total|floatformat:"2" }}</dd>
+    <dd data-item-total class="font-medium text-gray-900">₹{{ totals.item_total|floatformat:"2" }}</dd>
   </div>
-  {% if summary.savings_total > 0 %}
+  {% if totals.savings_total > 0 %}
     <div class="flex justify-between">
       <dt class="text-gray-600">{{ text.savings_label }}</dt>
-      <dd data-savings class="font-medium text-green-700">₹{{ summary.savings_total|floatformat:"2" }}</dd>
+      <dd data-savings class="font-medium text-green-700">₹{{ totals.savings_total|floatformat:"2" }}</dd>
+    </div>
+  {% endif %}
+  {# The coupon row sits between the item total and the delivery line (D83). #}
+  {% if totals.discount_total > 0 %}
+    <div class="flex justify-between">
+      <dt class="text-gray-600">{{ coupon_row_label }}</dt>
+      <dd data-coupon-discount class="font-medium text-green-700">-₹{{ totals.discount_total|floatformat:"2" }}</dd>
     </div>
   {% endif %}
   <div class="flex justify-between">
     <dt class="text-gray-600">{{ text.delivery_label }}</dt>
-    <dd data-delivery-fee class="font-medium text-gray-900">{% if summary.delivery_fee > 0 %}₹{{ summary.delivery_fee|floatformat:"2" }}{% else %}{{ text.free_label }}{% endif %}</dd>
+    <dd data-delivery-fee class="font-medium text-gray-900">{% if totals.delivery_fee > 0 %}₹{{ totals.delivery_fee|floatformat:"2" }}{% else %}{{ text.free_label }}{% endif %}</dd>
   </div>
+  {% if totals.delivery_discount > 0 %}
+    <div class="flex justify-between">
+      <dt class="text-gray-600">{{ text.delivery_discount_label }}</dt>
+      <dd data-delivery-discount class="font-medium text-green-700">-₹{{ totals.delivery_discount|floatformat:"2" }}</dd>
+    </div>
+  {% endif %}
   <div class="flex justify-between border-t border-gray-200 pt-2 text-base font-semibold">
     <dt>{{ text.total_label }}</dt>
-    <dd data-grand-total>₹{{ summary.grand_total|floatformat:"2" }}</dd>
+    <dd data-grand-total>₹{{ totals.grand_total|floatformat:"2" }}</dd>
   </div>
   {% if show_credit_row %}
     <div class="flex justify-between">

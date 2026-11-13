@@ -1,0 +1,358 @@
+{
+  "tests": [
+    "apps/orders/tests/test_checkout_coupon_views.py",
+    "apps/orders/tests/test_checkout_coupon_place.py",
+    "apps/orders/tests/test_order_pages_coupon.py",
+    "apps/orders/tests/test_coupon_text.py",
+    "apps/orders/tests/test_checkout_views.py",
+    "apps/orders/tests/test_checkout_credit_views.py",
+    "apps/orders/tests/test_online_checkout_views.py",
+    "apps/orders/tests/test_confirmation_view.py",
+    "apps/orders/tests/test_order_detail_view.py"
+  ],
+  "mutations": [
+    {
+      "id": "44b2-01-refused-code-is-stored",
+      "file": "apps/orders/views.py",
+      "old": "    if not result.ok:\n        # A refused code is not kept, and any code stored before is dropped.\n",
+      "new": "    if False:\n        # A refused code is not kept, and any code stored before is dropped.\n",
+      "note": "the apply branch stores a code the rules refused"
+    },
+    {
+      "id": "44b2-02-refused-code-kept",
+      "file": "apps/orders/views.py",
+      "old": "        # A refused code is not kept, and any code stored before is dropped.\n        request.session.pop(\"checkout_coupon\", None)\n        return _render_posted_checkout(request, user, error=result.message)",
+      "new": "        # A refused code is not kept, and any code stored before is dropped.\n        return _render_posted_checkout(request, user, error=result.message)",
+      "note": "a refused code is not dropped from the session"
+    },
+    {
+      "id": "44b2-03-code-not-normalised",
+      "file": "apps/orders/views.py",
+      "old": "    return request.POST.get(\"coupon_code\", \"\").strip().upper()",
+      "new": "    return request.POST.get(\"coupon_code\", \"\")",
+      "note": "the typed code is not trimmed or upper-cased"
+    },
+    {
+      "id": "44b2-04-typed-code-guard-removed",
+      "file": "apps/orders/views.py",
+      "old": "    if typed and typed != applied:\n        return \"apply\"",
+      "new": "    if False:\n        return \"apply\"",
+      "note": "a typed code that was never applied does not stop the order"
+    },
+    {
+      "id": "44b2-05-remove-keeps-code",
+      "file": "apps/orders/views.py",
+      "old": "    if action == \"remove\":\n        request.session.pop(\"checkout_coupon\", None)\n        return _render_posted_checkout(",
+      "new": "    if action == \"remove\":\n        return _render_posted_checkout(",
+      "note": "the remove button does not drop the session code"
+    },
+    {
+      "id": "44b2-06-coupon-before-group-checks",
+      "file": "apps/orders/views.py",
+      "old": "    # (a) A posted group that is not a UUID is refused before anything else.\n    group = _posted_group(request)",
+      "new": "    # (a) A posted group that is not a UUID is refused before anything else.\n    early_coupon = _coupon_response(request, user)\n    if early_coupon is not None:\n        return early_coupon\n    group = _posted_group(request)",
+      "note": "the apply branch runs before the double-submit steps"
+    },
+    {
+      "id": "44b2-07-bound-form-on-rerender",
+      "file": "apps/orders/views.py",
+      "old": "        form=_posted_form(request),",
+      "new": "        form=CheckoutForm(request.POST),",
+      "note": "the coupon re-render builds a bound form, so field errors show"
+    },
+    {
+      "id": "44b2-08-substitution-lost",
+      "file": "apps/orders/views.py",
+      "old": "        form=_posted_form(request),\n        selected_address=request.POST.get(\"address\", \"\"),\n        selected_substitution=_posted_substitution(request),",
+      "new": "        form=_posted_form(request),\n        selected_address=request.POST.get(\"address\", \"\"),\n        selected_substitution=Order.SubstitutionPreference.CALL_ME,",
+      "note": "the posted substitution choice is lost"
+    },
+    {
+      "id": "44b2-09-note-lost",
+      "file": "apps/orders/views.py",
+      "old": "            \"customer_note\": request.POST.get(\"customer_note\", \"\"),",
+      "new": "            \"customer_note\": \"\",",
+      "note": "the posted note is lost"
+    },
+    {
+      "id": "44b2-10-credit-tick-lost",
+      "file": "apps/orders/views.py",
+      "old": "        use_credit=_posted_use_credit(request),\n        remainder_method=_posted_remainder(request),\n        error=error,",
+      "new": "        use_credit=False,\n        remainder_method=_posted_remainder(request),\n        error=error,",
+      "note": "the posted khata tick is lost"
+    },
+    {
+      "id": "44b2-11-remainder-method-lost",
+      "file": "apps/orders/views.py",
+      "old": "        use_credit=_posted_use_credit(request),\n        remainder_method=_posted_remainder(request),\n        error=error,",
+      "new": "        use_credit=_posted_use_credit(request),\n        remainder_method=Order.PaymentMethod.COD,\n        error=error,",
+      "note": "the posted remainder method is lost"
+    },
+    {
+      "id": "44b2-12-total-forgets-item-discount",
+      "file": "apps/orders/views.py",
+      "old": "    grand_total = summary.grand_total - discount_total - delivery_discount",
+      "new": "    grand_total = summary.grand_total - delivery_discount",
+      "note": "the grand total forgets the item discount"
+    },
+    {
+      "id": "44b2-13-total-forgets-delivery-discount",
+      "file": "apps/orders/views.py",
+      "old": "    grand_total = summary.grand_total - discount_total - delivery_discount",
+      "new": "    grand_total = summary.grand_total - discount_total",
+      "note": "the grand total forgets the delivery discount"
+    },
+    {
+      "id": "44b2-14-total-adds-item-discount",
+      "file": "apps/orders/views.py",
+      "old": "    grand_total = summary.grand_total - discount_total - delivery_discount",
+      "new": "    grand_total = summary.grand_total + discount_total - delivery_discount",
+      "note": "the item discount is added instead of subtracted"
+    },
+    {
+      "id": "44b2-15-credit-uses-cart-total",
+      "file": "apps/orders/views.py",
+      "old": "    credit_applied = min(available, grand_total) if use_credit else Decimal(\"0.00\")",
+      "new": "    credit_applied = min(available, summary.grand_total) if use_credit else Decimal(\"0.00\")",
+      "note": "the khata part ignores the coupon"
+    },
+    {
+      "id": "44b2-16-remainder-uses-cart-total",
+      "file": "apps/orders/views.py",
+      "old": "    remaining = grand_total - credit_applied",
+      "new": "    remaining = summary.grand_total - credit_applied",
+      "note": "the cash and online parts ignore the coupon"
+    },
+    {
+      "id": "44b2-17-cash-part-uses-cart-total",
+      "file": "apps/orders/views.py",
+      "old": "    cash_due = Decimal(\"0.00\") if online_due > Decimal(\"0.00\") else remaining",
+      "new": "    cash_due = Decimal(\"0.00\") if online_due > Decimal(\"0.00\") else summary.grand_total",
+      "note": "the cash part and its cap check ignore the coupon"
+    },
+    {
+      "id": "44b2-18-cash-sentence-uses-cart-total",
+      "file": "apps/orders/views.py",
+      "old": "            \"cod_sentence\": cod_sentence(grand_total),",
+      "new": "            \"cod_sentence\": cod_sentence(summary.grand_total),",
+      "note": "the cash sentence prints the cart total"
+    },
+    {
+      "id": "44b2-19-online-amount-uses-cart-total",
+      "file": "apps/orders/views.py",
+      "old": "    online_due = remaining if remainder_method == Order.PaymentMethod.ONLINE else Decimal(\"0.00\")",
+      "new": "    online_due = summary.grand_total if remainder_method == Order.PaymentMethod.ONLINE else Decimal(\"0.00\")",
+      "note": "the online amount ignores the coupon and the khata part"
+    },
+    {
+      "id": "44b2-20-stored-code-not-rejudged",
+      "file": "apps/orders/views.py",
+      "old": "    if not result.ok:\n        request.session.pop(\"checkout_coupon\", None)\n        return result, \"\"",
+      "new": "    if False:\n        request.session.pop(\"checkout_coupon\", None)\n        return result, \"\"",
+      "note": "a stored code that stopped working is kept"
+    },
+    {
+      "id": "44b2-21-dropped-code-not-announced",
+      "file": "apps/orders/views.py",
+      "old": "    if coupon is not None and not coupon.ok and error is None:\n        error = coupon.message",
+      "new": "    if False:\n        error = coupon.message",
+      "note": "a dropped code is not announced"
+    },
+    {
+      "id": "44b2-22-place-without-code",
+      "file": "apps/orders/views.py",
+      "old": "            coupon_code=request.session.get(\"checkout_coupon\", \"\"),",
+      "new": "            coupon_code=\"\",",
+      "note": "place_order is called without the coupon code"
+    },
+    {
+      "id": "44b2-23-code-not-popped-on-success",
+      "file": "apps/orders/views.py",
+      "old": "    request.session.pop(\"checkout_group\", None)\n    request.session.pop(\"checkout_coupon\", None)",
+      "new": "    request.session.pop(\"checkout_group\", None)",
+      "note": "the session code is not popped after a successful order"
+    },
+    {
+      "id": "44b2-24-code-popped-on-cart-change",
+      "file": "apps/orders/views.py",
+      "old": "    except (EmptyCartError, CartNotReadyError, ReservationShortfallError):\n        messages.info(request, CART_CHANGED_MESSAGE)",
+      "new": "    except (EmptyCartError, CartNotReadyError, ReservationShortfallError):\n        request.session.pop(\"checkout_coupon\", None)\n        messages.info(request, CART_CHANGED_MESSAGE)",
+      "note": "the session code is popped when the order fails for another reason"
+    },
+    {
+      "id": "44b2-25-refusal-keeps-code",
+      "file": "apps/orders/views.py",
+      "old": "        # nothing was written, so the customer only sees the plain sentence.\n        request.session.pop(\"checkout_coupon\", None)",
+      "new": "        # nothing was written, so the customer only sees the plain sentence.",
+      "note": "CouponRefusedError is caught but the code stays in the session"
+    },
+    {
+      "id": "44b2-26-refusal-shows-reason",
+      "file": "apps/orders/views.py",
+      "old": "            error=str(error.message),",
+      "new": "            error=str(error.reason),",
+      "note": "the refusal shows the reason code, not the customer sentence"
+    },
+    {
+      "id": "44b2-27-order-context-discounts-swapped",
+      "file": "apps/orders/views.py",
+      "old": "            \"discount_total\": order.discount_total,\n            \"delivery_discount\": order.delivery_discount,",
+      "new": "            \"discount_total\": order.delivery_discount,\n            \"delivery_discount\": order.discount_total,",
+      "note": "the order page takes the two discounts swapped"
+    },
+    {
+      "id": "44b2-28-order-context-code-blank",
+      "file": "apps/orders/views.py",
+      "old": "            \"coupon_code\": order.coupon_code,",
+      "new": "            \"coupon_code\": \"\",",
+      "note": "the order page forgets the coupon code"
+    },
+    {
+      "id": "44b2-29-saved-amount-always-delivery",
+      "file": "apps/orders/views.py",
+      "old": "                    delivery_discount if delivery_discount > Decimal(\"0.00\") else discount_total,",
+      "new": "                    delivery_discount,",
+      "note": "the saved amount is the delivery discount for every kind"
+    },
+    {
+      "id": "44b2-30-apply-falls-through",
+      "file": "apps/orders/views.py",
+      "old": "    request.session[\"checkout_coupon\"] = result.code\n    return _render_posted_checkout(",
+      "new": "    request.session[\"checkout_coupon\"] = result.code\n    return None\n    return _render_posted_checkout(",
+      "note": "the apply branch falls through and places the order"
+    },
+    {
+      "id": "44b2-31-removed-sentence-changed",
+      "file": "apps/orders/presentation.py",
+      "old": "COUPON_REMOVED_MESSAGE = _(\"Coupon removed.\")",
+      "new": "COUPON_REMOVED_MESSAGE = _(\"Coupon removed\")",
+      "note": "a new sentence changes"
+    },
+    {
+      "id": "44b2-32-applied-placeholder-not-filled",
+      "file": "apps/orders/presentation.py",
+      "old": "    return str(COUPON_APPLIED_SENTENCE % {\"code\": code})",
+      "new": "    return str(COUPON_APPLIED_SENTENCE)",
+      "note": "the applied sentence prints its placeholder"
+    },
+    {
+      "id": "44b2-33-row-label-not-filled",
+      "file": "apps/orders/presentation.py",
+      "old": "    return str(COUPON_ROW_LABEL % {\"code\": code})",
+      "new": "    return str(COUPON_ROW_LABEL)",
+      "note": "the coupon row label prints its placeholder"
+    },
+    {
+      "id": "44b2-34-heading-changed",
+      "file": "apps/orders/presentation.py",
+      "old": "COUPON_HEADING = _(\"Have a coupon?\")",
+      "new": "COUPON_HEADING = _(\"Have a code?\")",
+      "note": "the coupon heading changes"
+    },
+    {
+      "id": "44b2-35-delivery-label-changed",
+      "file": "apps/orders/presentation.py",
+      "old": "DELIVERY_DISCOUNT_LABEL = _(\"Delivery discount\")",
+      "new": "DELIVERY_DISCOUNT_LABEL = _(\"Delivery offer\")",
+      "note": "the delivery discount row label changes"
+    },
+    {
+      "id": "44b2-36-coupon-row-condition-inverted",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "{% if totals.discount_total > 0 %}",
+      "new": "{% if totals.discount_total < 0 %}",
+      "note": "the coupon row shows only when there is no discount"
+    },
+    {
+      "id": "44b2-37-delivery-row-condition-inverted",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "{% if totals.delivery_discount > 0 %}",
+      "new": "{% if totals.delivery_discount < 0 %}",
+      "note": "the delivery discount row shows only when there is none"
+    },
+    {
+      "id": "44b2-38-coupon-minus-dropped",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "-₹{{ totals.discount_total|floatformat:\"2\" }}",
+      "new": "₹{{ totals.discount_total|floatformat:\"2\" }}",
+      "note": "the coupon row loses its minus sign"
+    },
+    {
+      "id": "44b2-39-delivery-minus-dropped",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "-₹{{ totals.delivery_discount|floatformat:\"2\" }}",
+      "new": "₹{{ totals.delivery_discount|floatformat:\"2\" }}",
+      "note": "the delivery discount row loses its minus sign"
+    },
+    {
+      "id": "44b2-40-grand-total-uses-summary",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "    <dd data-grand-total>₹{{ totals.grand_total|floatformat:\"2\" }}</dd>",
+      "new": "    <dd data-grand-total>₹{{ summary.grand_total|floatformat:\"2\" }}</dd>",
+      "note": "the grand total row prints the undiscounted summary total"
+    },
+    {
+      "id": "44b2-41-coupon-dataref-renamed",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "data-coupon-discount",
+      "new": "data-coupon-amount",
+      "note": "the data-coupon-discount attribute is renamed"
+    },
+    {
+      "id": "44b2-42-delivery-dataref-renamed",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "data-delivery-discount",
+      "new": "data-delivery-amount",
+      "note": "the data-delivery-discount attribute is renamed"
+    },
+    {
+      "id": "44b2-43-coupon-row-label-wrong",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "      <dt class=\"text-gray-600\">{{ coupon_row_label }}</dt>",
+      "new": "      <dt class=\"text-gray-600\">{{ text.item_total_label }}</dt>",
+      "note": "the coupon row prints the wrong label"
+    },
+    {
+      "id": "44b2-44-delivery-row-label-wrong",
+      "file": "templates/orders/_checkout_summary.html",
+      "old": "      <dt class=\"text-gray-600\">{{ text.delivery_discount_label }}</dt>",
+      "new": "      <dt class=\"text-gray-600\">{{ text.delivery_label }}</dt>",
+      "note": "the delivery discount row prints the delivery label"
+    },
+    {
+      "id": "44b2-45-apply-value-changed",
+      "file": "templates/orders/checkout.html",
+      "old": "name=\"coupon_action\" value=\"apply\"",
+      "new": "name=\"coupon_action\" value=\"Apply\"",
+      "note": "the apply button sends a value the view does not recognise"
+    },
+    {
+      "id": "44b2-46-remove-value-changed",
+      "file": "templates/orders/checkout.html",
+      "old": "name=\"coupon_action\" value=\"remove\"",
+      "new": "name=\"coupon_action\" value=\"delete\"",
+      "note": "the remove button sends a value the view does not recognise"
+    },
+    {
+      "id": "44b2-47-input-name-changed",
+      "file": "templates/orders/checkout.html",
+      "old": "name=\"coupon_code\"",
+      "new": "name=\"coupon\"",
+      "note": "the typed code is posted under another name"
+    },
+    {
+      "id": "44b2-48-message-marker-renamed",
+      "file": "templates/orders/checkout.html",
+      "old": "data-coupon-message",
+      "new": "data-coupon-ok",
+      "note": "the success message loses its data marker"
+    },
+    {
+      "id": "44b2-49-saved-line-removed",
+      "file": "templates/orders/checkout.html",
+      "old": "      {% if coupon_saved_text %}",
+      "new": "      {% if False %}",
+      "note": "the page never says what the code saves"
+    }
+  ]
+}

@@ -41,6 +41,8 @@ from apps.orders.presentation import (
     CANCEL_NOT_POSSIBLE_MESSAGE,
     CART_CHANGED_MESSAGE,
     CART_NOT_READY_MESSAGE,
+    COUPON_CODE_REQUIRED,
+    COUPON_REMOVED_MESSAGE,
     CREDIT_UNAVAILABLE_MESSAGE,
     EMPTY_CART_MESSAGE,
     GROUP_INVALID_MESSAGE,
@@ -54,6 +56,9 @@ from apps.orders.presentation import (
     cod_limit_message,
     cod_on_delivery_sentence,
     cod_sentence,
+    coupon_applied_message,
+    coupon_row_label,
+    coupon_saved_message,
     credit_choice_sentence,
     credit_confirmation_sentence,
     credit_limit_message,
@@ -85,6 +90,7 @@ from apps.orders.services import (
     CartNotReadyError,
     CheckoutGroupInUseError,
     CodLimitExceededError,
+    CouponRefusedError,
     EmptyCartError,
     InvalidTransitionError,
     OnlinePaymentUnavailableError,
@@ -100,6 +106,7 @@ from apps.orders.services import (
 from apps.payments.gateway import online_payment_available
 from apps.payments.models import Payment
 from apps.payments.refunds import latest_refund
+from apps.promotions.rules import CouponResult, evaluate_coupon
 
 LOGIN_URL = reverse_lazy("account_login")
 
@@ -177,6 +184,139 @@ def _payment_state(user: User) -> dict[str, object]:
     }
 
 
+def _coupon_state(
+    request: HttpRequest,
+    user: User,
+    summary: CartSummary,
+) -> tuple[CouponResult | None, str]:
+    """Re-judge the stored code and return its result with the code that still works.
+
+    The preview is not the authority: ``place_order`` judges the code again
+    under its lock. Here the code is only shown, so a code that stopped
+    working is dropped from the session and its sentence is shown once (D83).
+    """
+    stored = request.session.get("checkout_coupon", "")
+    if not isinstance(stored, str) or not stored:
+        return None, ""
+    # No ``for_update``: this is a read-only preview, not the order's own check.
+    result = evaluate_coupon(
+        stored,
+        user=user,
+        item_total=summary.item_total,
+        delivery_fee=summary.delivery_fee,
+        now=timezone.now(),
+    )
+    if not result.ok:
+        request.session.pop("checkout_coupon", None)
+        return result, ""
+    # The rules return the stored, normalised code; that is what the page shows.
+    return result, result.code
+
+
+def _posted_coupon_code(request: HttpRequest) -> str:
+    """The typed code, trimmed and in capitals so it matches the stored one."""
+    return request.POST.get("coupon_code", "").strip().upper()
+
+
+def _coupon_action(request: HttpRequest) -> str:
+    """Which coupon button this post pressed, or an empty string for none.
+
+    A typed code that differs from the one already applied counts as "apply",
+    so a customer never places an order without the discount they just typed
+    (D83). An empty box and the applied code place the order as usual.
+    """
+    action = request.POST.get("coupon_action", "")
+    if action in ("apply", "remove"):
+        return action
+    typed = _posted_coupon_code(request)
+    applied = request.session.get("checkout_coupon", "")
+    if typed and typed != applied:
+        return "apply"
+    return ""
+
+
+def _posted_form(request: HttpRequest) -> CheckoutForm:
+    """An unbound form holding the posted choices, so a coupon step shows no error.
+
+    A form built from ``initial`` (not from ``data``) never validates, so the
+    page comes back with the customer's values and no field errors (D83).
+    """
+    raw_address = request.POST.get("address", "")
+    try:
+        address: int | None = int(raw_address)
+    except (TypeError, ValueError):
+        address = None
+    return CheckoutForm(
+        initial={
+            "address": address,
+            "use_credit": _posted_use_credit(request),
+            "remainder_method": _posted_remainder(request),
+            "substitution_preference": _posted_substitution(request),
+            "customer_note": request.POST.get("customer_note", ""),
+        }
+    )
+
+
+def _render_posted_checkout(
+    request: HttpRequest,
+    user: User,
+    *,
+    error: str | None = None,
+    coupon_message: str = "",
+) -> HttpResponse:
+    """Re-render the checkout page with the posted choices kept (D83)."""
+    return _render_checkout(
+        request,
+        user,
+        form=_posted_form(request),
+        selected_address=request.POST.get("address", ""),
+        selected_substitution=_posted_substitution(request),
+        use_credit=_posted_use_credit(request),
+        remainder_method=_posted_remainder(request),
+        error=error,
+        coupon_message=coupon_message,
+    )
+
+
+def _coupon_response(request: HttpRequest, user: User) -> HttpResponse | None:
+    """Apply or remove the coupon, re-render the page and place no order (D83)."""
+    action = _coupon_action(request)
+    if not action:
+        return None
+
+    if action == "remove":
+        request.session.pop("checkout_coupon", None)
+        return _render_posted_checkout(
+            request,
+            user,
+            coupon_message=str(COUPON_REMOVED_MESSAGE),
+        )
+
+    code = _posted_coupon_code(request)
+    if not code:
+        return _render_posted_checkout(request, user, error=str(COUPON_CODE_REQUIRED))
+
+    summary = _cart_for(user)
+    result = evaluate_coupon(
+        code,
+        user=user,
+        item_total=summary.item_total,
+        delivery_fee=summary.delivery_fee,
+        now=timezone.now(),
+    )
+    if not result.ok:
+        # A refused code is not kept, and any code stored before is dropped.
+        request.session.pop("checkout_coupon", None)
+        return _render_posted_checkout(request, user, error=result.message)
+
+    request.session["checkout_coupon"] = result.code
+    return _render_posted_checkout(
+        request,
+        user,
+        coupon_message=coupon_applied_message(result.code),
+    )
+
+
 def _render_checkout(
     request: HttpRequest,
     user: User,
@@ -187,9 +327,22 @@ def _render_checkout(
     use_credit: bool = False,
     remainder_method: str = Order.PaymentMethod.COD,
     error: str | None = None,
+    coupon_message: str = "",
 ) -> HttpResponse:
     """Render the checkout page with a fresh cart, address list and promise."""
     summary = _cart_for(user)
+    # Every render judges the stored code again; a dead code is dropped here.
+    coupon, coupon_code = _coupon_state(request, user, summary)
+    if coupon is not None and not coupon.ok and error is None:
+        error = coupon.message
+    if coupon is not None and coupon.ok:
+        discount_total = coupon.item_discount
+        delivery_discount = coupon.delivery_discount
+    else:
+        discount_total = Decimal("0.00")
+        delivery_discount = Decimal("0.00")
+    # The cart's fee is the fee before any coupon; the discounts come off here.
+    grand_total = summary.grand_total - discount_total - delivery_discount
     rows = _address_rows(user, selected_address)
     has_served_address = any(bool(row["is_served"]) for row in rows)
     cod_cap = get_shop_settings().cod_cap
@@ -202,8 +355,8 @@ def _render_checkout(
         use_credit = False
     # The customer cannot type an amount: the credit part is as much of the
     # order as their available credit covers, and the rest is cash or online.
-    credit_applied = min(available, summary.grand_total) if use_credit else Decimal("0.00")
-    remaining = summary.grand_total - credit_applied
+    credit_applied = min(available, grand_total) if use_credit else Decimal("0.00")
+    remaining = grand_total - credit_applied
     # The online radio is hidden when the khata covers everything, and is
     # refused when no gateway is configured (D77).
     show_remainder = remaining > Decimal("0.00")
@@ -236,6 +389,27 @@ def _render_checkout(
             "has_served_address": has_served_address,
             "cart": summary,
             "summary": summary,
+            # Every money row of the shared partial comes from this one dict (D83).
+            "totals": {
+                "item_total": summary.item_total,
+                "savings_total": summary.savings_total,
+                "delivery_fee": summary.delivery_fee,
+                "discount_total": discount_total,
+                "delivery_discount": delivery_discount,
+                "coupon_code": coupon_code,
+                "grand_total": grand_total,
+            },
+            "coupon_code": coupon_code,
+            "coupon_row_label": coupon_row_label(coupon_code) if coupon_code else "",
+            "coupon_saved_text": (
+                coupon_saved_message(
+                    coupon_code,
+                    delivery_discount if delivery_discount > Decimal("0.00") else discount_total,
+                )
+                if coupon_code
+                else ""
+            ),
+            "coupon_message": coupon_message,
             "lines": lines,
             "promise": get_delivery_promise(),
             "checkout_group": _session_group(request),
@@ -245,7 +419,7 @@ def _render_checkout(
                 (value, substitution_label(value))
                 for value, _label in Order.SubstitutionPreference.choices
             ],
-            "cod_sentence": cod_sentence(summary.grand_total),
+            "cod_sentence": cod_sentence(grand_total),
             "at_cod_limit": at_cod_limit,
             "limit_message": cod_limit_message(cod_cap),
             "credit_offered": credit_offered,
@@ -350,6 +524,13 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
     if not _session_group_matches(request, group):
         return _refuse_checkout(request)
 
+    # The coupon box sits inside the same form but places nothing: it is
+    # handled after the double-submit checks and before the form is validated
+    # (D83). A typed code that is not the applied one counts as "apply".
+    coupon_response = _coupon_response(request, user)
+    if coupon_response is not None:
+        return coupon_response
+
     # (d) Validate the form only after the group checks.
     form = CheckoutForm(request.POST)
     if not form.is_valid():
@@ -377,6 +558,7 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             substitution_preference=form.cleaned_data["substitution_preference"],
             customer_note=form.cleaned_data["customer_note"],
             now=timezone.now(),
+            coupon_code=request.session.get("checkout_coupon", ""),
         )
     except (EmptyCartError, CartNotReadyError, ReservationShortfallError):
         messages.info(request, CART_CHANGED_MESSAGE)
@@ -452,11 +634,27 @@ def _checkout_post(request: HttpRequest, user: User) -> HttpResponse:
             remainder_method=Order.PaymentMethod.COD,
             error=str(ONLINE_UNAVAILABLE_MESSAGE),
         )
+    except CouponRefusedError as error:
+        # The code was good as a preview but not under the order's own lock:
+        # nothing was written, so the customer only sees the plain sentence.
+        request.session.pop("checkout_coupon", None)
+        return _render_checkout(
+            request,
+            user,
+            form=form,
+            selected_address=request.POST.get("address", ""),
+            selected_substitution=_posted_substitution(request),
+            use_credit=_posted_use_credit(request),
+            remainder_method=_posted_remainder(request),
+            error=str(error.message),
+        )
     except CheckoutGroupInUseError:
         return _refuse_checkout(request)
 
-    # (f) Success: the session group is spent, so the next checkout gets a new one.
+    # (f) Success: the session group is spent, so the next checkout gets a new
+    # one, and the coupon preview is gone with the order that used it.
     request.session.pop("checkout_group", None)
+    request.session.pop("checkout_coupon", None)
     return redirect("order_confirmation", group=placed.order.checkout_group)
 
 
@@ -508,6 +706,17 @@ def _order_page_context(order: Order) -> dict[str, object]:
     return {
         "order": order,
         "summary": order,
+        # The shared partial reads every money row from this one dict (D83).
+        "totals": {
+            "item_total": order.item_total,
+            "savings_total": order.savings_total,
+            "delivery_fee": order.delivery_fee,
+            "discount_total": order.discount_total,
+            "delivery_discount": order.delivery_discount,
+            "coupon_code": order.coupon_code,
+            "grand_total": order.grand_total,
+        },
+        "coupon_row_label": coupon_row_label(order.coupon_code) if order.coupon_code else "",
         "lines": lines,
         "status_sentence": status_sentence(order.status),
         "delivery_day": delivery_day_text(order.promised_delivery_date),

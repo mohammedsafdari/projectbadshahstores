@@ -404,3 +404,31 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 - The leftover paise are handed out in a loop that stops at `given >= leftover` and skips a line with
   no fraction, which is why a line whose exact share was already whole never grows; the same
   guarantee is checked by a 20,000-case random property test (`test_invoice_discount_allocation.py`).
+
+## New in Slice 44b-2
+
+- A function can return two values at once by returning a **tuple**: `_coupon_state` ends with
+  `return result, result.code`, and the caller writes `coupon, coupon_code = _coupon_state(...)`.
+  The hint `tuple[CouponResult | None, str]` says the first value may be missing. .NET comparison:
+  a method returning `(CouponResult? result, string code)` and deconstructed at the call site
+  (`apps/orders/views.py`).
+- `request.session.pop("checkout_coupon", None)` removes a session key and, unlike `del`, does not
+  raise when the key is absent; the second argument is the default, exactly like
+  `Dictionary.Remove` returning `false` instead of throwing. The session is saved at the end of the
+  request, so no `save()` call is needed (`.NET`: a `Remove` on a cache entry).
+- A translatable sentence with a value uses a **named placeholder** and a dict:
+  `str(_("Coupon %(code)s applied.") % {"code": code})`. Named placeholders survive translation,
+  because a translator may move the word; `%` with a dict is the old-style formatting Python has had
+  since 2.x. .NET comparison: `string.Format("Coupon {0} applied.", code)`
+  (`apps/orders/presentation.py`).
+- `int(raw_address)` raises `ValueError` for "abc" and `TypeError` for `None`, so one
+  `except (TypeError, ValueError):` covers both; `address: int | None = ...` then holds the answer.
+  .NET comparison: `int.TryParse` written by hand (`apps/orders/views.py`, `_posted_form`).
+- The same form class builds two different things: `CheckoutForm(request.POST)` is **bound** and
+  validates (so it can show field errors), while `CheckoutForm(initial={...})` is **unbound** and
+  never validates; it only fills the widgets with values. The coupon re-render uses the unbound
+  form on purpose, so a posted value that would fail validation never shows an error
+  (`apps/orders/views.py`).
+- A template compares a `Decimal` directly and reads a dict by attribute: `{% if totals.discount_total > 0 %}`
+  hides a zero discount, because Django resolves `totals.discount_total` as `totals["discount_total"]`
+  first (`templates/orders/_checkout_summary.html`).

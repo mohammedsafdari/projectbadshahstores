@@ -165,6 +165,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [x] Where does staff see a coupon on an order? — answered (default in use, 13 November 2026): the staff order detail shows the code and the two discounts; the pick list does not, because it only says what to pick — owner
 - [ ] A `PAYMENT_FAILED` order keeps its coupon use counted until it is cancelled (developer, check before launch); default in use: a redemption is released only when an order is cancelled before send-out, because D77 keeps a failed order's stock and allows a retry
 
+### Added in Slice 44b-2 (the coupon box at checkout, D83)
+- [x] Where is the coupon code entered, and may the customer change it? — recorded (13 November 2026): at checkout, in a box inside the one checkout form; the customer may apply a code, see the discount and remove it before ordering, and the code is a preview that `place_order` judges again under its lock — owner
+- [ ] A coupon box on the cart page is not built (developer, later); default in use: the checkout page is the only place a code is entered
+
 ### Added in Slice 42c (closing the 42b test gaps)
 - [ ] Should the credit payment confirm step get a server-side double-submit token? — owner; ask again before the staff screens go live; default in use: only an inline `onsubmit` disables the button, so the same fields can still be posted twice
 - [ ] Should a stuck SENT refund also get an automatic check against the provider, instead of a person looking at its dashboard? — owner; ask again before the staff screens go live; default in use: a person checks the dashboard and marks the refund by hand; no automatic retry or provider call is added
