@@ -285,7 +285,21 @@ def test_every_amount_in_a_result_is_decimal() -> None:
 # ---------------------------------------------------------------------------
 # First order
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("status", sorted(NOT_COUNTING_STATUSES))
+# The four statuses are written out here on purpose: a test list built from
+# ``NOT_COUNTING_STATUSES`` would quietly shrink when the product code loses one.
+NOT_COUNTING = [
+    Order.Status.CANCELLED,
+    Order.Status.PAYMENT_FAILED,
+    Order.Status.REFUND_PENDING,
+    Order.Status.REFUNDED,
+]
+
+
+def test_the_statuses_that_do_not_count_are_exactly_the_four_agreed() -> None:
+    assert set(NOT_COUNTING_STATUSES) == set(NOT_COUNTING)
+
+
+@pytest.mark.parametrize("status", NOT_COUNTING)
 def test_an_order_that_does_not_count_leaves_the_customer_new(status: str) -> None:
     make_coupon(first_order_only=True)
     user = UserFactory()
@@ -317,6 +331,29 @@ def test_any_order_that_counts_makes_the_customer_not_new(status: str) -> None:
     result = _evaluate(user)
 
     assert result.reason == CouponRefusal.NOT_FIRST_ORDER
+
+
+def test_another_customers_order_does_not_make_this_customer_not_new() -> None:
+    make_coupon(first_order_only=True)
+    # An existing customer's delivered order must not count for a newcomer.
+    make_order(UserFactory(), Order.Status.DELIVERED)
+    newcomer = UserFactory()
+
+    result = _evaluate(newcomer)
+
+    assert result.ok is True
+
+
+def test_a_first_order_coupon_below_the_minimum_names_the_amount_short() -> None:
+    make_coupon(first_order_only=True, min_order_value=Decimal("200.00"))
+    user = UserFactory()
+    make_order(user, Order.Status.PLACED)
+
+    result = _evaluate(user)
+
+    # The documented order puts the minimum check before the first-order check.
+    assert result.reason == CouponRefusal.BELOW_MINIMUM
+    assert result.message == "Add items worth ₹100.00 more to use this coupon."
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +393,16 @@ def test_an_empty_per_customer_limit_means_unlimited() -> None:
 # ---------------------------------------------------------------------------
 # The code as the customer types it
 # ---------------------------------------------------------------------------
+def test_another_coupon_with_a_different_code_is_not_found() -> None:
+    # A coupon exists, but not with the code the customer typed (D81).
+    make_coupon(code="WINTER20")
+
+    result = _evaluate(UserFactory())
+
+    assert result.reason == CouponRefusal.NOT_FOUND
+    assert result.message == "This coupon code is not valid."
+
+
 def test_a_code_with_spaces_and_lower_case_works() -> None:
     make_coupon(code="DIWALI10")
 

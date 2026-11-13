@@ -1,0 +1,362 @@
+{
+  "tests": [
+    "apps/promotions/tests/test_coupon_model.py",
+    "apps/promotions/tests/test_coupon_rules.py",
+    "apps/promotions/tests/test_coupon_admin.py",
+    "apps/promotions/tests/test_promotions_capability.py",
+    "apps/accounts/tests/test_capabilities_more.py",
+    "apps/orders/tests/test_staff_permissions_matrix.py"
+  ],
+  "mutations": [
+    {
+      "id": "44a-01-end-exclusive",
+      "file": "apps/promotions/rules.py",
+      "old": "    if coupon.ends_at is not None and moment >= coupon.ends_at:\n",
+      "new": "    if coupon.ends_at is not None and moment > coupon.ends_at:\n",
+      "note": "the end time is exclusive: a coupon is still valid at ends_at"
+    },
+    {
+      "id": "44a-02-start-strict",
+      "file": "apps/promotions/rules.py",
+      "old": "    if coupon.starts_at is not None and moment < coupon.starts_at:\n",
+      "new": "    if coupon.starts_at is not None and moment <= coupon.starts_at:\n",
+      "note": "a coupon is refused at exactly its start time"
+    },
+    {
+      "id": "44a-03-min-strict",
+      "file": "apps/promotions/rules.py",
+      "old": "    if item_total < coupon.min_order_value:\n",
+      "new": "    if item_total <= coupon.min_order_value:\n",
+      "note": "reaching the minimum exactly is refused"
+    },
+    {
+      "id": "44a-04-customer-limit-strict",
+      "file": "apps/promotions/rules.py",
+      "old": "        if used >= coupon.per_customer_limit:\n",
+      "new": "        if used > coupon.per_customer_limit:\n",
+      "note": "one use too many is allowed per customer"
+    },
+    {
+      "id": "44a-05-total-limit-strict",
+      "file": "apps/promotions/rules.py",
+      "old": "    if coupon.total_limit is not None and _live_redemptions(coupon).count() >= coupon.total_limit:\n",
+      "new": "    if coupon.total_limit is not None and _live_redemptions(coupon).count() > coupon.total_limit:\n",
+      "note": "one use too many is allowed against the total limit"
+    },
+    {
+      "id": "44a-06-released-counts",
+      "file": "apps/promotions/rules.py",
+      "old": "    return CouponRedemption.objects.filter(coupon=coupon, released_at__isnull=True)\n",
+      "new": "    return CouponRedemption.objects.filter(coupon=coupon)\n",
+      "note": "a released redemption still counts against a limit"
+    },
+    {
+      "id": "44a-07-other-customers-count",
+      "file": "apps/promotions/rules.py",
+      "old": "        used = _live_redemptions(coupon).filter(user=customer).count()\n",
+      "new": "        used = _live_redemptions(coupon).count()\n",
+      "note": "another customer's uses count towards the per-customer limit"
+    },
+    {
+      "id": "44a-08-status-cancelled-counts",
+      "file": "apps/promotions/rules.py",
+      "old": "        Order.Status.CANCELLED,\n",
+      "new": "",
+      "note": "a cancelled order makes the customer not new"
+    },
+    {
+      "id": "44a-09-status-payment-failed-counts",
+      "file": "apps/promotions/rules.py",
+      "old": "        Order.Status.PAYMENT_FAILED,\n",
+      "new": "",
+      "note": "a failed payment makes the customer not new"
+    },
+    {
+      "id": "44a-10-status-refund-pending-counts",
+      "file": "apps/promotions/rules.py",
+      "old": "        Order.Status.REFUND_PENDING,\n",
+      "new": "",
+      "note": "a refund pending order makes the customer not new"
+    },
+    {
+      "id": "44a-11-status-refunded-counts",
+      "file": "apps/promotions/rules.py",
+      "old": "        Order.Status.REFUNDED,\n",
+      "new": "",
+      "note": "a refunded order makes the customer not new"
+    },
+    {
+      "id": "44a-12-first-order-no-user-filter",
+      "file": "apps/promotions/rules.py",
+      "old": "    return not Order.objects.filter(user=user).exclude(status__in=NOT_COUNTING_STATUSES).exists()\n",
+      "new": "    return not Order.objects.exclude(status__in=NOT_COUNTING_STATUSES).exists()\n",
+      "note": "any customer's order makes this customer not new"
+    },
+    {
+      "id": "44a-13-first-order-inverted",
+      "file": "apps/promotions/rules.py",
+      "old": "    return not Order.objects.filter(user=user).exclude(status__in=NOT_COUNTING_STATUSES).exists()\n",
+      "new": "    return Order.objects.filter(user=user).exclude(status__in=NOT_COUNTING_STATUSES).exists()\n",
+      "note": "a customer with no counting order is reported as not new"
+    },
+    {
+      "id": "44a-14-percent-divisor-1000",
+      "file": "apps/promotions/rules.py",
+      "old": "        discount = round_money(item_total * percent / HUNDRED)\n",
+      "new": "        discount = round_money(item_total * percent / Decimal(\"1000\"))\n",
+      "note": "a percentage is divided by 1000, so every discount is ten times too small"
+    },
+    {
+      "id": "44a-15-percent-half-even",
+      "file": "apps/promotions/rules.py",
+      "old": "        discount = round_money(item_total * percent / HUNDRED)\n",
+      "new": "        discount = (item_total * percent / HUNDRED).quantize(Decimal(\"0.01\"))\n",
+      "note": "the percentage is rounded half-to-even instead of half-up, so 14.925 becomes 14.92"
+    },
+    {
+      "id": "44a-16-max-cap-removed",
+      "file": "apps/promotions/rules.py",
+      "old": "        if coupon.max_discount is not None and discount > coupon.max_discount:\n            discount = coupon.max_discount",
+      "new": "",
+      "note": "the maximum discount is ignored"
+    },
+    {
+      "id": "44a-17-max-cap-inverted",
+      "file": "apps/promotions/rules.py",
+      "old": "        if coupon.max_discount is not None and discount > coupon.max_discount:\n",
+      "new": "        if coupon.max_discount is not None and discount < coupon.max_discount:\n",
+      "note": "the maximum discount is applied upside down"
+    },
+    {
+      "id": "44a-18-cut-inverted",
+      "file": "apps/promotions/rules.py",
+      "old": "    if discount > item_total:\n        discount = item_total\n",
+      "new": "    if discount < item_total:\n        discount = item_total\n",
+      "note": "a discount below the item total is raised to the item total"
+    },
+    {
+      "id": "44a-19-cut-removed",
+      "file": "apps/promotions/rules.py",
+      "old": "    discount = round_money(discount)\n    if discount > item_total:\n        discount = item_total\n",
+      "new": "    discount = round_money(discount)\n",
+      "note": "a discount may exceed the item total"
+    },
+    {
+      "id": "44a-20-no-benefit-or",
+      "file": "apps/promotions/rules.py",
+      "old": "    if item_discount <= ZERO and delivery_discount <= ZERO:\n",
+      "new": "    if item_discount <= ZERO or delivery_discount <= ZERO:\n",
+      "note": "a coupon with an item discount is refused as no benefit"
+    },
+    {
+      "id": "44a-21-free-delivery-zero",
+      "file": "apps/promotions/rules.py",
+      "old": "    if coupon.kind == Coupon.Kind.FREE_DELIVERY:\n        return ZERO, round_money(delivery_fee)\n",
+      "new": "    if coupon.kind == Coupon.Kind.FREE_DELIVERY:\n        return ZERO, ZERO\n",
+      "note": "a free-delivery coupon gives no delivery discount"
+    },
+    {
+      "id": "44a-22-normalise-no-strip",
+      "file": "apps/promotions/models.py",
+      "old": "    return raw_code.strip().upper()\n",
+      "new": "    return raw_code.upper()\n",
+      "note": "a code is upper-cased but not trimmed"
+    },
+    {
+      "id": "44a-23-normalise-no-upper",
+      "file": "apps/promotions/models.py",
+      "old": "    return raw_code.strip().upper()\n",
+      "new": "    return raw_code.strip()\n",
+      "note": "a code is trimmed but not upper-cased"
+    },
+    {
+      "id": "44a-24-sign-in-check-skipped",
+      "file": "apps/promotions/rules.py",
+      "old": "    if not _is_signed_in(user):\n        return _refusal(CouponRefusal.LOGIN_REQUIRED)\n",
+      "new": "    if False:\n        return _refusal(CouponRefusal.LOGIN_REQUIRED)\n",
+      "note": "the sign-in check is skipped, so an anonymous visitor is judged as a customer"
+    },
+    {
+      "id": "44a-25-no-select-for-update",
+      "file": "apps/promotions/rules.py",
+      "old": "    if for_update:\n        coupons = coupons.select_for_update()\n",
+      "new": "    if False:\n        coupons = coupons.select_for_update()\n",
+      "note": "the coupon row is never locked"
+    },
+    {
+      "id": "44a-26-first-order-before-minimum",
+      "file": "apps/promotions/rules.py",
+      "old": "    # The minimum is checked on the items before any discount; reaching it\n    # exactly passes.\n    if item_total < coupon.min_order_value:\n        short = round_money(coupon.min_order_value - item_total)\n        return _refusal(CouponRefusal.BELOW_MINIMUM, coupon=coupon, amount=money(short))\n\n    if coupon.first_order_only and not is_first_order_customer(customer):\n        return _refusal(CouponRefusal.NOT_FIRST_ORDER, coupon=coupon)\n",
+      "new": "    if coupon.first_order_only and not is_first_order_customer(customer):\n        return _refusal(CouponRefusal.NOT_FIRST_ORDER, coupon=coupon)\n\n    # The minimum is checked on the items before any discount; reaching it\n    # exactly passes.\n    if item_total < coupon.min_order_value:\n        short = round_money(coupon.min_order_value - item_total)\n        return _refusal(CouponRefusal.BELOW_MINIMUM, coupon=coupon, amount=money(short))\n",
+      "note": "the first-order check runs before the minimum-order check"
+    },
+    {
+      "id": "44a-27-limits-swapped",
+      "file": "apps/promotions/rules.py",
+      "old": "    if coupon.total_limit is not None and _live_redemptions(coupon).count() >= coupon.total_limit:\n        return _refusal(CouponRefusal.TOTAL_LIMIT_REACHED, coupon=coupon)\n\n    if coupon.per_customer_limit is not None:\n        used = _live_redemptions(coupon).filter(user=customer).count()\n        if used >= coupon.per_customer_limit:\n            return _refusal(CouponRefusal.PER_CUSTOMER_LIMIT_REACHED, coupon=coupon)\n",
+      "new": "    if coupon.per_customer_limit is not None:\n        used = _live_redemptions(coupon).filter(user=customer).count()\n        if used >= coupon.per_customer_limit:\n            return _refusal(CouponRefusal.PER_CUSTOMER_LIMIT_REACHED, coupon=coupon)\n\n    if coupon.total_limit is not None and _live_redemptions(coupon).count() >= coupon.total_limit:\n        return _refusal(CouponRefusal.TOTAL_LIMIT_REACHED, coupon=coupon)\n",
+      "note": "the customer limit is checked before the total limit"
+    },
+    {
+      "id": "44a-28-short-amount-reversed",
+      "file": "apps/promotions/rules.py",
+      "old": "        short = round_money(coupon.min_order_value - item_total)\n",
+      "new": "        short = round_money(item_total - coupon.min_order_value)\n",
+      "note": "the amount still short is worked out the wrong way round"
+    },
+    {
+      "id": "44a-29-message-changed",
+      "file": "apps/promotions/rules.py",
+      "old": "    CouponRefusal.EXPIRED: _(\"This coupon has expired.\"),\n",
+      "new": "    CouponRefusal.EXPIRED: _(\"This coupon has ended.\"),\n",
+      "note": "the expired sentence changes"
+    },
+    {
+      "id": "44a-30-delete-allowed",
+      "file": "apps/promotions/admin.py",
+      "old": "        # A coupon is never deleted: redemptions point at it with PROTECT (D81).\n        return False\n",
+      "new": "        # A coupon is never deleted: redemptions point at it with PROTECT (D81).\n        return True\n",
+      "note": "a coupon may be deleted"
+    },
+    {
+      "id": "44a-31-module-permission-true",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_module_permission(self, request: HttpRequest) -> bool:\n        return has_capability(request.user, self.capability)\n",
+      "new": "    def has_module_permission(self, request: HttpRequest) -> bool:\n        return True\n",
+      "note": "every staff member gets the promotions menu entry"
+    },
+    {
+      "id": "44a-32-add-permission-true",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_add_permission(self, request: HttpRequest) -> bool:\n        return has_capability(request.user, self.capability)\n",
+      "new": "    def has_add_permission(self, request: HttpRequest) -> bool:\n        return True\n",
+      "note": "everyone may add a coupon"
+    },
+    {
+      "id": "44a-33-change-permission-true",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_change_permission(self, request: HttpRequest, obj: object = None) -> bool:\n        return has_capability(request.user, self.capability)\n",
+      "new": "    def has_change_permission(self, request: HttpRequest, obj: object = None) -> bool:\n        return True\n",
+      "note": "everyone may change a coupon"
+    },
+    {
+      "id": "44a-34-packer-gets-promotions",
+      "file": "apps/accounts/capabilities.py",
+      "old": "            Capability.VIEW_ORDERS,\n            Capability.START_PACKING,\n            Capability.SEND_OUT,\n",
+      "new": "            Capability.VIEW_ORDERS,\n            Capability.START_PACKING,\n            Capability.SEND_OUT,\n            Capability.MANAGE_PROMOTIONS,\n",
+      "note": "the packer gets MANAGE_PROMOTIONS by default"
+    },
+    {
+      "id": "44a-35-manager-loses-promotions",
+      "file": "apps/accounts/capabilities.py",
+      "old": "    ROLE_MANAGER: frozenset(Capability.values),\n",
+      "new": "    ROLE_MANAGER: frozenset(Capability.values) - {Capability.MANAGE_PROMOTIONS},\n",
+      "note": "the manager loses MANAGE_PROMOTIONS by default"
+    },
+    {
+      "id": "44a-36-audited-field-dropped",
+      "file": "apps/promotions/admin.py",
+      "old": "    \"is_active\",\n)",
+      "new": ")",
+      "note": "is_active is no longer audited"
+    },
+    {
+      "id": "44a-37-create-audit-as-update",
+      "file": "apps/promotions/admin.py",
+      "old": "            action=COUPON_UPDATE_ACTION if change else COUPON_CREATE_ACTION,\n",
+      "new": "            action=COUPON_UPDATE_ACTION,\n",
+      "note": "a create writes a COUPON_UPDATE row"
+    },
+    {
+      "id": "44a-38-create-audit-skipped",
+      "file": "apps/promotions/admin.py",
+      "old": "            old = dict.fromkeys(AUDITED_COUPON_FIELDS)\n",
+      "new": "            old = snapshot(obj, AUDITED_COUPON_FIELDS)\n",
+      "note": "a create compares the new values with themselves, so no row is written"
+    },
+    {
+      "id": "44a-39-clean-percent-allowed",
+      "file": "apps/promotions/models.py",
+      "old": "        if self.kind == self.Kind.PERCENT:\n            if self.percent_off is None:\n",
+      "new": "        if self.kind == self.Kind.PERCENT:\n            if False:\n",
+      "note": "clean() stops refusing a percentage coupon without a percent"
+    },
+    {
+      "id": "44a-40-clean-end-strict",
+      "file": "apps/promotions/models.py",
+      "old": "            and self.ends_at <= self.starts_at\n",
+      "new": "            and self.ends_at < self.starts_at\n",
+      "note": "clean() allows an end equal to the start"
+    },
+    {
+      "id": "44a-41-clean-code-format",
+      "file": "apps/promotions/models.py",
+      "old": "        if not CODE_PATTERN.match(self.code or \"\"):\n",
+      "new": "        if False:\n",
+      "note": "clean() stops refusing a bad code format"
+    },
+    {
+      "id": "44a-42-save-no-normalise",
+      "file": "apps/promotions/models.py",
+      "old": "        self.code = normalise_code(self.code)\n        super().save(*args, **kwargs)\n",
+      "new": "        super().save(*args, **kwargs)\n",
+      "note": "save() no longer trims or upper-cases the code"
+    },
+    {
+      "id": "44a-43-active-inverted",
+      "file": "apps/promotions/rules.py",
+      "old": "    if not coupon.is_active:\n        return _refusal(CouponRefusal.INACTIVE, coupon=coupon)\n",
+      "new": "    if coupon.is_active:\n        return _refusal(CouponRefusal.INACTIVE, coupon=coupon)\n",
+      "note": "an active coupon is refused and a switched-off one works"
+    },
+    {
+      "id": "44a-44-code-filter-dropped",
+      "file": "apps/promotions/rules.py",
+      "old": "    coupon = coupons.filter(code=code).first()\n",
+      "new": "    coupon = coupons.first()\n",
+      "note": "the code is not matched against the stored coupon"
+    },
+    {
+      "id": "44a-45-zero-benefit-strict",
+      "file": "apps/promotions/rules.py",
+      "old": "    if item_discount <= ZERO and delivery_discount <= ZERO:\n",
+      "new": "    if item_discount < ZERO and delivery_discount <= ZERO:\n",
+      "note": "a benefit of exactly zero is not refused"
+    },
+    {
+      "id": "44a-46-live-uses-counts-released",
+      "file": "apps/promotions/admin.py",
+      "old": "                filter=Q(redemptions__released_at__isnull=True),\n",
+      "new": "                filter=Q(),\n",
+      "note": "the live-uses column counts released redemptions too"
+    },
+    {
+      "id": "44a-47-search-fields-dropped",
+      "file": "apps/promotions/admin.py",
+      "old": "    search_fields = (\"code\", \"description\")\n",
+      "new": "    search_fields = (\"description\",)\n",
+      "note": "the coupon search no longer finds a code"
+    },
+    {
+      "id": "44a-48-redemption-add-allowed",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_add_permission(self, request: HttpRequest) -> bool:\n        return False\n",
+      "new": "    def has_add_permission(self, request: HttpRequest) -> bool:\n        return True\n",
+      "note": "a redemption may be added by hand"
+    },
+    {
+      "id": "44a-49-redemption-change-allowed",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_change_permission(self, request: HttpRequest, obj: object = None) -> bool:\n        return False\n",
+      "new": "    def has_change_permission(self, request: HttpRequest, obj: object = None) -> bool:\n        return True\n",
+      "note": "a redemption may be edited"
+    },
+    {
+      "id": "44a-50-redemption-readonly-gone",
+      "file": "apps/promotions/admin.py",
+      "old": "        return [field.name for field in self.model._meta.fields]\n",
+      "new": "        return []\n",
+      "note": "the redemption fields are no longer read-only"
+    }
+  ]
+}

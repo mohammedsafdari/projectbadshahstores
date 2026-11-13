@@ -212,6 +212,42 @@ def test_the_search_finds_a_code_and_a_description() -> None:
     assert coupon.code in by_description.content.decode()
 
 
+def test_deactivating_a_coupon_writes_an_audit_row() -> None:
+    coupon = make_coupon()
+    client = _client(_staff(User.ROLE_OWNER))
+    data = _coupon_data()
+    # An unchecked BooleanField is simply absent from the POST data.
+    data.pop("is_active")
+
+    response = client.post(
+        reverse("admin:promotions_coupon_change", args=[coupon.pk]),
+        data,
+    )
+
+    assert response.status_code == 302
+    audit = AuditLog.objects.get(action=COUPON_UPDATE_ACTION)
+    assert audit.changes == {"is_active": [True, False]}
+
+
+def test_the_search_by_code_finds_its_row() -> None:
+    coupon = make_coupon(code="DIWALI10", description="Winter offer")
+    client = _client(_staff(User.ROLE_MANAGER))
+
+    html = client.get(reverse(CHANGELIST), {"q": "DIWALI10"}).content.decode()
+
+    # The echoed search box carries the code too, so look for the row's link.
+    assert reverse("admin:promotions_coupon_change", args=[coupon.pk]) in html
+
+
+def test_the_search_by_description_finds_its_row() -> None:
+    coupon = make_coupon(code="DIWALI10", description="Winter offer")
+    client = _client(_staff(User.ROLE_MANAGER))
+
+    html = client.get(reverse(CHANGELIST), {"q": "Winter"}).content.decode()
+
+    assert reverse("admin:promotions_coupon_change", args=[coupon.pk]) in html
+
+
 def test_the_redemption_list_is_read_only() -> None:
     coupon = make_coupon()
     make_redemption(coupon)
