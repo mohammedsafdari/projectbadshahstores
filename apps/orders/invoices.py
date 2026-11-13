@@ -18,13 +18,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 from typing import Any
 
 from django.db import transaction
 
 from apps.accounts.models import User
-from apps.catalog.services import gst_breakdown, round_money
+from apps.catalog.services import PAISE, gst_breakdown, round_money
 from apps.core.models import ShopSettings
 from apps.core.numbering import next_number
 from apps.core.services import get_shop_settings
@@ -130,30 +130,64 @@ def _fulfilled_items(order: Order) -> list[OrderItem]:
 
 
 def _allocate_discount(grosses: list[Decimal], discount: Decimal) -> list[Decimal]:
-    """Share a discount across lines in proportion to each line's gross value.
+    """Share a discount across lines by gross value, in whole paise (D82).
 
-    Every line before the last line with a gross above zero gets
-    ``round_money(discount * gross / sum_of_gross)``; that last line takes what
-    is left, so the shares add up to ``discount`` exactly (D82). A line with a
-    zero gross gets zero, and no discount gives every line zero.
+    This is the largest-remainder method. Each line first takes its exact
+    share, ``capped discount * gross / total gross``, rounded **down** to the
+    paisa: ``ROUND_FLOOR`` always rounds towards zero, so 2.3099 becomes 2.30
+    (where the usual half-up rule would give 2.31). "Down" is what keeps every
+    share inside its own line. The few paise left over then go to the lines
+    with the largest fractional part, the earlier line first on a tie. A line
+    with a zero gross, and a line whose exact share was already a whole
+    number of paise, never takes one.
+
+    The old rule ("the last line takes what is left") could give the last line
+    more than its own value: grosses 27.61, 29.67, 26.60 and 5.60 with a
+    discount of 89.46 left it at minus 0.01, and six lines of 10.00 with a
+    discount of 0.04 did the same. A negative line breaks the invoice
+    constraints and the send-out would fail, so this rule never can:
+
+    - every share is at least 0 and at most its line's gross;
+    - the shares add up to the capped discount exactly;
+    - a zero-gross line always gets 0.
     """
     # ``sum`` with a start value keeps the whole addition in ``Decimal``.
     total = sum(grosses, ZERO)
     if discount <= ZERO or total <= ZERO:
         return [ZERO for _gross in grosses]
-    # The last line that carries value absorbs the rounding remainder.
-    last = max(index for index, gross in enumerate(grosses) if gross > ZERO)
-    shares: list[Decimal] = []
-    allocated = ZERO
-    for index, gross in enumerate(grosses):
-        if index == last:
-            share = round_money(discount) - allocated
-        elif gross <= ZERO:
-            share = ZERO
-        else:
-            share = round_money(discount * gross / total)
-        shares.append(share)
-        allocated += share
+    # A discount larger than the goods is cut to them, so no share can pass
+    # its line's gross value.
+    capped = min(round_money(discount), total)
+
+    floors: list[Decimal] = []
+    fractions: list[Decimal] = []
+    for gross in grosses:
+        if gross <= ZERO:
+            floors.append(ZERO)
+            fractions.append(ZERO)
+            continue
+        exact = capped * gross / total
+        floor = exact.quantize(PAISE, rounding=ROUND_FLOOR)
+        floors.append(floor)
+        fractions.append(exact - floor)
+
+    # Both the capped discount and every floor are multiples of one paisa, so
+    # what is left is a whole number of paise, smaller than the line count.
+    leftover = int((capped - sum(floors, ZERO)) / PAISE)
+    # The sort key is a tuple: the biggest fraction first, then the earlier
+    # line. Python compares a tuple left to right, and one part only decides
+    # when the part before it is equal.
+    order = sorted(range(len(grosses)), key=lambda index: (-fractions[index], index))
+    shares = list(floors)
+    given = 0
+    for index in order:
+        if given >= leftover:
+            break
+        # A zero-gross line, and a line with no fraction, never gets a paisa.
+        if grosses[index] <= ZERO or fractions[index] <= ZERO:
+            continue
+        shares[index] += PAISE
+        given += 1
     return shares
 
 

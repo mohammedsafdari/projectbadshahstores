@@ -386,3 +386,21 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 - A test can prove a rollback by raising after a write: monkeypatching `reverse_order_charge` to
   raise inside the cancel proves the coupon release and the cancel are one transaction
   (`test_coupon_release.py`).
+
+## New in Slice 44b-1b
+
+- `exact.quantize(PAISE, rounding=ROUND_FLOOR)` rounds a `Decimal` **down** to the paisa, so
+  2.3099 becomes 2.30 where the project's usual `round_money` (half-up) gives 2.31. Rounding each
+  line down is what keeps its share inside its own value; .NET comparison:
+  `Math.Floor(value * 100) / 100`, or `decimal.Floor` after scaling (`apps/orders/invoices.py`,
+  `_allocate_discount`).
+- `sorted(range(len(grosses)), key=lambda index: (-fractions[index], index))` sorts a key that has
+  two parts: the largest fraction first (the minus sign reverses the order) and, when two fractions
+  are equal, the earlier line. Python compares the tuple left to right, so only a tie ever reaches
+  the second part; .NET comparison: `OrderByDescending(i => fractions[i]).ThenBy(i => i)`.
+- `int((capped - sum(floors, ZERO)) / PAISE)` turns "how many paise are left" into a whole number: the
+  discount and the floors are both multiples of 0.01, so the division is exact and `int` only drops
+  the trailing `.0`; .NET comparison: `(int)((capped - floors.Sum()) / 0.01m)`.
+- The leftover paise are handed out in a loop that stops at `given >= leftover` and skips a line with
+  no fraction, which is why a line whose exact share was already whole never grows; the same
+  guarantee is checked by a 20,000-case random property test (`test_invoice_discount_allocation.py`).

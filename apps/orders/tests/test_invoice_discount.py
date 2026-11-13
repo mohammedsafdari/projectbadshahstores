@@ -108,14 +108,15 @@ def test_the_discount_is_shared_in_proportion() -> None:
     assert shares == [Decimal("10.00"), Decimal("30.00")]
 
 
-def test_the_remainder_goes_to_the_last_line() -> None:
+def test_the_odd_paisa_goes_to_the_earliest_line() -> None:
     shares = _allocate_discount(
         [Decimal("100.00"), Decimal("100.00"), Decimal("100.00")],
         Decimal("10.00"),
     )
 
-    # 10.00 does not divide by three, so the last line takes the odd paisa.
-    assert shares == [Decimal("3.33"), Decimal("3.33"), Decimal("3.34")]
+    # 10.00 does not divide by three, so one line takes the odd paisa; the
+    # fractions are equal, so the tie goes to the earliest line (D82).
+    assert shares == [Decimal("3.34"), Decimal("3.33"), Decimal("3.33")]
     assert sum(shares, ZERO) == Decimal("10.00")
 
 
@@ -125,7 +126,7 @@ def test_an_odd_paisa_is_kept_whole() -> None:
         Decimal("1.00"),
     )
 
-    assert shares == [Decimal("0.33"), Decimal("0.33"), Decimal("0.34")]
+    assert shares == [Decimal("0.34"), Decimal("0.33"), Decimal("0.33")]
     assert sum(shares, ZERO) == Decimal("1.00")
 
 
