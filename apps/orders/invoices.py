@@ -54,6 +54,11 @@ NUMBER_PATTERN = re.compile(r"^(?P<prefix>.+)/(?P<year>\d{2}-\d{2})/(?P<sequence
 
 SEVERITY_ERROR = "ERROR"
 
+# The two rules D82 added: the invoice total must equal its order's total, and
+# the line discounts must add up to the invoice's discount.
+TOTAL_MISMATCH = "total_mismatch"
+DISCOUNT_MISMATCH = "discount_mismatch"
+
 
 class InvoiceError(ValueError):
     """Base error for every invoice refusal."""
@@ -124,19 +129,51 @@ def _fulfilled_items(order: Order) -> list[OrderItem]:
     return [item for item in rows if item.item_status == OrderItem.ItemStatus.FULFILLED]
 
 
-def _product_line(item: OrderItem) -> dict[str, Any]:
+def _allocate_discount(grosses: list[Decimal], discount: Decimal) -> list[Decimal]:
+    """Share a discount across lines in proportion to each line's gross value.
+
+    Every line before the last line with a gross above zero gets
+    ``round_money(discount * gross / sum_of_gross)``; that last line takes what
+    is left, so the shares add up to ``discount`` exactly (D82). A line with a
+    zero gross gets zero, and no discount gives every line zero.
+    """
+    # ``sum`` with a start value keeps the whole addition in ``Decimal``.
+    total = sum(grosses, ZERO)
+    if discount <= ZERO or total <= ZERO:
+        return [ZERO for _gross in grosses]
+    # The last line that carries value absorbs the rounding remainder.
+    last = max(index for index, gross in enumerate(grosses) if gross > ZERO)
+    shares: list[Decimal] = []
+    allocated = ZERO
+    for index, gross in enumerate(grosses):
+        if index == last:
+            share = round_money(discount) - allocated
+        elif gross <= ZERO:
+            share = ZERO
+        else:
+            share = round_money(discount * gross / total)
+        shares.append(share)
+        allocated += share
+    return shares
+
+
+def _product_line(item: OrderItem, discount: Decimal) -> dict[str, Any]:
     """One product line, with its GST worked out from the GST-inclusive price.
 
-    ``gst_breakdown`` is the one place that decides how tax is rounded (D3).
+    The line's share of the item discount comes off its gross value first, so
+    the GST is charged on the discounted value; ``rate`` stays the full unit
+    price (D82). ``gst_breakdown`` is the one place that decides how tax is
+    rounded (D3).
     """
     gross = round_money(item.unit_price * item.quantity_fulfilled)
-    breakdown = gst_breakdown(gross, item.gst_rate_percent)
+    breakdown = gst_breakdown(round_money(gross - discount), item.gst_rate_percent)
     return {
         "description": item.product_name,
         "hsn_code": item.hsn_code,
         "unit": item.unit,
         "quantity": item.quantity_fulfilled,
         "rate": item.unit_price,
+        "discount_amount": discount,
         "gst_rate_percent": item.gst_rate_percent,
         "taxable_value": breakdown.taxable_value,
         "cgst": breakdown.cgst,
@@ -147,7 +184,11 @@ def _product_line(item: OrderItem) -> dict[str, Any]:
 
 
 def _fee_line(delivery_fee: Decimal, gst_rate_percent: Decimal) -> dict[str, Any]:
-    """The one delivery-fee line, taxed at the shop's delivery-fee rate."""
+    """The one delivery-fee line, taxed at the shop's delivery-fee rate.
+
+    ``delivery_fee`` is the amount actually charged, so it is already net of a
+    delivery discount (D82).
+    """
     breakdown = gst_breakdown(delivery_fee, gst_rate_percent)
     return {
         "description": DELIVERY_FEE_DESCRIPTION,
@@ -155,6 +196,7 @@ def _fee_line(delivery_fee: Decimal, gst_rate_percent: Decimal) -> dict[str, Any
         "unit": "",
         "quantity": Decimal("1.000"),
         "rate": breakdown.price_inclusive,
+        "discount_amount": ZERO,
         "gst_rate_percent": gst_rate_percent,
         "taxable_value": breakdown.taxable_value,
         "cgst": breakdown.cgst,
@@ -185,11 +227,17 @@ def issue_invoice(order: Order, *, actor: User | None, now: datetime) -> Invoice
     if Invoice.objects.filter(order=order).exists():
         raise InvoiceAlreadyExistsError("This order already has an invoice.")
 
-    rows = [_product_line(item) for item in _fulfilled_items(order)]
-    if not rows:
+    items = _fulfilled_items(order)
+    if not items:
         raise InvoiceLineMissingError("This order has no fulfilled line to invoice.")
-    if order.delivery_fee > ZERO:
-        rows.append(_fee_line(order.delivery_fee, settings.delivery_fee_gst_percent))
+    grosses = [round_money(item.unit_price * item.quantity_fulfilled) for item in items]
+    shares = _allocate_discount(grosses, order.discount_total)
+    rows = [_product_line(item, share) for item, share in zip(items, shares, strict=True)]
+    # The fee line is the fee actually charged, and there is none when a
+    # free-delivery coupon took it all (D82).
+    charged_fee = round_money(order.delivery_fee - order.delivery_discount)
+    if charged_fee > ZERO:
+        rows.append(_fee_line(charged_fee, settings.delivery_fee_gst_percent))
 
     # The counter row is locked by ``next_number`` itself, inside this
     # transaction, so a refusal below returns the number to the series.
@@ -219,7 +267,9 @@ def issue_invoice(order: Order, *, actor: User | None, now: datetime) -> Invoice
         cgst_total=cgst_total,
         sgst_total=sgst_total,
         gst_total=cgst_total + sgst_total,
-        delivery_fee=order.delivery_fee,
+        delivery_fee=charged_fee,
+        discount_total=order.discount_total,
+        coupon_code=order.coupon_code,
         grand_total=_sum(rows, "line_total"),
     )
     for row in rows:
@@ -249,18 +299,20 @@ def mark_invoice_cancelled(order: Order, reason: str, now: datetime) -> Invoice 
 
 
 def find_invoice_problems() -> list[InvoiceProblem]:
-    """Return every broken invoice rule found, in a stable order (D80).
+    """Return every broken invoice rule found, in a stable order (D80, D82).
 
-    Three rules are checked: every line sum equals its invoice total, every
-    order that went out has an invoice, and every number series has no gap.
-    Nothing here writes or locks anything.
+    Five rules are checked: every line sum equals its invoice total, the line
+    discounts add up to the invoice's discount, the invoice total equals its
+    order's total, every order that went out has an invoice, and every number
+    series has no gap. Nothing here writes or locks anything.
     """
     problems: list[InvoiceProblem] = []
 
     # 1. The sum of the line totals must be the invoice's grand total.
-    for invoice in Invoice.objects.prefetch_related("lines"):
+    for invoice in Invoice.objects.select_related("order").prefetch_related("lines"):
         # ``.[...].all()`` reads the prefetched rows, so this is one query.
-        line_sum = sum((line.line_total for line in invoice.lines.all()), ZERO)
+        lines = list(invoice.lines.all())
+        line_sum = sum((line.line_total for line in lines), ZERO)
         if line_sum != invoice.grand_total:
             problems.append(
                 InvoiceProblem(
@@ -270,6 +322,33 @@ def find_invoice_problems() -> list[InvoiceProblem]:
                     message=(
                         f"The lines add up to {line_sum} but the invoice total is "
                         f"{invoice.grand_total}."
+                    ),
+                )
+            )
+        # 1b. The line discounts must add up to the invoice's discount.
+        discount_sum = sum((line.discount_amount for line in lines), ZERO)
+        if discount_sum != invoice.discount_total:
+            problems.append(
+                InvoiceProblem(
+                    code=DISCOUNT_MISMATCH,
+                    severity=SEVERITY_ERROR,
+                    invoice_number=invoice.invoice_number,
+                    message=(
+                        f"The line discounts add up to {discount_sum} but the invoice "
+                        f"discount is {invoice.discount_total}."
+                    ),
+                )
+            )
+        # 1c. The invoice total must be the total of the order it came from.
+        if invoice.grand_total != invoice.order.grand_total:
+            problems.append(
+                InvoiceProblem(
+                    code=TOTAL_MISMATCH,
+                    severity=SEVERITY_ERROR,
+                    invoice_number=invoice.invoice_number,
+                    message=(
+                        f"The invoice total is {invoice.grand_total} but order "
+                        f"{invoice.order.order_number} totals {invoice.order.grand_total}."
                     ),
                 )
             )

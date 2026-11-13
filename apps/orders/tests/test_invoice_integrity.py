@@ -20,6 +20,21 @@ pytestmark = pytest.mark.django_db
 
 def _invoice(order: Order, number: str, *, taxable: str = "10.00") -> Invoice:
     """A hand-built, self-consistent invoice, for the rows a test breaks."""
+    # The order is made to match its invoice, so a test that breaks one rule
+    # does not also trip the invoice-total-equals-order rule (D82).
+    order.item_total = Decimal(taxable)
+    order.delivery_fee = Decimal("0.00")
+    order.grand_total = Decimal(taxable)
+    order.amount_due_on_delivery = Decimal(taxable)
+    order.save(
+        update_fields=[
+            "item_total",
+            "delivery_fee",
+            "grand_total",
+            "amount_due_on_delivery",
+            "updated_at",
+        ]
+    )
     invoice = Invoice.objects.create(
         order=order,
         invoice_number=number,
@@ -96,7 +111,14 @@ def test_a_number_gap_is_reported() -> None:
 def test_a_line_sum_mismatch_is_reported() -> None:
     order = OrderFactory()
     invoice = _invoice(order, "INV/26-27/000001", taxable="10.00")
-    # The totals say 20.00 but the one line still says 10.00.
+    # The totals say 20.00 but the one line still says 10.00. The order follows
+    # the invoice, so the total-mismatch rule stays quiet (D82).
+    order.item_total = Decimal("20.00")
+    order.grand_total = Decimal("20.00")
+    order.amount_due_on_delivery = Decimal("20.00")
+    order.save(
+        update_fields=["item_total", "grand_total", "amount_due_on_delivery", "updated_at"],
+    )
     invoice.taxable_total = Decimal("20.00")
     invoice.grand_total = Decimal("20.00")
     invoice.save(update_fields=["taxable_total", "grand_total", "updated_at"])

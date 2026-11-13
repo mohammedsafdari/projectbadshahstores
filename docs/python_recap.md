@@ -360,3 +360,29 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
   comparison: a `COUNT(CASE WHEN ... END)` in the projection.
 - `@pytest.mark.parametrize` with a list of statuses runs one test case per value, so "one test per
   order status" stays one readable function and still counts twelve cases (`test_coupon_rules.py`).
+
+## New in Slice 44b-1
+
+- A pure helper that must not lose a paisa: `_allocate_discount(grosses, discount)` gives every line
+  `round_money(discount * gross / total)` and lets the last line with a value take
+  `discount - allocated`, so the shares always add up exactly. .NET comparison: a `for` loop that
+  accumulates `decimal` and assigns the remainder to the final item (`apps/orders/invoices.py`).
+- `max(index for index, gross in enumerate(grosses) if gross > ZERO)` finds the last index that
+  matters without building a list; `enumerate` gives the index and the value together. .NET
+  comparison: `Array.FindLastIndex(grosses, g => g > 0m)`.
+- `zip(items, shares, strict=True)` pairs the lines with their shares and raises instead of quietly
+  shortening if the two lists ever differ in length; .NET comparison: a `for` with a length check or
+  `Zip` plus a guard.
+- `sum(grosses, ZERO)` starts the addition at a `Decimal`, so an empty list gives `0.00` rather than
+  the `int` 0; the second argument is the start value, as in .NET's `Enumerable.Aggregate(0m, ...)`.
+- A `CheckConstraint` can use a regular expression: `models.Q(code__regex=r"^[A-Z0-9-]{4,20}$")`
+  becomes `code ~ '...'` in PostgreSQL, so a queryset `update()` cannot store a code the checkout
+  would never find (`Coupon.Meta.constraints`, name `coupon_code_format`).
+- `with pytest.raises(IntegrityError), transaction.atomic():` wraps a write that the database must
+  refuse: the inner `atomic()` saves the test's outer transaction from being marked broken by the
+  failed statement. .NET comparison: catching a `SqlException` inside a savepoint.
+- A template compares a `Decimal` directly: `{% if invoice.discount_total %}` is false for
+  `0.00`, so the discount block disappears for an invoice without a coupon (`staff/invoice.html`).
+- A test can prove a rollback by raising after a write: monkeypatching `reverse_order_charge` to
+  raise inside the cancel proves the coupon release and the cancel are one transaction
+  (`test_coupon_release.py`).

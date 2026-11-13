@@ -6,10 +6,11 @@ locks the row it changes with ``select_for_update()`` and writes each row with
 used, so no write skips the model and ``updated_at`` always moves.
 
 The lock order in ``place_order`` is fixed (D67): the user row, then the
-variants in ascending ``pk`` order (inside ``reserve_stock``), then the order
-rows, and the credit account row LAST (inside ``charge_order``). No other
-function locks in a different order. Messages are registered with
-``transaction.on_commit`` and never block an order (D69).
+coupon row (D82), then the variants in ascending ``pk`` order (inside
+``reserve_stock``), then the order rows, and the credit account row LAST
+(inside ``charge_order``). No other function locks in a different order.
+Messages are registered with ``transaction.on_commit`` and never block an
+order (D69).
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from apps.accounts.services import AddressNotFound, get_address
 from apps.cart.services import STATUS_OK, CartSummary, build_cart, clear_cart
 from apps.cart.stores import DbCartStore
 from apps.catalog.models import ProductVariant
+from apps.catalog.services import round_money
 from apps.core.numbering import next_number
 from apps.core.services import get_shop_settings
 from apps.credit.models import CreditAccount
@@ -61,6 +63,9 @@ from apps.orders.state import (
 from apps.payments.gateway import online_payment_available
 from apps.payments.models import Payment, Refund
 from apps.payments.refunds import ensure_refund, send_refund_later
+from apps.promotions.models import CouponRedemption
+from apps.promotions.rules import CouponResult, evaluate_coupon
+from apps.promotions.services import release_redemption
 
 # The status moves that tell the customer something (D69). Every other move,
 # including CONFIRMED and PACKING, sends nothing.
@@ -93,6 +98,19 @@ class CancelReasonRequiredError(OrderError):
 
 class CheckoutGroupInUseError(OrderError):
     """The checkout group already belongs to another customer's order."""
+
+
+class CouponRefusedError(OrderError):
+    """A coupon code was refused at order time, so no order was placed (D82).
+
+    ``reason`` is the ``CouponRefusal`` member the rules returned, so a caller
+    can branch on it, and ``message`` is the customer sentence it produced.
+    """
+
+    def __init__(self, reason: str, message: str) -> None:
+        self.reason = reason
+        self.message = message
+        super().__init__(message)
 
 
 class OrderAddressNotFoundError(OrderError):
@@ -287,6 +305,9 @@ def _apply_transition(
     if to_status == CANCELLED:
         # Idempotent: a CONSUMED row stays consumed and an unknown group is 0.
         release_group(order.checkout_group, now=now)
+        # The coupon use comes back when an order is cancelled before it left
+        # the shop; one that was sent out keeps it (D82).
+        release_redemption(order, now=now)
         _cancel_pending_items(order)
         # Give the credit back for a cancelled credit order (D68). This does
         # nothing for a COD order that was never charged.
@@ -457,12 +478,17 @@ def place_order(
     substitution_preference: str = Order.SubstitutionPreference.CALL_ME,
     customer_note: str = "",
     now: datetime | None = None,
+    coupon_code: str = "",
 ) -> PlacedOrder:
     """Create a cash, khata or online order and reserve its stock.
 
     ``payment_method`` is the customer's khata choice (COD or CREDIT).
     ``remainder_method`` decides how the rest is paid when the khata does not
     cover everything: cash on delivery (the default) or online (D77).
+
+    ``coupon_code`` is judged under the coupon row lock before any stock is
+    reserved; a refusal raises ``CouponRefusedError`` and leaves nothing behind
+    (D82). The discounted total then drives the khata, cash and online parts.
 
     Re-submitting the same ``checkout_group`` by the same customer returns the
     existing order with ``created=False``; another customer gets
@@ -524,12 +550,37 @@ def place_order(
             raise CartNotReadyError(_checkout_block_reason(summary))
 
         settings = get_shop_settings()
+        # The coupon is judged here, after the user lock and before any stock is
+        # reserved, with its own row locked (D82). A blank code means "no
+        # coupon" and is never checked. A refusal raises, so everything rolls
+        # back: no order, no hold, no redemption and no number used.
+        coupon: CouponResult | None = None
+        discount_total = Decimal("0.00")
+        delivery_discount = Decimal("0.00")
+        if coupon_code.strip():
+            coupon = evaluate_coupon(
+                coupon_code,
+                user=user,
+                item_total=summary.item_total,
+                delivery_fee=summary.delivery_fee,
+                now=resolved_now,
+                for_update=True,
+            )
+            if not coupon.ok:
+                raise CouponRefusedError(coupon.reason, coupon.message)
+            discount_total = coupon.item_discount
+            delivery_discount = coupon.delivery_discount
+        # Every later amount uses the discounted total. The cart already judged
+        # free delivery on the item total before any coupon, and the fee stays
+        # the full fee it worked out (D82).
+        grand_total = round_money(summary.grand_total - discount_total - delivery_discount)
+
         credit_applied = Decimal("0.00")
         if payment_method == Order.PaymentMethod.CREDIT:
             # Use as much of the available credit as the order needs; the rest
             # is paid in cash or online (D74, D77).
-            credit_applied = min(available, summary.grand_total)
-        remainder = summary.grand_total - credit_applied
+            credit_applied = min(available, grand_total)
+        remainder = grand_total - credit_applied
         online_amount = Decimal("0.00")
         cash_due = remainder
         if remainder > Decimal("0.00") and remainder_method == Order.PaymentMethod.ONLINE:
@@ -601,7 +652,10 @@ def place_order(
             ship_label=address.label,
             item_total=summary.item_total,
             delivery_fee=summary.delivery_fee,
-            grand_total=summary.grand_total,
+            discount_total=discount_total,
+            delivery_discount=delivery_discount,
+            coupon_code=coupon.code if coupon is not None else "",
+            grand_total=grand_total,
             savings_total=summary.savings_total,
             credit_applied=credit_applied,
             online_amount=online_amount,
@@ -616,6 +670,17 @@ def place_order(
             substitution_preference=substitution_preference,
             customer_note=customer_note[:300],
         )
+
+        if coupon is not None and coupon.coupon_id is not None:
+            # One use per order, written with the order so a rolled-back
+            # checkout leaves no use behind (D82).
+            CouponRedemption.objects.create(
+                coupon_id=coupon.coupon_id,
+                order=order,
+                user=user,
+                discount_amount=discount_total,
+                delivery_discount_amount=delivery_discount,
+            )
 
         for line in summary.lines:
             variant = line.variant

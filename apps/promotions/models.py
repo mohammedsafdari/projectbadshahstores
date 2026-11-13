@@ -150,6 +150,12 @@ class Coupon(TimeStampedModel):
                 condition=models.Q(code=Upper(models.F("code"))),
                 name="coupon_code_is_upper",
             ),
+            # The database repeats the code's format, so a direct ``update()``
+            # cannot store a code the checkout would never find (D82).
+            models.CheckConstraint(
+                condition=models.Q(code__regex=r"^[A-Z0-9-]{4,20}$"),
+                name="coupon_code_format",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -225,9 +231,11 @@ class Coupon(TimeStampedModel):
 class CouponRedemption(models.Model):
     """One use of one coupon on one order (D16, D81).
 
-    Nothing writes these rows yet: Slice 44b creates one at checkout and sets
-    ``released_at`` when an order is cancelled before send-out or its payment
-    fails. A released row counts against no limit.
+    ``place_order`` writes one row with the order (D82). ``released_at`` is set
+    when the order is cancelled BEFORE it was sent out, so the same customer may
+    use the code again; a released row counts against no limit. A cancel after
+    send-out keeps the use counted, and so does a ``PAYMENT_FAILED`` order: that
+    status keeps its stock and may be paid again (D77).
     """
 
     coupon = models.ForeignKey(

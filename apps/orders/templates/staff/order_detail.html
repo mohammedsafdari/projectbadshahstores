@@ -26,6 +26,14 @@
       {{ order.ship_city }}, {{ order.ship_state }} {{ order.ship_pincode }}
     </address>
     <p class="mt-1">{% translate "Delivery day" %}: {{ delivery_day }}</p>
+    {% if order.discount_total %}
+      <p>
+        {% translate "Coupon discount" %}{% if order.coupon_code %} ({{ order.coupon_code }}){% endif %}: {{ discount_text }}
+      </p>
+    {% endif %}
+    {% if order.delivery_discount %}
+      <p>{% translate "Delivery discount" %}: {{ delivery_discount_text }}</p>
+    {% endif %}
     <p>{% translate "Cash at door" %}: {{ cash_text }}</p>
     {% if order.credit_applied %}<p>{% translate "From credit" %}: {{ credit_text }}</p>{% endif %}
     {% if order.online_amount %}<p>{% translate "Online" %}: {{ online_text }}</p>{% endif %}

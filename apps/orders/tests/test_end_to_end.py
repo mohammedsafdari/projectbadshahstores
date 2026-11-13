@@ -21,12 +21,13 @@ from apps.cart.models import CartItem
 from apps.credit.services import set_credit_limit
 from apps.inventory.availability import get_available_quantity
 from apps.notifications.tests.recording import RecordingSmsBackend
-from apps.orders.models import Order
+from apps.orders.models import CodCollection, Invoice, Order
 from apps.orders.presentation import STATUS_SENTENCES
 from apps.orders.services import (
     CustomerNotVerifiedError,
     transition_order,
 )
+from apps.orders.staff_services import mark_delivered, pack_and_send_out
 from apps.orders.state import DELIVERED, OUT_FOR_DELIVERY, PACKING
 from apps.orders.tests.checkout_helpers import (
     NOW,
@@ -40,6 +41,9 @@ from apps.orders.tests.checkout_helpers import (
     serve,
     variant,
 )
+from apps.orders.tests.staff_helpers import staff as staff_user
+from apps.promotions.models import CouponRedemption
+from apps.promotions.tests.helpers import make_coupon
 from tests.factories import UserFactory
 
 pytestmark = pytest.mark.django_db
@@ -370,3 +374,87 @@ def test_staff_and_customer_accounts_with_one_phone_work_side_by_side() -> None:
     # Each session sees only its own space.
     assert order.order_number not in admin_client.get(reverse("order_list")).content.decode()
     assert shop_client.get(reverse("admin:index")).status_code == 302
+
+
+def _delivery_ready(user: User) -> User:
+    """Mark the phone and email verified, so the order may go out (D71)."""
+    user.phone_verified_at = NOW
+    user.email_verified_at = NOW
+    user.save(update_fields=["phone_verified_at", "email_verified_at"])
+    return user
+
+
+def test_a_coupon_order_is_invoiced_and_the_discounted_cash_is_collected() -> None:
+    user = _delivery_ready(UserFactory())
+    serve()
+    address_row = address(user)
+    fill_cart(user, variant())
+    make_coupon()
+
+    order = place_cod(user, address_row, coupon_code="DIWALI10").order
+    assert order.grand_total == Decimal("210.00")
+
+    staff_client = Client()
+    staff_client.force_login(staff_user())
+    detail = staff_client.get(
+        reverse("staff_order_detail", args=[order.order_number]),
+    ).content.decode()
+    assert "DIWALI10" in detail
+
+    transition_order(order.pk, PACKING, actor=staff_user(), now=NOW)
+    pack_and_send_out(order.pk, actor=staff_user(), now=NOW)
+    order.refresh_from_db()
+    invoice = Invoice.objects.get(order=order)
+
+    assert order.status == Order.Status.OUT_FOR_DELIVERY
+    assert invoice.grand_total == Decimal("210.00")
+    assert invoice.coupon_code == "DIWALI10"
+
+    mark_delivered(order.pk, actor=staff_user(), collected_amount=Decimal("210.00"), now=NOW)
+
+    order.refresh_from_db()
+    assert order.status == Order.Status.DELIVERED
+    # The door collects the discounted amount, not the undiscounted 230.00.
+    assert CodCollection.objects.get(order=order).amount == Decimal("210.00")
+
+
+def test_a_cancel_before_send_out_gives_the_coupon_use_back() -> None:
+    user = UserFactory()
+    serve()
+    address_row = address(user)
+    row = variant()
+    fill_cart(user, row)
+    make_coupon()
+    client = Client()
+    client.force_login(user)
+    order = place_cod(user, address_row, coupon_code="DIWALI10").order
+
+    _cancel(client, order)
+
+    order.refresh_from_db()
+    assert order.status == Order.Status.CANCELLED
+    assert CouponRedemption.objects.get(order=order).released_at is not None
+
+    fill_cart(user, row)
+    again = place_cod(user, address_row, coupon_code="DIWALI10").order
+
+    assert again.discount_total == Decimal("20.00")
+    assert CouponRedemption.objects.filter(released_at__isnull=True).count() == 1
+
+
+def test_a_free_delivery_order_has_no_fee_line_on_the_invoice() -> None:
+    user = _delivery_ready(UserFactory())
+    serve()
+    address_row = address(user)
+    # 600.00 of items clears the 500.00 threshold, so the cart charges no fee.
+    fill_cart(user, variant(price="300.00", mrp="400.00"))
+    make_coupon()
+
+    order = place_cod(user, address_row, coupon_code="DIWALI10").order
+    transition_order(order.pk, PACKING, actor=staff_user(), now=NOW)
+    pack_and_send_out(order.pk, actor=staff_user(), now=NOW)
+    invoice = Invoice.objects.get(order=order)
+
+    assert order.delivery_fee == Decimal("0.00")
+    assert invoice.grand_total == order.grand_total == Decimal("540.00")
+    assert not invoice.lines.filter(is_fee_line=True).exists()

@@ -55,6 +55,7 @@
           <th class="border-b p-2">{% translate "HSN" %}</th>
           <th class="border-b p-2">{% translate "Quantity" %}</th>
           <th class="border-b p-2">{% translate "Rate" %}</th>
+          <th class="border-b p-2">{% translate "Disc." %}</th>
           <th class="border-b p-2">{% translate "Taxable" %}</th>
           <th class="border-b p-2">{% translate "CGST" %}</th>
           <th class="border-b p-2">{% translate "SGST" %}</th>
@@ -68,6 +69,7 @@
             <td class="border-b p-2">{{ line.hsn }}</td>
             <td class="border-b p-2">{{ line.quantity }} {{ line.unit }}</td>
             <td class="border-b p-2">{{ line.rate }}</td>
+            <td class="border-b p-2">{{ line.discount }}</td>
             <td class="border-b p-2">{{ line.taxable }}</td>
             <td class="border-b p-2">{{ line.cgst }}</td>
             <td class="border-b p-2">{{ line.sgst }}</td>
@@ -76,6 +78,11 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if invoice.discount_total %}
+      <p class="mt-2 text-sm">
+        {% translate "Discount" %}{% if invoice.coupon_code %} ({{ invoice.coupon_code }}){% endif %}: -{{ discount_text }}
+      </p>
+    {% endif %}
     <p class="mt-2 text-base font-bold">{% translate "Grand total" %}: {{ grand_total_text }}</p>
   </section>
 

@@ -31,11 +31,31 @@ TAX_INVOICE_TITLE = "TAX INVOICE"
 CANCELLED_TITLE = "Cancelled"
 
 # The table headings, in print order.
-LINE_HEADINGS = ("Description", "HSN", "Qty", "Rate", "Taxable", "CGST", "SGST", "Total")
+LINE_HEADINGS = (
+    "Description",
+    "HSN",
+    "Qty",
+    "Rate",
+    "Disc.",
+    "Taxable",
+    "CGST",
+    "SGST",
+    "Total",
+)
 SUMMARY_HEADINGS = ("GST rate", "Taxable", "CGST", "SGST")
 
 # Each column's width in millimetres: 174 mm of usable width on A4.
-LINE_WIDTHS = [48 * mm, 14 * mm, 14 * mm, 20 * mm, 22 * mm, 17 * mm, 17 * mm, 22 * mm]
+LINE_WIDTHS = [
+    42 * mm,
+    12 * mm,
+    12 * mm,
+    18 * mm,
+    18 * mm,
+    20 * mm,
+    16 * mm,
+    16 * mm,
+    20 * mm,
+]
 SUMMARY_WIDTHS = [30 * mm, 36 * mm, 36 * mm, 36 * mm]
 
 ZERO = Decimal("0.00")
@@ -87,6 +107,7 @@ def _line_rows(lines: list[InvoiceLine]) -> list[list[str]]:
                 pdf_text(line.hsn_code),
                 quantity_text(line.quantity),
                 money_text(line.rate),
+                money_text(line.discount_amount) if line.discount_amount > ZERO else "",
                 money_text(line.taxable_value),
                 money_text(line.cgst),
                 money_text(line.sgst),
@@ -206,6 +227,13 @@ def build_invoice_pdf(
         story.append(_styled_table(summary, SUMMARY_WIDTHS))
         story.append(Spacer(1, 4 * mm))
 
+    # A discounted invoice names the code in its totals; an invoice without a
+    # discount prints exactly as it did before (D82).
+    if invoice.discount_total > ZERO:
+        label = f"Discount ({invoice.coupon_code})" if invoice.coupon_code else "Discount"
+        story.append(
+            _paragraph(f"{label}: -{money_text(invoice.discount_total)}", styles["Normal"]),
+        )
     story.append(
         _paragraph(f"Grand total: {money_text(invoice.grand_total)}", styles["Heading3"]),
     )

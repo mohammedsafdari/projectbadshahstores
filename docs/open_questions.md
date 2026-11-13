@@ -156,7 +156,14 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 44a (coupons, D81)
 - [x] The fifteen promotion questions (the three kinds, stacking, the minimum order, the usage limits, the validity times, first-order coupons, credit and cash-on-delivery orders, released redemptions, the code format, the capability and deletion) — answered (owner chose the defaults, 12 November 2026): a percentage with an optional maximum, a fixed amount and free delivery; one coupon per order and no stacking; the minimum is checked on the item total before the discount; an optional total cap and a per-customer limit of one; `starts_at`/`ends_at` plus an active switch; a first-order coupon was wanted; coupons are allowed on credit and cash-on-delivery orders; a released redemption counts against nothing; codes are 4 to 20 capitals, digits and hyphens; `MANAGE_PROMOTIONS` for the owner and manager; a coupon is never deleted (D81) — owner
-- [ ] Is the discount a trade discount, so GST is calculated on the discounted value shared across the invoice lines? — CA; before launch; default in use: the coupon lowers the item total only, and GST on the discount is decided in Slice 44b (D81)
+- [ ] Is the discount a trade discount, so GST is calculated on the discounted value shared across the invoice lines? — CA; before launch; default in use: the coupon lowers the item total, the invoice shares the discount across the lines by gross value, and GST is worked out on the discounted value (D81, D82)
+
+### Added in Slice 44b-1 (coupons in the order and the invoice, D82)
+- [x] Where does the customer enter a coupon code? — answered (default in use, 13 November 2026): at checkout; the cart's coupon box is Slice 44b-2, and no page passes a code to `place_order` yet — owner
+- [x] What does an invalid coupon do at order time? — answered (default in use, 13 November 2026): it stops the order with the coupon's own sentence and nothing is placed — no order, no stock hold, no redemption, no number, and the cart stays — owner
+- [x] How does the invoice show the discount and the GST? — answered (default in use, 13 November 2026): one discount amount per line plus one `Discount (CODE)` line in the totals, with GST on the discounted value; the CA question above stays open until launch — owner/CA
+- [x] Where does staff see a coupon on an order? — answered (default in use, 13 November 2026): the staff order detail shows the code and the two discounts; the pick list does not, because it only says what to pick — owner
+- [ ] A `PAYMENT_FAILED` order keeps its coupon use counted until it is cancelled (developer, check before launch); default in use: a redemption is released only when an order is cancelled before send-out, because D77 keeps a failed order's stock and allows a retry
 
 ### Added in Slice 42c (closing the 42b test gaps)
 - [ ] Should the credit payment confirm step get a server-side double-submit token? — owner; ask again before the staff screens go live; default in use: only an inline `onsubmit` disables the button, so the same fields can still be posted twice

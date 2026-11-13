@@ -81,6 +81,22 @@ class Order(TimeStampedModel):
     # Money is Decimal INR with two places, never float (D3).
     item_total = models.DecimalField(max_digits=12, decimal_places=2)
     delivery_fee = models.DecimalField(max_digits=12, decimal_places=2)
+    # A coupon's discounts are frozen here (D82). ``delivery_fee`` stays the
+    # full fee the cart worked out, so a free-delivery coupon has its own
+    # field and the one equation is
+    # grand_total = item_total - discount_total + delivery_fee - delivery_discount.
+    discount_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    delivery_discount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    # The code that was used, in capitals; blank for an order with no coupon.
+    coupon_code = models.CharField(max_length=20, blank=True, default="")
     grand_total = models.DecimalField(max_digits=12, decimal_places=2)
     savings_total = models.DecimalField(max_digits=12, decimal_places=2)
     # How much of this order is paid from the customer's khata (D74). Zero for
@@ -141,9 +157,30 @@ class Order(TimeStampedModel):
                 ),
                 name="order_money_gte_0",
             ),
+            # The one equation every order amount must satisfy (D82).
             models.CheckConstraint(
-                condition=models.Q(grand_total=models.F("item_total") + models.F("delivery_fee")),
+                condition=models.Q(
+                    grand_total=(
+                        models.F("item_total")
+                        - models.F("discount_total")
+                        + models.F("delivery_fee")
+                        - models.F("delivery_discount")
+                    )
+                ),
                 name="order_grand_total_matches",
+            ),
+            # A discount is money: never negative, never more than it discounts.
+            models.CheckConstraint(
+                condition=models.Q(discount_total__gte=0) & models.Q(delivery_discount__gte=0),
+                name="order_discounts_gte_0",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(discount_total__lte=models.F("item_total")),
+                name="order_item_discount_lte_item_total",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(delivery_discount__lte=models.F("delivery_fee")),
+                name="order_delivery_discount_lte_fee",
             ),
             # The khata part is money: never negative and never above the total.
             models.CheckConstraint(
@@ -436,7 +473,15 @@ class Invoice(TimeStampedModel):
     cgst_total = models.DecimalField(max_digits=12, decimal_places=2)
     sgst_total = models.DecimalField(max_digits=12, decimal_places=2)
     gst_total = models.DecimalField(max_digits=12, decimal_places=2)
+    # The fee actually charged, so it is already net of a delivery discount.
     delivery_fee = models.DecimalField(max_digits=12, decimal_places=2)
+    # The coupon's discount, frozen with the invoice (D82).
+    discount_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    coupon_code = models.CharField(max_length=20, blank=True, default="")
     grand_total = models.DecimalField(max_digits=12, decimal_places=2)
 
     # A cancelled invoice is marked, never deleted or renumbered (D80).
@@ -453,6 +498,7 @@ class Invoice(TimeStampedModel):
                     & models.Q(sgst_total__gte=0)
                     & models.Q(gst_total__gte=0)
                     & models.Q(delivery_fee__gte=0)
+                    & models.Q(discount_total__gte=0)
                     & models.Q(grand_total__gte=0)
                 ),
                 name="invoice_money_gte_0",
@@ -493,6 +539,13 @@ class InvoiceLine(TimeStampedModel):
     unit = models.CharField(max_length=10, blank=True, default="")
     quantity = models.DecimalField(max_digits=12, decimal_places=3)
     rate = models.DecimalField(max_digits=12, decimal_places=2)
+    # How much of the item discount this line carries (D82). ``line_total`` is
+    # already net of it, and ``rate`` stays the full unit price.
+    discount_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
     gst_rate_percent = models.DecimalField(max_digits=5, decimal_places=2)
     taxable_value = models.DecimalField(max_digits=12, decimal_places=2)
     cgst = models.DecimalField(max_digits=12, decimal_places=2)
@@ -508,6 +561,7 @@ class InvoiceLine(TimeStampedModel):
                 condition=(
                     models.Q(quantity__gte=0)
                     & models.Q(rate__gte=0)
+                    & models.Q(discount_amount__gte=0)
                     & models.Q(gst_rate_percent__gte=0)
                     & models.Q(taxable_value__gte=0)
                     & models.Q(cgst__gte=0)
