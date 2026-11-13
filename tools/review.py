@@ -3,13 +3,16 @@
     python tools\\review.py checks
     python tools\\review.py suite 3
     python tools\\review.py mutate tools\\mutations\\mutations-43.json
+    python tools\\review.py mutate tools\\mutations\\mutations-43.json --only 43-02,43-07
 
 It uses only the standard library. The test runs go through Docker (the
 official run) and ruff and mypy through uv, exactly as docs/STATUS.md says.
 Every command prints one short line, and the same lines are saved in
 review-report.txt next to this script (it is git-ignored), so you can paste
-that file to Claude. The agent may run it too; "mutate" always puts every file
-back, and compares `git status` before and after the run.
+that file to Claude. "--only" runs just the listed mutation ids (use it to
+re-check survivors). Every command ends with a "took N s" line. The agent may
+run it too; "mutate" always puts every file back, and compares `git status`
+before and after the run.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPORT = Path(__file__).with_name("review-report.txt")
@@ -66,9 +70,14 @@ def suite(times: int) -> None:
                 say("    " + line)
 
 
-def mutate(path: str) -> None:
+def mutate(path: str, only: set[str] | None = None) -> None:
     spec = json.loads(Path(path).read_text(encoding="utf-8"))
     tests = spec["tests"]
+    items = [item for item in spec["mutations"] if only is None or item["id"] in only]
+    if only is not None:
+        missing = sorted(only - {item["id"] for item in items})
+        if missing:
+            say("UNKNOWN ids: " + ", ".join(missing))
     command = [*PYTEST, "-x", "--reuse-db", *tests]
     code, out = run(command)
     say(f"baseline: {last_line(out)}")
@@ -78,7 +87,7 @@ def mutate(path: str) -> None:
     _, status_before = run(["git", "status", "--short"])
     caught = 0
     survivors: list[str] = []
-    for item in spec["mutations"]:
+    for item in items:
         target = Path(item["file"])
         original = target.read_bytes().decode("utf-8") if target.exists() else ""
         old, new = item["old"], item["new"]
@@ -117,12 +126,19 @@ def main() -> None:
         print(__doc__)
         return
     say("== " + " ".join(Path(part).name for part in sys.argv[1:]))
+    started = time.monotonic()
     if sys.argv[1] == "checks":
         checks()
     elif sys.argv[1] == "suite":
         suite(int(sys.argv[2]) if len(sys.argv) > 2 else 3)
     else:
-        mutate(sys.argv[2])
+        only: set[str] | None = None
+        if "--only" in sys.argv:
+            position = sys.argv.index("--only")
+            ids = sys.argv[position + 1] if position + 1 < len(sys.argv) else ""
+            only = {part for part in ids.split(",") if part}
+        mutate(sys.argv[2], only)
+    say(f"took {time.monotonic() - started:.0f} s")
 
 
 if __name__ == "__main__":
