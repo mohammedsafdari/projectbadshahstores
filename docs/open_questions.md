@@ -190,6 +190,11 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Cloudflare R2 free-tier limits re-verified before relying on them — owner; ask again before Phase 7; default in use: 10 GB, 1M writes and 10M reads a month, no egress fees, not re-verified (D76)
 - [ ] GST treatment of hosting and SMS invoices (input credit and the invoice details the CA needs) — CA/legal; ask the CA before Phase 7; default in use: add GST where it applies and claim nothing
 
+## Storefront content
+- [ ] Home page still says "Online store coming soon" and has the Alpine demo (owner and developer, before launch) — owner/developer; the real shop introduction, the delivery promise and a photograph are not written yet; default in use: the placeholder copy and the demo are kept exactly as they were (D84)
+- [ ] Home page banners: five, hand-ordered, with an optional link; featured products: twelve, hand-ordered — owner; ask again before launch; default in use: five banners and twelve featured products, in the order staff set (D84)
+- [ ] Banner image clean-up and a click count are not built (developer, later) — developer; a replaced or removed image leaves its old file on disk, and no banner counts its clicks (D84)
+
 ## Deferred (not blockers, tracked for later)
 - [ ] PWA — deferred
 - [ ] Full Hindi i18n content — scaffolding now, content later

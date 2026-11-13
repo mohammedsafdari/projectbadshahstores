@@ -7,13 +7,16 @@ so there is no factory_boy class to keep in step with the model.
 from __future__ import annotations
 
 from decimal import Decimal
+from io import BytesIO
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
+from PIL import Image
 
 from apps.accounts.models import User
 from apps.orders.models import Order
 from apps.orders.tests.factories import OrderFactory
-from apps.promotions.models import Coupon, CouponRedemption
+from apps.promotions.models import Banner, Coupon, CouponRedemption
 from tests.factories import UserFactory
 
 ZERO = Decimal("0.00")
@@ -33,6 +36,24 @@ def make_coupon(**overrides: object) -> Coupon:
         values["amount_off"] = Decimal("50.00")
     values.update(overrides)
     return Coupon.objects.create(**values)
+
+
+def png_bytes(width: int = 800, height: int = 400) -> bytes:
+    """A real PNG image, so the validators and the WebP copy work in tests."""
+    buffer = BytesIO()
+    Image.new("RGB", (width, height), color=(200, 30, 30)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def make_banner(**overrides: object) -> Banner:
+    """Create one active banner with a small real image (D84)."""
+    values: dict[str, object] = {
+        "title": "Diwali offer",
+        "image": SimpleUploadedFile("banner.png", png_bytes(), content_type="image/png"),
+        "alt_text": "Diwali offer banner",
+    }
+    values.update(overrides)
+    return Banner.objects.create(**values)
 
 
 def make_order(user: User, status: str) -> Order:

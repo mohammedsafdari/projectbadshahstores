@@ -432,3 +432,27 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 - A template compares a `Decimal` directly and reads a dict by attribute: `{% if totals.discount_total > 0 %}`
   hides a zero discount, because Django resolves `totals.discount_total` as `totals["discount_total"]`
   first (`templates/orders/_checkout_summary.html`).
+
+## New in Slice 44c
+- A model **property** is read by a template exactly like a field: `banner.is_external` is a
+  `@property` returning `self.link_url.startswith("https://")`, and `home.html` uses it to decide
+  the `rel` attribute. A property is computed on every read, never stored, so it cannot go stale
+  (`apps/promotions/models.py`). .NET comparison: a get-only property
+  (`public bool IsExternal => LinkUrl.StartsWith("https://");`).
+- A row that is about to be deleted keeps its primary key **until the delete runs**: Django's
+  `Model.delete()` sets `pk` to `None` afterwards, so `FeaturedProductAdmin.delete_model` writes the
+  `FEATURED_REMOVE` audit row *before* `super().delete_model(...)`. The admin's own
+  `transaction.atomic()` makes the audit row and the delete succeed or fail together
+  (`apps/promotions/admin.py`). .NET comparison: writing the log entry before calling
+  `DbSet.Remove` inside one `TransactionScope`.
+- A **conditional wrapper** in a template: the opening and closing tags each sit in their own
+  `{% if banner.link_url %}`, so the same markup is one link for a linked banner and a plain `<div>`
+  otherwise, with no duplicated `<img>` and no JavaScript (`templates/storefront/home.html`).
+- A file name is made safe by throwing the original away: `banner_image_upload_path` keeps only
+  `Path(filename).suffix.lower()` and a `uuid4().hex`, so a Hindi name, a space or `../` in the
+  uploaded name never reaches the disk path (`apps/promotions/models.py`). .NET comparison:
+  `Guid.NewGuid().ToString("N") + Path.GetExtension(name).ToLowerInvariant()`.
+- A validator that raises a message **keyed to a field** is written as
+  `raise ValidationError({"link_url": error.messages}) from None`; the admin then prints the
+  sentence beside that input. `from None` hides the inner exception from the traceback, which is
+  what you want for an expected refusal (`apps/promotions/models.py`, `Banner.clean`).

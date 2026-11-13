@@ -1,8 +1,8 @@
-"""Promotions app models: coupons and their redemptions (D81).
+"""Promotions app models: coupons, redemptions, banners and featured products.
 
-A coupon is data, not code: staff create and switch off coupons in the admin.
-The discount rules live in ``apps/promotions/rules.py`` (Slice 44a); the
-checkout wiring is Slice 44b.
+A coupon, a banner and a featured product are all data, not code: staff manage
+them in the admin. The coupon rules live in ``apps/promotions/rules.py``
+(Slice 44a) and the home page queries in ``apps/promotions/home.py`` (D84).
 
 REVIEW CAREFULLY: money. Every amount is ``Decimal`` with two places, never a
 float (D3).
@@ -10,9 +10,13 @@ float (D3).
 
 from __future__ import annotations
 
+import logging
 import re
+import uuid
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -20,6 +24,11 @@ from django.db import models
 from django.db.models.functions import Upper
 from django.utils.translation import gettext_lazy as _
 
+from apps.catalog.validators import (
+    validate_image_content,
+    validate_image_extension,
+    validate_image_size,
+)
 from apps.core.models import TimeStampedModel
 
 # A code is 4 to 20 characters from A-Z, 0-9 and the hyphen, stored in capitals.
@@ -278,3 +287,196 @@ class CouponRedemption(models.Model):
 
     def __str__(self) -> str:
         return f"{self.coupon.code} on order {self.order_id}"
+
+
+# --- the home page: banners and featured products (D84) ----------------------
+
+logger = logging.getLogger(__name__)
+
+# The display copy of a banner: a WebP at most 1200 px on its longest side.
+BANNER_DISPLAY_MAX_SIDE = 1200
+BANNER_DISPLAY_QUALITY = 80
+
+# At most this many products may be featured on the home page.
+FEATURED_MAX_ROWS = 12
+
+# The one sentence a bad banner link produces.
+BANNER_LINK_MESSAGE = _("Use a link that starts with / or https://, or leave it empty.")
+
+
+def banner_image_upload_path(instance: Banner, filename: str) -> str:
+    """Return banners/<random>.<ext> for the uploaded banner image (D84).
+
+    A random name avoids clashes and odd characters from the original filename,
+    exactly like a product photo (D41). The extension is kept, lower-cased, so
+    the file is served with the right type.
+    """
+    ext = Path(filename).suffix.lower()
+    return f"banners/{uuid.uuid4().hex}{ext}"
+
+
+def banner_display_upload_path(instance: Banner, filename: str) -> str:
+    """Return banners/display/<random>.webp for the resized copy (D84)."""
+    return f"banners/display/{uuid.uuid4().hex}.webp"
+
+
+def validate_banner_link(value: str) -> None:
+    """Refuse anything but an empty link, a shop path or an https address (D84).
+
+    ``//evil.com`` is a protocol-relative address, a backslash and a space can
+    hide a second part, and a scheme such as ``javascript:`` or ``data:`` is
+    code, not a page. The rule is a whitelist: a link must be a path that starts
+    with one slash, or a full ``https://`` address with a host.
+    """
+    link = value or ""
+    if not link:
+        return
+    if link.startswith("/"):
+        # A single leading slash only, and no backslash or whitespace anywhere.
+        if not link.startswith("//") and "\\" not in link and not any(ch.isspace() for ch in link):
+            return
+    # urlparse splits the address; an empty netloc means there is no host.
+    elif link.startswith("https://") and urlparse(link).netloc:
+        return
+    raise ValidationError(BANNER_LINK_MESSAGE)
+
+
+class Banner(TimeStampedModel):
+    """One image banner on the home page (D84).
+
+    A banner is never shown outside its window: an inactive banner, one that has
+    not started and one that has ended are all skipped by ``home.visible_banners``.
+    The original image is kept as the fallback, and the WebP ``display`` copy is
+    what the page uses when it exists.
+    """
+
+    # Shown to staff only; never printed on a customer page.
+    title = models.CharField(max_length=100)
+    image = models.ImageField(
+        max_length=255,
+        upload_to=banner_image_upload_path,
+        validators=[validate_image_extension, validate_image_size, validate_image_content],
+        width_field="width",
+        height_field="height",
+    )
+    # Filled in by Django when the image is saved, so the page can reserve space.
+    width = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    height = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    # The WebP copy made on save; an empty value means "use the original".
+    display = models.ImageField(
+        upload_to=banner_display_upload_path,
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    alt_text = models.CharField(max_length=200)
+    # Empty means "not a link". clean() below refuses anything else suspicious.
+    link_url = models.CharField(max_length=200, blank=True, default="")
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    starts_at = models.DateTimeField(null=True, blank=True)
+    # A missing end never expires the banner.
+    ends_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [
+            # Both times are optional; when both are set the end must be later.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(starts_at__isnull=True)
+                    | models.Q(ends_at__isnull=True)
+                    | models.Q(ends_at__gt=models.F("starts_at"))
+                ),
+                name="banner_ends_after_starts",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.title
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Make the WebP display copy when the image is new or changed (D84).
+
+        A failed conversion only logs a warning: the original image is still
+        there, so the banner still shows (the same rule as ProductImage).
+        """
+        image_changed = True
+        if self.pk:
+            try:
+                old = Banner.objects.only("image").get(pk=self.pk)
+                image_changed = old.image.name != (self.image.name if self.image else "")
+            except Banner.DoesNotExist:
+                image_changed = True
+        super().save(*args, **kwargs)
+        if self.image and image_changed:
+            # Imported here so the model module stays free of Pillow at import
+            # time, exactly as ProductImage does it.
+            from apps.catalog import images
+
+            display = None
+            try:
+                display = images.create_image(
+                    self.image,
+                    BANNER_DISPLAY_MAX_SIDE,
+                    BANNER_DISPLAY_QUALITY,
+                )
+            except Exception:
+                logger.warning("Could not create a banner display image.", exc_info=True)
+            if display is not None:
+                self.display.save(
+                    Path(banner_display_upload_path(self, "")).name,
+                    display,
+                    save=False,
+                )
+                super().save(update_fields=["display"])
+
+    def clean(self) -> None:
+        """Refuse a bad link, keyed to the field so the admin shows it there.
+
+        ``full_clean()`` is what the admin form runs, so this one check is used
+        by the admin and by any plain ``full_clean()`` in code.
+        """
+        super().clean()
+        try:
+            validate_banner_link(self.link_url)
+        except ValidationError as error:
+            raise ValidationError({"link_url": error.messages}) from None
+
+    @property
+    def is_external(self) -> bool:
+        """True when the link leaves this shop, so the page adds rel=noopener."""
+        return self.link_url.startswith("https://")
+
+
+class FeaturedProduct(TimeStampedModel):
+    """One product staff hand-place on the home page (D84).
+
+    The row only says which product and in what order; whether the product may
+    be shown at all is still the storefront visibility rule.
+    """
+
+    product = models.OneToOneField(
+        "catalog.Product",
+        on_delete=models.CASCADE,
+        related_name="featured_row",
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "featured product"
+
+    def __str__(self) -> str:
+        return str(self.product)
+
+    def clean(self) -> None:
+        """Refuse a 13th row; editing a stored row never counts itself (D84)."""
+        super().clean()
+        if self.pk is not None:
+            return
+        if FeaturedProduct.objects.count() >= FEATURED_MAX_ROWS:
+            raise ValidationError(
+                _("You can feature at most %(max)d products. Remove one before adding another.")
+                % {"max": FEATURED_MAX_ROWS}
+            )

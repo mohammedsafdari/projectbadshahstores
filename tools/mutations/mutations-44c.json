@@ -1,0 +1,321 @@
+{
+  "tests": [
+    "apps/promotions/tests/test_banner_model.py",
+    "apps/promotions/tests/test_featured_model.py",
+    "apps/promotions/tests/test_home_queries.py",
+    "apps/promotions/tests/test_banner_admin.py",
+    "apps/promotions/tests/test_featured_admin.py",
+    "apps/storefront/tests/test_home_promotions.py",
+    "apps/storefront/tests/test_home.py"
+  ],
+  "mutations": [
+    {
+      "id": "44c-01-starts-boundary",
+      "file": "apps/promotions/home.py",
+      "old": "Q(starts_at__isnull=True) | Q(starts_at__lte=moment)",
+      "new": "Q(starts_at__isnull=True) | Q(starts_at__lt=moment)",
+      "note": "a banner that starts exactly now is hidden"
+    },
+    {
+      "id": "44c-02-ends-boundary",
+      "file": "apps/promotions/home.py",
+      "old": "Q(ends_at__isnull=True) | Q(ends_at__gt=moment)",
+      "new": "Q(ends_at__isnull=True) | Q(ends_at__gte=moment)",
+      "note": "a banner that ends exactly now is still shown"
+    },
+    {
+      "id": "44c-03-inactive-shown",
+      "file": "apps/promotions/home.py",
+      "old": "Banner.objects.filter(window, is_active=True)",
+      "new": "Banner.objects.filter(window)",
+      "note": "an inactive banner is shown"
+    },
+    {
+      "id": "44c-04-banner-order-by-id",
+      "file": "apps/promotions/home.py",
+      "old": ".order_by(\"sort_order\", \"id\")[\n            :HOME_BANNER_LIMIT",
+      "new": ".order_by(\"id\")[\n            :HOME_BANNER_LIMIT",
+      "note": "the staff banner order is ignored"
+    },
+    {
+      "id": "44c-05-banner-limit-six",
+      "file": "apps/promotions/home.py",
+      "old": "HOME_BANNER_LIMIT = 5",
+      "new": "HOME_BANNER_LIMIT = 6",
+      "note": "six banners are shown instead of five"
+    },
+    {
+      "id": "44c-06-banner-limit-four",
+      "file": "apps/promotions/home.py",
+      "old": "HOME_BANNER_LIMIT = 5",
+      "new": "HOME_BANNER_LIMIT = 4",
+      "note": "four banners are shown instead of five"
+    },
+    {
+      "id": "44c-07-featured-order-reversed",
+      "file": "apps/promotions/home.py",
+      "old": "FeaturedProduct.objects.order_by(\"sort_order\", \"id\").values_list(\"product_id\", flat=True)",
+      "new": "FeaturedProduct.objects.order_by(\"-sort_order\", \"-id\").values_list(\"product_id\", flat=True)",
+      "note": "the featured order is reversed"
+    },
+    {
+      "id": "44c-08-featured-order-by-id",
+      "file": "apps/promotions/home.py",
+      "old": "FeaturedProduct.objects.order_by(\"sort_order\", \"id\").values_list(\"product_id\", flat=True)",
+      "new": "FeaturedProduct.objects.order_by(\"id\").values_list(\"product_id\", flat=True)",
+      "note": "the featured sort order is ignored"
+    },
+    {
+      "id": "44c-09-featured-limit-thirteen",
+      "file": "apps/promotions/models.py",
+      "old": "FEATURED_MAX_ROWS = 12",
+      "new": "FEATURED_MAX_ROWS = 13",
+      "note": "thirteen featured rows are allowed"
+    },
+    {
+      "id": "44c-10-featured-limit-eleven",
+      "file": "apps/promotions/models.py",
+      "old": "FEATURED_MAX_ROWS = 12",
+      "new": "FEATURED_MAX_ROWS = 11",
+      "note": "only eleven featured rows are allowed"
+    },
+    {
+      "id": "44c-11-featured-counts-itself",
+      "file": "apps/promotions/models.py",
+      "old": "        if self.pk is not None:\n            return",
+      "new": "        if False:\n            return",
+      "note": "editing one of the twelve rows refuses itself"
+    },
+    {
+      "id": "44c-12-double-slash-allowed",
+      "file": "apps/promotions/models.py",
+      "old": "if not link.startswith(\"//\") and",
+      "new": "if",
+      "note": "//evil.com is accepted as a link"
+    },
+    {
+      "id": "44c-13-backslash-allowed",
+      "file": "apps/promotions/models.py",
+      "old": "\"\\\\\" not in link and ",
+      "new": "",
+      "note": "a backslash in a link is accepted"
+    },
+    {
+      "id": "44c-14-whitespace-allowed",
+      "file": "apps/promotions/models.py",
+      "old": "and not any(ch.isspace() for ch in link):",
+      "new": "and True:",
+      "note": "a space in a link is accepted"
+    },
+    {
+      "id": "44c-15-https-needs-no-host",
+      "file": "apps/promotions/models.py",
+      "old": "elif link.startswith(\"https://\") and urlparse(link).netloc:",
+      "new": "elif link.startswith(\"https://\"):",
+      "note": "https:// with no host is accepted"
+    },
+    {
+      "id": "44c-16-http-allowed",
+      "file": "apps/promotions/models.py",
+      "old": "elif link.startswith(\"https://\") and urlparse(link).netloc:",
+      "new": "elif link.startswith(\"http://\") or (link.startswith(\"https://\") and urlparse(link).netloc):",
+      "note": "a plain http link is accepted"
+    },
+    {
+      "id": "44c-17-display-copy-skipped",
+      "file": "apps/promotions/models.py",
+      "old": "        if self.image and image_changed:",
+      "new": "        if False:",
+      "note": "no WebP display copy is made at all"
+    },
+    {
+      "id": "44c-18-display-rebuilt-every-save",
+      "file": "apps/promotions/models.py",
+      "old": "                image_changed = old.image.name != (self.image.name if self.image else \"\")",
+      "new": "                image_changed = True",
+      "note": "a new display copy is made on every save"
+    },
+    {
+      "id": "44c-19-external-always-false",
+      "file": "apps/promotions/models.py",
+      "old": "        return self.link_url.startswith(\"https://\")",
+      "new": "        return False",
+      "note": "an https banner gets no rel attribute"
+    },
+    {
+      "id": "44c-20-original-image-only",
+      "file": "templates/storefront/home.html",
+      "old": "src=\"{% if banner.display %}{{ banner.display.url }}{% else %}{{ banner.image.url }}{% endif %}\"",
+      "new": "src=\"{{ banner.image.url }}\"",
+      "note": "the WebP display copy is never used"
+    },
+    {
+      "id": "44c-21-size-attributes-dropped",
+      "file": "templates/storefront/home.html",
+      "old": "        {% if banner.width %}width=\"{{ banner.width }}\" height=\"{{ banner.height }}\"{% endif %}",
+      "new": "",
+      "note": "the banner image has no width and height attributes"
+    },
+    {
+      "id": "44c-22-every-banner-eager",
+      "file": "templates/storefront/home.html",
+      "old": "{% if forloop.first %}loading=\"eager\"{% else %}loading=\"lazy\"{% endif %}",
+      "new": "loading=\"eager\"",
+      "note": "every banner image is eager"
+    },
+    {
+      "id": "44c-23-rel-dropped",
+      "file": "templates/storefront/home.html",
+      "old": "{% if banner.is_external %} rel=\"noopener noreferrer\"{% endif %}",
+      "new": "",
+      "note": "the rel attribute is never printed"
+    },
+    {
+      "id": "44c-24-rel-for-internal-links",
+      "file": "templates/storefront/home.html",
+      "old": "{% if banner.is_external %} rel=\"noopener noreferrer\"{% endif %}",
+      "new": " rel=\"noopener noreferrer\"",
+      "note": "an internal link also gets the rel attribute"
+    },
+    {
+      "id": "44c-25-banner-link-dropped",
+      "file": "templates/storefront/home.html",
+      "old": "<a class=\"block w-72 shrink-0 snap-start overflow-hidden rounded border border-gray-200 bg-white sm:w-auto\" href=\"{{ banner.link_url }}\"",
+      "new": "<div class=\"block w-72 shrink-0 snap-start overflow-hidden rounded border border-gray-200 bg-white sm:w-auto\" href=\"{{ banner.link_url }}\"",
+      "note": "the whole banner is not a link"
+    },
+    {
+      "id": "44c-26-banner-heading-inverted",
+      "file": "templates/storefront/home.html",
+      "old": "{% if banners %}",
+      "new": "{% if not banners %}",
+      "note": "the banner section prints when there are no banners"
+    },
+    {
+      "id": "44c-27-featured-heading-inverted",
+      "file": "templates/storefront/home.html",
+      "old": "{% if featured_cards %}",
+      "new": "{% if not featured_cards %}",
+      "note": "the featured section prints when there are no cards"
+    },
+    {
+      "id": "44c-28-hidden-products-shown",
+      "file": "apps/storefront/views.py",
+      "old": "            cards = build_cards(\n                visible_products(\n                    tree=CategoryTree(),\n                    sort=\"relevance\",\n                    product_ids=featured_ids,\n                )\n            )",
+      "new": "            cards = build_cards(Product.objects.filter(pk__in=featured_ids))",
+      "note": "a hidden product is shown in the featured grid"
+    },
+    {
+      "id": "44c-29-featured-order-sorted",
+      "file": "apps/storefront/views.py",
+      "old": "                    product_ids=featured_ids,",
+      "new": "                    product_ids=sorted(featured_ids),",
+      "note": "the featured cards follow the id order, not the staff order"
+    },
+    {
+      "id": "44c-30-no-variant-shown",
+      "file": "apps/storefront/services.py",
+      "old": "        if not variants:\n            continue",
+      "new": "        if False:\n            continue",
+      "note": "a product with no active variant is not dropped"
+    },
+    {
+      "id": "44c-31-module-permission-always",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_module_permission(self, request: HttpRequest) -> bool:\n        return has_capability(request.user, self.capability)",
+      "new": "    def has_module_permission(self, request: HttpRequest) -> bool:\n        return True",
+      "note": "everyone sees the promotions module"
+    },
+    {
+      "id": "44c-32-add-permission-always",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_add_permission(self, request: HttpRequest) -> bool:\n        return has_capability(request.user, self.capability)",
+      "new": "    def has_add_permission(self, request: HttpRequest) -> bool:\n        return True",
+      "note": "everyone may add a banner"
+    },
+    {
+      "id": "44c-33-change-permission-always",
+      "file": "apps/promotions/admin.py",
+      "old": "    def has_change_permission(self, request: HttpRequest, obj: object = None) -> bool:\n        return has_capability(request.user, self.capability)",
+      "new": "    def has_change_permission(self, request: HttpRequest, obj: object = None) -> bool:\n        return True",
+      "note": "everyone may change a banner"
+    },
+    {
+      "id": "44c-34-delete-permission-always",
+      "file": "apps/promotions/admin.py",
+      "old": "        # redemptions point at it with PROTECT (D81); a banner is switched off.\n        return False",
+      "new": "        # redemptions point at it with PROTECT (D81); a banner is switched off.\n        return True",
+      "note": "a banner may be deleted"
+    },
+    {
+      "id": "44c-35-featured-delete-refused",
+      "file": "apps/promotions/admin.py",
+      "old": "        # Removing a row only takes the product off the home page, so it is allowed.\n        return has_capability(request.user, self.capability)",
+      "new": "        # Removing a row only takes the product off the home page, so it is allowed.\n        return False",
+      "note": "a featured row may not be removed"
+    },
+    {
+      "id": "44c-36-create-action-renamed",
+      "file": "apps/promotions/admin.py",
+      "old": "BANNER_CREATE_ACTION = \"BANNER_CREATE\"",
+      "new": "BANNER_CREATE_ACTION = \"BANNER_NEW\"",
+      "note": "the banner create audit action is renamed"
+    },
+    {
+      "id": "44c-37-update-action-renamed",
+      "file": "apps/promotions/admin.py",
+      "old": "BANNER_UPDATE_ACTION = \"BANNER_UPDATE\"",
+      "new": "BANNER_UPDATE_ACTION = \"BANNER_CHANGED\"",
+      "note": "the banner update audit action is renamed"
+    },
+    {
+      "id": "44c-38-featured-add-renamed",
+      "file": "apps/promotions/admin.py",
+      "old": "FEATURED_ADD_ACTION = \"FEATURED_ADD\"",
+      "new": "FEATURED_ADD_ACTION = \"FEATURED_NEW\"",
+      "note": "the featured add audit action is renamed"
+    },
+    {
+      "id": "44c-39-featured-update-renamed",
+      "file": "apps/promotions/admin.py",
+      "old": "FEATURED_UPDATE_ACTION = \"FEATURED_UPDATE\"",
+      "new": "FEATURED_UPDATE_ACTION = \"FEATURED_CHANGED\"",
+      "note": "the featured update audit action is renamed"
+    },
+    {
+      "id": "44c-40-featured-remove-renamed",
+      "file": "apps/promotions/admin.py",
+      "old": "FEATURED_REMOVE_ACTION = \"FEATURED_REMOVE\"",
+      "new": "FEATURED_REMOVE_ACTION = \"FEATURED_DELETE\"",
+      "note": "the featured remove audit action is renamed"
+    },
+    {
+      "id": "44c-41-audited-field-dropped",
+      "file": "apps/promotions/admin.py",
+      "old": "    \"ends_at\",\n    \"is_active\",\n)",
+      "new": "    \"ends_at\",\n)",
+      "note": "the banner active switch is not audited"
+    },
+    {
+      "id": "44c-42-featured-audited-field-dropped",
+      "file": "apps/promotions/admin.py",
+      "old": "AUDITED_FEATURED_FIELDS: tuple[str, ...] = (\"product_id\", \"sort_order\")",
+      "new": "AUDITED_FEATURED_FIELDS: tuple[str, ...] = (\"product_id\",)",
+      "note": "the featured sort order is not audited"
+    },
+    {
+      "id": "44c-43-preview-not-escaped",
+      "file": "apps/promotions/admin.py",
+      "old": "        return format_html(\n            '<img src=\"{}\" alt=\"{}\" width=\"96\" height=\"48\" style=\"object-fit: cover;\">',\n            source,\n            obj.alt_text,\n        )",
+      "new": "        return f'<img src=\"{source}\" alt=\"{obj.alt_text}\" width=\"96\" height=\"48\">'",
+      "note": "the preview prints the alt text without escaping"
+    },
+    {
+      "id": "44c-44-unchanged-save-writes",
+      "file": "apps/promotions/admin.py",
+      "old": "        if change:\n            # Read the stored values BEFORE the save: the form has already put\n            # the new values on ``obj``, so only the database has the old ones.\n            stored = Banner.objects.get(pk=obj.pk)",
+      "new": "        if False:\n            stored = Banner.objects.get(pk=obj.pk)",
+      "note": "an unchanged save writes an audit row"
+    }
+  ]
+}

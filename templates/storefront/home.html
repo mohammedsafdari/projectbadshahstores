@@ -3,6 +3,38 @@
 {% block title %}Badshah Store — Home{% endblock title %}
 
 {% block content %}
+{% if banners %}
+<section aria-labelledby="offers-heading" class="mb-8">
+  <h2 id="offers-heading" class="sr-only">{{ text.offers_heading }}</h2>
+  {# Narrow screens: one scrolled, snapping row. Wide screens: a grid. #}
+  <div class="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-3">
+    {% for banner in banners %}
+      {# The whole banner is one link when staff set one, else a plain block. #}
+      {% if banner.link_url %}<a class="block w-72 shrink-0 snap-start overflow-hidden rounded border border-gray-200 bg-white sm:w-auto" href="{{ banner.link_url }}"{% if banner.is_external %} rel="noopener noreferrer"{% endif %}>{% else %}<div class="w-72 shrink-0 snap-start overflow-hidden rounded border border-gray-200 bg-white sm:w-auto">{% endif %}
+      <img
+        class="h-full w-full object-cover"
+        src="{% if banner.display %}{{ banner.display.url }}{% else %}{{ banner.image.url }}{% endif %}"
+        alt="{{ banner.alt_text }}"
+        {% if banner.width %}width="{{ banner.width }}" height="{{ banner.height }}"{% endif %}
+        {% if forloop.first %}loading="eager"{% else %}loading="lazy"{% endif %}
+      >
+      {% if banner.link_url %}</a>{% else %}</div>{% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if featured_cards %}
+<section aria-labelledby="featured-heading" class="mb-8">
+  <h2 id="featured-heading" class="text-xl font-semibold text-gray-900">{{ text.featured_heading }}</h2>
+  <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    {% for card in featured_cards %}
+      {% include "storefront/_product_card.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <div class="max-w-prose text-center">
   <h1 class="text-3xl font-bold text-gray-900 sm:text-4xl">Badshah Store</h1>
   <p class="mt-2 text-gray-600">Online store coming soon</p>

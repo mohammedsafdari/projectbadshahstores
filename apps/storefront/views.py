@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -17,11 +18,14 @@ from django.views.generic import TemplateView
 
 from apps.catalog.models import Brand, Category, Product
 from apps.catalog.search import get_search_backend, normalise_query
+from apps.promotions.home import featured_product_ids, visible_banners
 from apps.storefront.filter_options import brand_options
 from apps.storefront.filters import parse_filters
+from apps.storefront.presentation import home_text
 from apps.storefront.product_detail import get_product_detail
 from apps.storefront.services import (
     CategoryTree,
+    ProductCard,
     build_cards,
     visible_products,
 )
@@ -189,7 +193,29 @@ def _render_listing(
 
 
 class HomeView(TemplateView):
+    """The shop front page: banners, featured products, then the introduction."""
+
     template_name = "storefront/home.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context["text"] = home_text()
+        context["banners"] = visible_banners()
+        featured_ids = featured_product_ids()
+        cards: list[ProductCard] = []
+        if featured_ids:
+            # "relevance" with an id list keeps the staff order; visible_products
+            # then removes what the shop does not show (D84), and build_cards
+            # drops a product with no live variant.
+            cards = build_cards(
+                visible_products(
+                    tree=CategoryTree(),
+                    sort="relevance",
+                    product_ids=featured_ids,
+                )
+            )
+        context["featured_cards"] = cards
+        return context
 
 
 def product_list(request: HttpRequest) -> HttpResponse:
