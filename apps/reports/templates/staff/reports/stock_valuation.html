@@ -1,0 +1,70 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Stock valuation" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "Stock valuation" %}</h1>
+  <p class="mt-1 text-sm text-gray-700">
+    {% translate "What is on the shelf right now, times today's cost price. This is as of now, so it has no date range. A variant with nothing on the shelf is left out." %}
+  </p>
+
+  <p class="mt-2">
+    <a class="underline text-sm" href="{% url 'reports_stock_valuation_csv' %}">{% translate "Download this report as CSV" %}</a>
+  </p>
+
+  <p class="mt-4 text-lg">{% translate "Grand total" %}: <strong>{{ report.grand_total }}</strong></p>
+
+  <table class="mt-4 w-full border-collapse text-sm">
+    <thead>
+      <tr class="bg-gray-200 text-left">
+        <th class="border border-gray-400 px-2 py-1">{% translate "SKU" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Product" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Brand" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Category" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "On hand" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Cost price" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Value" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.rows %}
+        <tr>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{{ row.sku_code }}</th>
+          <td class="border border-gray-400 px-2 py-1">{{ row.name }}</td>
+          <td class="border border-gray-400 px-2 py-1">{{ row.brand }}</td>
+          <td class="border border-gray-400 px-2 py-1">{{ row.category }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ row.on_hand }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ row.cost_price }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ row.value }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="7" class="border border-gray-400 px-2 py-2">
+            {% translate "No variant has both stock and a cost price." %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <section class="mt-6">
+    <h2 class="text-lg font-bold">{% translate "By brand" %}</h2>
+    {% for group in report.brand_totals %}
+      <p class="mt-1 text-base">{{ group.label }} · ₹{{ group.value }}</p>
+    {% empty %}
+      <p class="mt-1 text-sm">{% translate "No brand has a valued variant." %}</p>
+    {% endfor %}
+  </section>
+
+  <section class="mt-4">
+    <h2 class="text-lg font-bold">{% translate "By category" %}</h2>
+    {% for group in report.category_totals %}
+      <p class="mt-1 text-base">{{ group.label }} · ₹{{ group.value }}</p>
+    {% empty %}
+      <p class="mt-1 text-sm">{% translate "No category has a valued variant." %}</p>
+    {% endfor %}
+  </section>
+
+  {% include "staff/reports/_blank_costs.html" with report=report %}
+{% endblock content %}

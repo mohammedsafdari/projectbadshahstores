@@ -1,0 +1,43 @@
+{% load i18n %}
+<section class="mt-6" data-sales-section="{{ report.key }}">
+  <h2 class="text-lg font-bold">{% blocktranslate with heading=report.heading %}Sales by {{ heading }}{% endblocktranslate %}</h2>
+  <table class="mt-2 w-full border-collapse text-sm">
+    <thead>
+      <tr class="bg-gray-200 text-left">
+        <th class="border border-gray-400 px-2 py-1">{{ report.heading }}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Units" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Taxable value" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "GST" %}</th>
+        <th class="border border-gray-400 px-2 py-1">{% translate "Total" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.rows %}
+        <tr>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{{ row.label }}</th>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ row.totals.units }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ row.totals.taxable }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ row.totals.gst }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ row.totals.total }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="5" class="border border-gray-400 px-2 py-2">
+            {% translate "No sale in this range." %}
+          </td>
+        </tr>
+      {% endfor %}
+      <tr class="font-bold">
+        <th class="border border-gray-400 px-2 py-1 text-left">{% translate "Total" %}</th>
+        <td class="border border-gray-400 px-2 py-1 text-right">{{ report.totals.units }}</td>
+        <td class="border border-gray-400 px-2 py-1 text-right">{{ report.totals.taxable }}</td>
+        <td class="border border-gray-400 px-2 py-1 text-right">{{ report.totals.gst }}</td>
+        <td class="border border-gray-400 px-2 py-1 text-right">{{ report.totals.total }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="mt-2 text-sm text-gray-700" data-cancelled="{{ report.cancelled_count }}">
+    {% blocktranslate with count=report.cancelled_count amount=report.cancelled_total %}Cancelled invoices, not in these totals: {{ count }}, ₹{{ amount }}.{% endblocktranslate %}
+  </p>
+</section>

@@ -1,0 +1,23 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Sales" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "Sales" %}</h1>
+  <p class="mt-1 text-sm text-gray-700">
+    {% translate "Units, taxable value, GST and total come from the invoices and their lines, exactly as they were printed. A cancelled invoice is never counted." %}
+  </p>
+
+  {% include "staff/reports/_range_form.html" %}
+
+  <p class="mt-2">
+    <a class="underline text-sm" href="{% url 'reports_sales_csv' %}?from={{ from_value }}&amp;to={{ to_value }}">{% translate "Download this report as CSV" %}</a>
+  </p>
+
+  {% if reports %}
+    {% for report in reports %}
+      {% include "staff/reports/_sales_table.html" with report=report %}
+    {% endfor %}
+  {% endif %}
+{% endblock content %}

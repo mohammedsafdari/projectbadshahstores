@@ -1,0 +1,84 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Enter cost prices" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "Enter cost prices" %}</h1>
+
+  <p class="mt-2 rounded border border-gray-300 bg-white p-3 text-sm">
+    {% translate "Upload a CSV with a sku_code column and a cost_price column. The upload changes the cost price only: it never creates a variant and never touches a price, an MRP or the stock. A blank cost cell leaves that variant as it is." %}
+  </p>
+
+  <form method="post" enctype="multipart/form-data" class="mt-4 space-y-2">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="rounded bg-gray-900 px-4 py-3 font-medium text-white">{% translate "Check the file" %}</button>
+  </form>
+
+  {% if plan %}
+    <section class="mt-6" data-cost-plan>
+      <h2 class="text-lg font-bold">{% translate "What this file would do" %}</h2>
+      <p class="mt-1 text-sm">
+        {% blocktranslate with updated=counts.UPDATE unchanged=counts.UNCHANGED %}To update: {{ updated }}. Unchanged: {{ unchanged }}.{% endblocktranslate %}
+      </p>
+
+      {% if plan.issues %}
+        <h3 class="mt-3 font-bold">{% translate "Rows that stop the file" %}</h3>
+        <ul role="alert" class="mt-1 space-y-1 text-sm">
+          {% for issue in plan.issues %}
+            <li>
+              {% if issue.line %}{% blocktranslate with line=issue.line %}Line {{ line }}{% endblocktranslate %} · {% endif %}
+              {% if issue.column %}{{ issue.column }} · {% endif %}
+              {{ issue.message }}
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="mt-2 text-sm">
+          {% translate "Nothing is written until every row is clean. Fix the file and upload it again." %}
+        </p>
+      {% endif %}
+
+      {% if plan.warned %}
+        <h3 class="mt-3 font-bold">{% translate "Warnings" %}</h3>
+        <ul class="mt-1 space-y-1 text-sm">
+          {% for row in plan.warned %}
+            <li>{{ row.sku_code }} · {{ row.warning }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if plan.rows %}
+        <table class="mt-3 w-full border-collapse text-sm">
+          <thead>
+            <tr class="bg-gray-200 text-left">
+              <th class="border border-gray-400 px-2 py-1">{% translate "Line" %}</th>
+              <th class="border border-gray-400 px-2 py-1">{% translate "SKU" %}</th>
+              <th class="border border-gray-400 px-2 py-1">{% translate "Now" %}</th>
+              <th class="border border-gray-400 px-2 py-1">{% translate "After" %}</th>
+              <th class="border border-gray-400 px-2 py-1">{% translate "Action" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in plan.rows %}
+              <tr>
+                <td class="border border-gray-400 px-2 py-1">{{ row.line }}</td>
+                <th class="border border-gray-400 px-2 py-1 text-left font-normal">{{ row.sku_code }}</th>
+                <td class="border border-gray-400 px-2 py-1 text-right">{% if row.stored_cost is None %}-{% else %}{{ row.stored_cost }}{% endif %}</td>
+                <td class="border border-gray-400 px-2 py-1 text-right">{% if row.new_cost is None %}-{% else %}{{ row.new_cost }}{% endif %}</td>
+                <td class="border border-gray-400 px-2 py-1">{{ row.action }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+
+      {% if can_apply %}
+        <form method="post" class="mt-4">
+          {% csrf_token %}
+          <button type="submit" name="apply" value="1" class="rounded bg-gray-900 px-4 py-3 font-medium text-white">{% translate "Apply these cost prices" %}</button>
+        </form>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock content %}

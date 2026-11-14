@@ -1,0 +1,20 @@
+{% load i18n %}
+{# A variant with no cost price is skipped, never read as zero (D85). #}
+<section class="mt-6 rounded border border-gray-300 bg-white p-3 text-sm">
+  <p>
+    {% blocktranslate count counter=report.blank_cost_count %}{{ counter }} variant has no cost price.{% plural %}{{ counter }} variants have no cost price.{% endblocktranslate %}
+    {% translate "They are left out of every figure above, not counted as free." %}
+  </p>
+  {% if report.blank_cost_variants %}
+    <ul class="mt-2 space-y-1">
+      {% for variant in report.blank_cost_variants %}
+        <li>{{ variant.sku_code }} · {{ variant.name }}</li>
+      {% endfor %}
+    </ul>
+    {% if report.blank_cost_more %}
+      <p class="mt-1">
+        {% blocktranslate with more=report.blank_cost_more %}and {{ more }} more.{% endblocktranslate %}
+      </p>
+    {% endif %}
+  {% endif %}
+</section>

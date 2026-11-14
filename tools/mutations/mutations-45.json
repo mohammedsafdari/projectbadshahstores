@@ -1,0 +1,304 @@
+{
+  "tests": [
+    "apps/reports/tests/test_sales_reports.py",
+    "apps/reports/tests/test_own_brand.py",
+    "apps/reports/tests/test_gst_summary.py",
+    "apps/reports/tests/test_cod_credit.py",
+    "apps/reports/tests/test_stock_valuation.py",
+    "apps/reports/tests/test_cost_import.py",
+    "apps/reports/tests/test_date_range.py",
+    "apps/reports/tests/test_csv_output.py",
+    "apps/reports/tests/test_consistency.py",
+    "apps/reports/tests/test_query_counts.py",
+    "apps/reports/tests/test_capabilities_access.py"
+  ],
+  "mutations": [
+    {
+      "id": "45-01-cancelled-in-total",
+      "file": "apps/reports/queries.py",
+      "old": "        invoice__cancelled_at__isnull=True,\n        **_window(\"invoice__issued_at\", period),",
+      "new": "        **_window(\"invoice__issued_at\", period),",
+      "note": "a cancelled invoice is counted in every total"
+    },
+    {
+      "id": "45-02-cancelled-line-dropped",
+      "file": "apps/reports/queries.py",
+      "old": "        cancelled_at__isnull=False,\n        **_window(\"issued_at\", period),",
+      "new": "        cancelled_at__isnull=True,\n        **_window(\"issued_at\", period),",
+      "note": "the cancelled invoice line reports the live invoices instead"
+    },
+    {
+      "id": "45-03-window-in-utc",
+      "file": "apps/reports/queries.py",
+      "old": "    return datetime.combine(day, time.min, tzinfo=timezone.get_current_timezone())",
+      "new": "    return datetime.combine(day, time.min, tzinfo=timezone.utc)",
+      "note": "the range boundary is UTC midnight, not Indian midnight"
+    },
+    {
+      "id": "45-04-to-exclusive",
+      "file": "apps/reports/queries.py",
+      "old": "        f\"{prefix}__lt\": _start_of(period.end + timedelta(days=1)),",
+      "new": "        f\"{prefix}__lt\": _start_of(period.end),",
+      "note": "the to date is left out of the range"
+    },
+    {
+      "id": "45-05-from-off-by-one",
+      "file": "apps/reports/queries.py",
+      "old": "        f\"{prefix}__gte\": _start_of(period.start),",
+      "new": "        f\"{prefix}__gte\": _start_of(period.start + timedelta(days=1)),",
+      "note": "the from date is left out of the range"
+    },
+    {
+      "id": "45-06-day-in-utc",
+      "file": "apps/reports/queries.py",
+      "old": "        day = TruncDate(\"invoice__issued_at\", tzinfo=timezone.get_current_timezone())",
+      "new": "        day = TruncDate(\"invoice__issued_at\")",
+      "note": "the day section groups by the UTC date"
+    },
+    {
+      "id": "45-07-fee-lines-in-sales",
+      "file": "apps/reports/queries.py",
+      "old": "    if not fee_lines:\n        queryset = queryset.filter(is_fee_line=False)",
+      "new": "    if False:\n        queryset = queryset.filter(is_fee_line=False)",
+      "note": "the delivery fee line is counted as a sale"
+    },
+    {
+      "id": "45-08-blank-cost-list-all",
+      "file": "apps/reports/queries.py",
+      "old": "    queryset = (\n        ProductVariant.objects.filter(cost_price__isnull=True)",
+      "new": "    queryset = (\n        ProductVariant.objects.filter()",
+      "note": "every variant is listed as having no cost price"
+    },
+    {
+      "id": "45-09-blank-cost-no-select-related",
+      "file": "apps/reports/queries.py",
+      "old": "        .select_related(\"product\")\n        .order_by(\"sku_code\")",
+      "new": "        .order_by(\"sku_code\")",
+      "note": "the blank cost list reads the product of every row separately"
+    },
+    {
+      "id": "45-10-revenue-is-the-total",
+      "file": "apps/reports/queries.py",
+      "old": "        revenue[own_brand] = totals.taxable",
+      "new": "        revenue[own_brand] = totals.total",
+      "note": "the margin uses the line total, not the taxable value"
+    },
+    {
+      "id": "45-11-own-brand-swapped",
+      "file": "apps/reports/queries.py",
+      "old": "        own_brand=group(OWN_BRAND_LABEL, True),",
+      "new": "        own_brand=group(OWN_BRAND_LABEL, False),",
+      "note": "the own brand group shows the third-party figures"
+    },
+    {
+      "id": "45-12-percent-guard",
+      "file": "apps/reports/queries.py",
+      "old": "    if whole <= ZERO:\n        return ZERO",
+      "new": "    if False:\n        return ZERO",
+      "note": "a margin percent is computed with no revenue"
+    },
+    {
+      "id": "45-13-gst-only-cgst",
+      "file": "apps/reports/queries.py",
+      "old": "        gst=cgst + sgst,\n        cancelled_count=cancelled_count,",
+      "new": "        gst=cgst,\n        cancelled_count=cancelled_count,",
+      "note": "the GST total counts only the CGST half"
+    },
+    {
+      "id": "45-14-fee-row-dropped",
+      "file": "apps/reports/queries.py",
+      "old": "        _lines_in_range(period, fee_lines=True)\n        .values(\"gst_rate_percent\", \"is_fee_line\")",
+      "new": "        _lines_in_range(period)\n        .values(\"gst_rate_percent\", \"is_fee_line\")",
+      "note": "the delivery fee gets no GST row"
+    },
+    {
+      "id": "45-15-gst-note-blank",
+      "file": "apps/reports/queries.py",
+      "old": "        note=GST_NOTE,",
+      "new": "        note=\"\",",
+      "note": "the unconfirmed GST note is gone"
+    },
+    {
+      "id": "45-16-pending-empty",
+      "file": "apps/reports/queries.py",
+      "old": "        unpaid = cash_reconciliation(actor, period.end).unpaid_orders",
+      "new": "        unpaid = cash_reconciliation(actor, period.end).unpaid_orders[:0]",
+      "note": "no COD order is ever pending"
+    },
+    {
+      "id": "45-17-khata-payment-sign",
+      "file": "apps/reports/queries.py",
+      "old": "        khata_payments=-_dec(paid[\"total\"]),",
+      "new": "        khata_payments=_dec(paid[\"total\"]),",
+      "note": "khata payments are reported as money paid out"
+    },
+    {
+      "id": "45-18-outstanding-is-payments",
+      "file": "apps/reports/queries.py",
+      "old": "        khata_outstanding=_dec(khata[\"total\"]),",
+      "new": "        khata_outstanding=_dec(paid[\"total\"]),",
+      "note": "the khata outstanding shows the payments instead of the balances"
+    },
+    {
+      "id": "45-19-valuation-zero-guard",
+      "file": "apps/reports/queries.py",
+      "old": "        if quantity <= QUANTITY_ZERO:\n            continue",
+      "new": "        if quantity < QUANTITY_ZERO:\n            continue",
+      "note": "a variant with nothing on the shelf is valued"
+    },
+    {
+      "id": "45-20-valuation-selling-price",
+      "file": "apps/reports/queries.py",
+      "old": "        value = round_money(quantity * cost_price)",
+      "new": "        value = round_money(quantity * variant.selling_price)",
+      "note": "the stock is valued at the selling price"
+    },
+    {
+      "id": "45-21-valuation-grand-total",
+      "file": "apps/reports/queries.py",
+      "old": "        grand_total += value",
+      "new": "        grand_total += round_money(quantity)",
+      "note": "the grand total adds the quantities, not the values"
+    },
+    {
+      "id": "45-22-valuation-no-select-related",
+      "file": "apps/reports/queries.py",
+      "old": "        .select_related(\"product__brand\", \"product__category\")\n        .order_by(\"sku_code\")",
+      "new": "        .order_by(\"sku_code\")",
+      "note": "the valuation reads the product of every row separately"
+    },
+    {
+      "id": "45-23-default-range-today",
+      "file": "apps/reports/queries.py",
+      "old": "    default_start = current.replace(day=1)",
+      "new": "    default_start = current",
+      "note": "a blank page shows one day instead of the month so far"
+    },
+    {
+      "id": "45-24-reversed-not-refused",
+      "file": "apps/reports/queries.py",
+      "old": "    if start > end:\n        return DateRange(default_start, current, REVERSED_RANGE)",
+      "new": "    if False:\n        return DateRange(default_start, current, REVERSED_RANGE)",
+      "note": "a reversed range is accepted"
+    },
+    {
+      "id": "45-25-bad-date-uncaught",
+      "file": "apps/reports/queries.py",
+      "old": "    try:\n        return parse_date(value)\n    except ValueError:\n        return None",
+      "new": "    return parse_date(value)",
+      "note": "a month of 13 crashes the page"
+    },
+    {
+      "id": "45-26-range-limit",
+      "file": "apps/reports/queries.py",
+      "old": "MAX_RANGE_DAYS = 366",
+      "new": "MAX_RANGE_DAYS = 3660",
+      "note": "a ten-year range is allowed"
+    },
+    {
+      "id": "45-27-sales-page-no-capability",
+      "file": "apps/reports/views.py",
+      "old": "@staff_required(Capability.VIEW_REPORTS)\n@require_http_methods([\"GET\"])\n@never_cache\ndef sales_page(request: HttpRequest) -> HttpResponse:",
+      "new": "@require_http_methods([\"GET\"])\n@never_cache\ndef sales_page(request: HttpRequest) -> HttpResponse:",
+      "note": "the sales page is open to anyone"
+    },
+    {
+      "id": "45-28-gst-csv-no-capability",
+      "file": "apps/reports/views.py",
+      "old": "@staff_required(Capability.VIEW_REPORTS)\n@require_http_methods([\"GET\"])\n@never_cache\ndef gst_csv(request: HttpRequest) -> HttpResponse:",
+      "new": "@require_http_methods([\"GET\"])\n@never_cache\ndef gst_csv(request: HttpRequest) -> HttpResponse:",
+      "note": "the GST CSV is open to anyone"
+    },
+    {
+      "id": "45-29-cost-page-no-capability",
+      "file": "apps/reports/views.py",
+      "old": "@staff_required(Capability.MANAGE_COST_PRICES)\n@require_http_methods([\"GET\", \"POST\"])\n@never_cache\ndef cost_prices_page(request: HttpRequest) -> HttpResponse:",
+      "new": "@require_http_methods([\"GET\", \"POST\"])\n@never_cache\ndef cost_prices_page(request: HttpRequest) -> HttpResponse:",
+      "note": "the cost price upload is open to anyone"
+    },
+    {
+      "id": "45-30-csv-bad-range-unchecked",
+      "file": "apps/reports/views.py",
+      "old": "    if not period.ok:\n        return _bad_range(request, period, \"reports_sales\")",
+      "new": "    if False:\n        return _bad_range(request, period, \"reports_sales\")",
+      "note": "a bad range writes a CSV silently"
+    },
+    {
+      "id": "45-31-formula-guard-removed",
+      "file": "apps/reports/csv_output.py",
+      "old": "    if value.startswith(FORMULA_STARTERS):\n        return \"'\" + value",
+      "new": "    if False:\n        return \"'\" + value",
+      "note": "a product name can run as a spreadsheet formula"
+    },
+    {
+      "id": "45-32-no-bom",
+      "file": "apps/reports/csv_output.py",
+      "old": "    file.write(UTF8_BOM)\n    writer = csv.writer(file)\n    writer.writerow(list(header))",
+      "new": "    writer = csv.writer(file)\n    writer.writerow(list(header))",
+      "note": "the file has no byte order mark"
+    },
+    {
+      "id": "45-33-quantity-whole",
+      "file": "apps/reports/csv_output.py",
+      "old": "    return format(value.quantize(QUANTITY_PLACES), \"f\")",
+      "new": "    return format(value.quantize(Decimal(\"1\")), \"f\")",
+      "note": "a loose quantity is rounded to whole units"
+    },
+    {
+      "id": "45-34-money-normalised",
+      "file": "apps/reports/csv_output.py",
+      "old": "    return format(value, \"f\")",
+      "new": "    return str(value.normalize())",
+      "note": "an amount loses its trailing zero"
+    },
+    {
+      "id": "45-35-negative-cost-allowed",
+      "file": "apps/reports/cost_prices.py",
+      "old": "    if rounded < MIN_COST:",
+      "new": "    if False:",
+      "note": "a negative cost price is accepted"
+    },
+    {
+      "id": "45-36-unguard-removed",
+      "file": "apps/reports/cost_prices.py",
+      "old": "    if len(value) > 1 and value[0] == \"'\" and value[1] in FORMULA_STARTERS:",
+      "new": "    if False:",
+      "note": "the export's formula guard is not undone"
+    },
+    {
+      "id": "45-37-cost-import-wrong-field",
+      "file": "apps/reports/cost_prices.py",
+      "old": "        variant.cost_price = row.new_cost",
+      "new": "        variant.selling_price = row.new_cost",
+      "note": "the upload writes the selling price instead of the cost"
+    },
+    {
+      "id": "45-38-audit-old-value",
+      "file": "apps/reports/cost_prices.py",
+      "old": "            old={\"cost_price\": old_cost},",
+      "new": "            old={\"cost_price\": row.new_cost},",
+      "note": "the audit row records the new cost as the old one"
+    },
+    {
+      "id": "45-39-fingerprint-ignored",
+      "file": "apps/reports/cost_prices.py",
+      "old": "    if expected_fingerprint is not None and expected_fingerprint != plan.fingerprint():",
+      "new": "    if False:",
+      "note": "a file is applied after the data moved on"
+    },
+    {
+      "id": "45-40-blank-cost-updates",
+      "file": "apps/reports/cost_prices.py",
+      "old": "        if new_cost is None or new_cost == variant.cost_price:",
+      "new": "        if new_cost == variant.cost_price:",
+      "note": "a blank cost cell becomes an update row"
+    },
+    {
+      "id": "45-41-unknown-sku-silent",
+      "file": "apps/reports/cost_prices.py",
+      "old": "        if variant is None:\n            issues.append(\n                Issue(\n                    row.line,\n                    SKU_COLUMN,\n                    f\"Unknown SKU {_shown(row.sku_code)}. This upload never creates a variant.\",\n                )\n            )\n            continue",
+      "new": "        if variant is None:\n            continue",
+      "note": "an unknown SKU is dropped without a word"
+    }
+  ]
+}

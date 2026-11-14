@@ -116,6 +116,7 @@ INSTALLED_APPS = [
     "apps.delivery",
     "apps.notifications",
     "apps.promotions",
+    "apps.reports",
     "apps.storefront",
     "apps.adminpanel",
     "apps.accounts",

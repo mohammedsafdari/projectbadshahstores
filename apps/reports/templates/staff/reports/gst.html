@@ -1,0 +1,76 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "GST summary" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "GST summary by rate" %}</h1>
+
+  {# The note must stay on the page and in the CSV until the CA answers (D85). #}
+  <p class="mt-2 rounded border border-amber-400 bg-amber-50 p-3 text-sm" data-gst-note>{{ note }}</p>
+
+  {% include "staff/reports/_range_form.html" %}
+
+  <p class="mt-2">
+    <a class="underline text-sm" href="{% url 'reports_gst_csv' %}?from={{ from_value }}&amp;to={{ to_value }}">{% translate "Download this report as CSV" %}</a>
+  </p>
+
+  {% if report %}
+    <table class="mt-4 w-full border-collapse text-sm">
+      <thead>
+        <tr class="bg-gray-200 text-left">
+          <th class="border border-gray-400 px-2 py-1">{% translate "Row" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "GST rate" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "Taxable value" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "CGST" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "SGST" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "Total GST" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "Invoices" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.rows %}
+          <tr>
+            <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "Goods" %}</th>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.rate }}%</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.taxable }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.cgst }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.sgst }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.gst }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.invoice_count }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" class="border border-gray-400 px-2 py-2">
+              {% translate "No invoice in this range." %}
+            </td>
+          </tr>
+        {% endfor %}
+        {% for row in report.fee_rows %}
+          <tr data-fee-row>
+            <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "Delivery fee" %}</th>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.rate }}%</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.taxable }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.cgst }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.sgst }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.gst }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ row.invoice_count }}</td>
+          </tr>
+        {% endfor %}
+        <tr class="font-bold">
+          <th class="border border-gray-400 px-2 py-1 text-left">{% translate "Total" %}</th>
+          <td class="border border-gray-400 px-2 py-1"></td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.taxable }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cgst }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.sgst }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.gst }}</td>
+          <td class="border border-gray-400 px-2 py-1"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="mt-2 text-sm text-gray-700">
+      {% blocktranslate with count=report.cancelled_count amount=report.cancelled_total %}Cancelled invoices, not in these totals: {{ count }}, ₹{{ amount }}.{% endblocktranslate %}
+    </p>
+  {% endif %}
+{% endblock content %}

@@ -51,3 +51,8 @@ coverage.xml
 celerybeat-schedule*
 celerybeat.pid
 tools/review-report.txt
+
+# Private business data: cost prices and any other file that must never be
+# committed to this public repository (D85).
+*.private.csv
+private/

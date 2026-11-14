@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n reports_nav %}
 <!doctype html>
 <html lang="en-IN">
 <head>
@@ -21,6 +21,8 @@
         <a href="{% url 'staff_home' %}" class="text-lg font-bold">Badshah Store</a>
         <a href="{% url 'home' %}" class="text-sm text-gray-600 underline">{% translate "Shop site" %}</a>
       </div>
+      {# The reports link asks the capability itself, so every staff page shows it (D85). #}
+      {% can_view_reports request.user as show_reports %}
       <nav aria-label="{% translate 'Staff screens' %}" class="mt-2 flex flex-wrap gap-2 text-base">
         {% if can_view_orders %}
           <a href="{% url 'staff_order_list' %}" class="rounded border border-gray-400 bg-white px-4 py-3 font-medium">{% translate "Orders" %}</a>
@@ -32,6 +34,9 @@
         {% endif %}
         {% if can_view_credit %}
           <a href="{% url 'staff_credit_dues' %}" class="rounded border border-gray-400 bg-white px-4 py-3 font-medium">{% translate "Credit dues" %}</a>
+        {% endif %}
+        {% if show_reports %}
+          <a href="{% url 'reports_index' %}" class="rounded border border-gray-400 bg-white px-4 py-3 font-medium">{% translate "Reports" %}</a>
         {% endif %}
       </nav>
     </div>

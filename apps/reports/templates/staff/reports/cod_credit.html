@@ -1,0 +1,57 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "COD and credit" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "COD and credit" %}</h1>
+  <p class="mt-1 text-sm text-gray-700">
+    {% translate "Cash collected is the money the delivery staff recorded in this range. COD pending is every order that still owes cash, using the same rule as the cash page. Khata payments are the payments recorded in this range." %}
+  </p>
+
+  {% include "staff/reports/_range_form.html" %}
+
+  <p class="mt-2">
+    <a class="underline text-sm" href="{% url 'reports_cod_credit_csv' %}?from={{ from_value }}&amp;to={{ to_value }}">{% translate "Download this report as CSV" %}</a>
+  </p>
+
+  {% if report %}
+    <table class="mt-4 w-full border-collapse text-sm">
+      <thead>
+        <tr class="bg-gray-200 text-left">
+          <th class="border border-gray-400 px-2 py-1">{% translate "Figure" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "Amount" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "Count" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "COD collected" %}</th>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cod_collected }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cod_collected_count }}</td>
+        </tr>
+        <tr>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "COD pending" %}</th>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cod_pending }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cod_pending_count }}</td>
+        </tr>
+        <tr>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "Khata outstanding" %}</th>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.khata_outstanding }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.khata_account_count }}</td>
+        </tr>
+        <tr>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "Khata payments received" %}</th>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.khata_payments }}</td>
+          <td class="border border-gray-400 px-2 py-1 text-right">{{ report.khata_payment_count }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if report.cod_pending_note %}
+      <p role="status" class="mt-2 rounded border border-amber-400 bg-amber-50 p-3 text-sm">
+        {{ report.cod_pending_note }}
+      </p>
+    {% endif %}
+  {% endif %}
+{% endblock content %}

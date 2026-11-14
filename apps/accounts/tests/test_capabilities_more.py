@@ -25,6 +25,8 @@ EXPECTED_CAPABILITIES = {
     "REFUND_PAYMENTS",
     "VIEW_INVOICES",
     "MANAGE_PROMOTIONS",
+    "VIEW_REPORTS",
+    "MANAGE_COST_PRICES",
 }
 
 
@@ -39,9 +41,9 @@ def test_every_capability_has_a_label() -> None:
         assert label != value
 
 
-def test_the_capability_keys_are_exactly_the_fourteen_agreed() -> None:
+def test_the_capability_keys_are_exactly_the_sixteen_agreed() -> None:
     assert set(Capability.values) == EXPECTED_CAPABILITIES
-    assert len(Capability.values) == 14
+    assert len(Capability.values) == 16
 
 
 def test_removing_a_manager_capability_takes_effect_at_once() -> None:

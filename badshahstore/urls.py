@@ -23,6 +23,9 @@ urlpatterns = [
     # Online payment pages and the provider webhook (D77), also before the
     # empty storefront include.
     path("payments/", include("apps.payments.urls")),
+    # The reports sit under /staff/reports/ and must come before the wider
+    # staff include, which starts with the empty pattern (D85).
+    path("staff/reports/", include("apps.reports.urls")),
     # The staff screens also start with a fixed prefix (D79), so they come
     # before the empty storefront include too.
     path("staff/", include("apps.orders.staff_urls")),

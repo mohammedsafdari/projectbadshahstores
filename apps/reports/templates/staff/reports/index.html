@@ -1,0 +1,35 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Reports" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "Reports" %}</h1>
+
+  <p class="mt-2 rounded border border-gray-300 bg-white p-3 text-sm">
+    {% translate "Every report is read-only. Nothing here changes an order, an invoice, the stock or a khata balance, and every figure comes from what was frozen when the sale happened." %}
+  </p>
+
+  <ul class="mt-4 space-y-2 text-base">
+    <li>
+      <a class="underline" href="{% url 'reports_sales' %}">{% translate "Sales by day, product, brand and category" %}</a>
+    </li>
+    <li>
+      <a class="underline" href="{% url 'reports_own_brand' %}">{% translate "Own brand against third-party" %}</a>
+    </li>
+    <li>
+      <a class="underline" href="{% url 'reports_gst' %}">{% translate "GST summary by rate" %}</a>
+    </li>
+    <li>
+      <a class="underline" href="{% url 'reports_cod_credit' %}">{% translate "COD and credit" %}</a>
+    </li>
+    <li>
+      <a class="underline" href="{% url 'reports_stock_valuation' %}">{% translate "Stock valuation" %}</a>
+    </li>
+    {% if can_manage_cost_prices %}
+      <li>
+        <a class="underline" href="{% url 'reports_cost_prices' %}">{% translate "Enter cost prices" %}</a>
+      </li>
+    {% endif %}
+  </ul>
+{% endblock content %}
