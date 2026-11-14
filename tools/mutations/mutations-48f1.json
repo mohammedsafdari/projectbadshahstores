@@ -1,0 +1,33 @@
+{
+  "tests": ["apps/notifications/tests/test_stock_digest.py"],
+  "mutations": [
+    {
+      "id": "48f1-01-step-two-loads-only-near-expiry-lots",
+      "file": "apps/inventory/alerts.py",
+      "old": "            variant_id__in=near_variant_ids,\n        ).select_related(\"variant__product\")",
+      "new": "            variant_id__in=near_variant_ids,\n            expiry_date__lte=window_end,\n        ).select_related(\"variant__product\")",
+      "note": "a newer lot without a date, or due later, no longer takes the stock first"
+    },
+    {
+      "id": "48f1-02-allocation-oldest-first",
+      "file": "apps/inventory/alerts.py",
+      "old": "    newest_first = sorted(lots, key=lambda lot: (lot.created_at, lot.pk), reverse=True)",
+      "new": "    newest_first = sorted(lots, key=lambda lot: (lot.created_at, lot.pk), reverse=False)",
+      "note": "the estimate assumes the oldest purchase is sold first"
+    },
+    {
+      "id": "48f1-03-step-three-keeps-a-null-expiry",
+      "file": "apps/inventory/alerts.py",
+      "old": "        if expiry_date is None:",
+      "new": "        if False:",
+      "note": "a lot with no expiry date reaches the report and breaks it"
+    },
+    {
+      "id": "48f1-04-zero-remaining-reported",
+      "file": "apps/inventory/alerts.py",
+      "old": "        if kept <= 0:\n            continue",
+      "new": "        if False:\n            continue",
+      "note": "a lot the estimate sold out is still listed"
+    }
+  ]
+}

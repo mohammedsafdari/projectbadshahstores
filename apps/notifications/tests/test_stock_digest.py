@@ -248,6 +248,82 @@ def test_alert_queries_do_not_grow_with_variants() -> None:
     assert len(large) == len(small)
 
 
+def test_newer_lot_without_expiry_absorbs_stock_first() -> None:
+    today = timezone.localdate()
+    variant = _variant(stock=None)
+    _lot(variant, "10.000", batch="OLD", days=3, today=today)
+    # A later purchase with no expiry date at all: it is what the shelf holds.
+    receive_stock(variant=variant, quantity=Decimal("20.000"), batch_number="NEW")
+    # Ten of the thirty were sold at the counter, so twenty are left.
+    adjust_stock(variant=variant, quantity_change=Decimal("-10"), reason="sold at counter")
+
+    expired, expiring = expiry_rows(today)
+
+    assert expired == []
+    assert expiring == []
+
+
+def test_newer_lot_with_later_expiry_absorbs_stock_first() -> None:
+    today = timezone.localdate()
+    variant = _variant(stock=None)
+    _lot(variant, "10.000", batch="SOON", days=3, today=today)
+    _lot(variant, "20.000", batch="LATER", days=400, today=today)
+    adjust_stock(variant=variant, quantity_change=Decimal("-10"), reason="sold at counter")
+
+    expired, expiring = expiry_rows(today)
+
+    # The newer lot holds the twenty that are left, so the old one is sold out.
+    assert expired == []
+    assert expiring == []
+
+
+def test_old_lot_still_reported_when_stock_exceeds_newer_lots() -> None:
+    today = timezone.localdate()
+    variant = _variant(stock=None)
+    _lot(variant, "10.000", batch="SOON", days=3, today=today)
+    _lot(variant, "5.000", batch="LATER", days=400, today=today)
+    adjust_stock(variant=variant, quantity_change=Decimal("-3"), reason="sold at counter")
+
+    expired, expiring = expiry_rows(today)
+
+    assert expired == []
+    assert [row.batch_number for row in expiring] == ["SOON"]
+    # The newer lot keeps its own five, and seven of the old ten are still here.
+    assert expiring[0].remaining == Decimal("7.000")
+
+
+def test_variant_with_no_near_expiry_lot_is_not_loaded() -> None:
+    today = timezone.localdate()
+    variant = _variant(stock=None)
+    _lot(variant, "5.000", batch="LATER", days=400, today=today)
+
+    with CaptureQueriesContext(connection) as queries:
+        expired, expiring = expiry_rows(today)
+
+    assert expired == []
+    assert expiring == []
+    # One query names the variants, and then nothing else runs at all.
+    assert len(queries) == 1
+
+
+def test_expiry_query_count_still_fixed() -> None:
+    today = timezone.localdate()
+    for index in range(2):
+        variant = _variant(name=f"Item {index}", stock=None)
+        _lot(variant, "5.000", batch=f"B{index}", days=2, today=today)
+    with CaptureQueriesContext(connection) as small:
+        expiry_rows(today)
+    for index in range(2, 6):
+        variant = _variant(name=f"Item {index}", stock=None)
+        _lot(variant, "5.000", batch=f"B{index}", days=2, today=today)
+        _lot(variant, "5.000", batch=f"C{index}", days=3, today=today)
+    with CaptureQueriesContext(connection) as large:
+        _expired, expiring = expiry_rows(today)
+
+    assert len(expiring) == 10
+    assert len(large) == len(small)
+
+
 # ---------------------------------------------------------------------------
 # The text
 # ---------------------------------------------------------------------------

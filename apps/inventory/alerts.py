@@ -121,17 +121,35 @@ def expiry_rows(today: date) -> tuple[list[ExpiryRow], list[ExpiryRow]]:
     is handed to the lots newest-received first, and a lot keeps at most what
     it received. That assumes the oldest purchases are sold first. A lot with
     nothing left by that estimate is left out.
+
+    All purchase lots of the variant take part in the hand-out, dated or not
+    (48f1): a newer lot that expires later, or never, is what the shelf really
+    holds, so it takes the stock before an older lot due in the window.
     """
     window_end = today + timedelta(days=EXPIRY_WINDOW_DAYS)
-    lots = list(
+    # Step one: the variants that have at least one lot due in the window. A
+    # variant without one can produce no row, so its lots are never loaded.
+    near_variant_ids = list(
         InventoryMovement.objects.filter(
             movement_type=InventoryMovement.MovementType.PURCHASE_RECEIVED,
             expiry_date__isnull=False,
             expiry_date__lte=window_end,
             variant__is_active=True,
+        )
+        .values_list("variant_id", flat=True)
+        .distinct()
+    )
+    if not near_variant_ids:
+        return [], []
+    # Step two: every purchase lot of those variants, with a date or without,
+    # so the hand-out below sees the same lots the shelf is holding.
+    lots = list(
+        InventoryMovement.objects.filter(
+            movement_type=InventoryMovement.MovementType.PURCHASE_RECEIVED,
+            variant_id__in=near_variant_ids,
         ).select_related("variant__product")
     )
-    on_hand = _on_hand_totals(list({lot.variant_id for lot in lots}))
+    on_hand = _on_hand_totals(near_variant_ids)
     # Newest received first: that is the order the on-hand figure is handed to.
     newest_first = sorted(lots, key=lambda lot: (lot.created_at, lot.pk), reverse=True)
     left = dict(on_hand)
@@ -147,8 +165,12 @@ def expiry_rows(today: date) -> tuple[list[ExpiryRow], list[ExpiryRow]]:
     expiring: list[ExpiryRow] = []
     for lot in lots:
         expiry_date = lot.expiry_date
-        # The filter above promises an expiry date; this keeps mypy happy.
         if expiry_date is None:
+            # No date at all: the lot only shared the hand-out above.
+            continue
+        # A lot well past the window took part in the hand-out too, but it is
+        # not news for today's email.
+        if expiry_date > window_end:
             continue
         kept = remaining.get(lot.pk, Decimal("0"))
         if kept <= 0:
