@@ -30,6 +30,24 @@ class SmsBackend(ABC):
         """Send one free-text message, such as an order notice."""
         raise NotImplementedError("This SMS backend cannot send free text.")
 
+    # Also not abstract (D88): the console backend and every test backend
+    # inherit this default, so they keep printing and recording the same text.
+    def send_notice(
+        self,
+        phone: str,
+        event: str,
+        variables: dict[str, str],
+        text: str,
+    ) -> str | None:
+        """Send one templated notice; the default sends its plain text instead.
+
+        A real provider needs a registered DLT template, so it overrides this
+        method; ``event`` and ``variables`` are ignored here. The return value
+        is the provider's request id, and None when there is none.
+        """
+        self.send_message(phone, text)
+        return None
+
 
 class ConsoleSmsBackend(SmsBackend):
     """Print the code to stdout during development only.

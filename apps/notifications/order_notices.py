@@ -1,7 +1,9 @@
 """Turn an order into the messages the customer and the shop receive (D69).
 
-Nothing here writes to the database. ``notify_order_event`` is meant to be
-called after the order transaction has committed (Slice 38b).
+Every send goes through ``delivery.deliver``, which writes one
+``NotificationLog`` row per attempt and queues a retry for a failed order or
+staff message (D88). ``notify_order_event`` is meant to be called after the
+order transaction has committed (Slice 38b).
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.core.services import get_shop_settings
+from apps.notifications.delivery import deliver
 from apps.notifications.messages import (
     CUSTOMER_EVENTS,
     EVENT_CREDIT_REMINDER,
@@ -22,11 +25,14 @@ from apps.notifications.messages import (
     EVENT_STAFF_NEW_ORDER,
     EVENT_STAFF_REFUND_FAILED,
     OrderNotice,
+    credit_reminder_notice,
     credit_reminder_text,
     email_body,
     email_subject,
+    notice_variables,
     sms_text,
 )
+from apps.notifications.models import NotificationLog
 from apps.notifications.sms import get_sms_backend
 from apps.orders.models import Order
 
@@ -119,18 +125,34 @@ def _latest_refund(order: Order, event: str):
     return Refund.objects.filter(payment__order=order).order_by("-created_at", "-pk").first()
 
 
+def _send_mail_to(recipient: str, subject: str, body: str) -> None:
+    """Send one plain email; the send itself is all this call is for."""
+    send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [recipient])
+
+
 def _send_customer_sms(order: Order, event: str, notice: OrderNotice) -> None:
     """Send the customer's SMS when the switch is on, swallowing any failure."""
     if not settings.ORDER_SMS_ENABLED:
         return
-    try:
-        # The backend is built inside the try, so a bad SMS_BACKEND path is
-        # swallowed like any other channel failure.
-        get_sms_backend().send_message(order.user.phone, sms_text(event, notice))
-    except Exception:
-        # logger.exception adds the traceback for the developer, but the
-        # message itself carries only the event, the order and the channel.
-        logger.exception(
+    # ``deliver`` runs the lambda, writes the log row and never raises. The
+    # backend is built inside the lambda, so a bad SMS_BACKEND path is a
+    # logged failure like any other channel problem (D88).
+    log = deliver(
+        channel=NotificationLog.Channel.SMS,
+        purpose=NotificationLog.Purpose.ORDER,
+        event=event,
+        order_id=order.pk,
+        recipient=order.user.phone,
+        send=lambda: get_sms_backend().send_notice(
+            order.user.phone,
+            event,
+            notice_variables(event, notice),
+            sms_text(event, notice),
+        ),
+    )
+    if log is None or log.status != NotificationLog.Status.SENT:
+        # Only the event, the order and the channel: never a phone or a text.
+        logger.error(
             "Order notice failed: event=%s order_id=%s channel=sms",
             event,
             order.pk,
@@ -142,15 +164,20 @@ def _send_customer_email(order: Order, event: str, notice: OrderNotice) -> None:
     recipient = order.user.email
     if not settings.ORDER_EMAIL_ENABLED or not recipient:
         return
-    try:
-        send_mail(
+    log = deliver(
+        channel=NotificationLog.Channel.EMAIL,
+        purpose=NotificationLog.Purpose.ORDER,
+        event=event,
+        order_id=order.pk,
+        recipient=recipient,
+        send=lambda: _send_mail_to(
+            recipient,
             email_subject(event, notice),
             email_body(event, notice),
-            settings.DEFAULT_FROM_EMAIL,
-            [recipient],
-        )
-    except Exception:
-        logger.exception(
+        ),
+    )
+    if log is None or log.status != NotificationLog.Status.SENT:
+        logger.error(
             "Order notice failed: event=%s order_id=%s channel=customer_email",
             event,
             order.pk,
@@ -160,18 +187,42 @@ def _send_customer_email(order: Order, event: str, notice: OrderNotice) -> None:
 def notify_credit_reminder(user: User, balance: Decimal) -> bool:
     """Send one manual credit reminder SMS; return False when it was skipped.
 
-    A reminder is never automatic: a staff member presses the button. The
-    console SMS backend prints the text until a real backend and the DLT
-    registration exist. Every failure is logged and never raised.
+    A reminder is never automatic: a staff member presses the button, and a
+    failure is logged and never raised. It is logged but never retried: a
+    repeated reminder would nag the customer (D88).
     """
     if not settings.ORDER_SMS_ENABLED:
         return False
-    try:
-        get_sms_backend().send_message(user.phone, credit_reminder_text(balance))
-    except Exception:
+    sent = False
+
+    def send() -> None:
+        # ``nonlocal`` lets the inner function write the outer ``sent`` flag,
+        # because ``deliver`` returns no success flag of its own.
+        nonlocal sent
+        variables = notice_variables(
+            EVENT_CREDIT_REMINDER,
+            credit_reminder_notice(balance),
+        )
+        get_sms_backend().send_notice(
+            user.phone,
+            EVENT_CREDIT_REMINDER,
+            variables,
+            credit_reminder_text(balance),
+        )
+        sent = True
+
+    deliver(
+        channel=NotificationLog.Channel.SMS,
+        purpose=NotificationLog.Purpose.CREDIT_REMINDER,
+        event=EVENT_CREDIT_REMINDER,
+        order_id=None,
+        recipient=user.phone,
+        send=send,
+    )
+    if not sent:
         # The log line carries the event and the user id, never the phone or
         # the message text.
-        logger.exception(
+        logger.error(
             "Credit reminder failed: event=%s user_id=%s channel=sms",
             EVENT_CREDIT_REMINDER,
             user.pk,
@@ -186,16 +237,29 @@ def _send_staff_email(notice: OrderNotice, order_id: int, event: str) -> None:
         return
     try:
         recipient = get_shop_settings().email
-        if not recipient:
-            return
-        send_mail(
-            email_subject(event, notice),
-            email_body(event, notice),
-            settings.DEFAULT_FROM_EMAIL,
-            [recipient],
-        )
     except Exception:
         logger.exception(
+            "Order notice failed: event=%s order_id=%s channel=staff_email",
+            event,
+            order_id,
+        )
+        return
+    if not recipient:
+        return
+    log = deliver(
+        channel=NotificationLog.Channel.EMAIL,
+        purpose=NotificationLog.Purpose.STAFF,
+        event=event,
+        order_id=order_id,
+        recipient=recipient,
+        send=lambda: _send_mail_to(
+            recipient,
+            email_subject(event, notice),
+            email_body(event, notice),
+        ),
+    )
+    if log is None or log.status != NotificationLog.Status.SENT:
+        logger.error(
             "Order notice failed: event=%s order_id=%s channel=staff_email",
             event,
             order_id,

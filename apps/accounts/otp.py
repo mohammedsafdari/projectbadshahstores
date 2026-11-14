@@ -21,6 +21,8 @@ from django.utils import timezone
 
 from apps.accounts.models import OtpChallenge
 from apps.core.phone import normalise_phone
+from apps.notifications.delivery import deliver
+from apps.notifications.models import NotificationLog
 from apps.notifications.sms import get_sms_backend
 
 # How long a code stays valid (D59 policy constants).
@@ -168,7 +170,17 @@ def request_code(
     if send is not None:
         send(code)
     else:
-        get_sms_backend().send_otp(normalised, code)
+        # Every attempt is logged, but a code is never retried: a late code is
+        # no use to the customer (D88). `deliver` never raises, so a missing
+        # MSG91 key cannot break the login page.
+        deliver(
+            channel=NotificationLog.Channel.SMS,
+            purpose=NotificationLog.Purpose.OTP,
+            event="",
+            order_id=None,
+            recipient=normalised,
+            send=lambda: get_sms_backend().send_otp(normalised, code),
+        )
     return OtpRequestResult(phone=normalised, sent=True, reason=REASON_OK)
 
 

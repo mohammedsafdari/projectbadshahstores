@@ -474,3 +474,30 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
   `str(HOME_TITLE) % {"shop": name}`, because a `gettext_lazy` proxy only resolves when it is read
   (`apps/storefront/presentation.py`). .NET comparison: calling `.ToString()` on a resource lookup
   before `string.Format`, instead of formatting the resource object itself.
+
+## New in Slice 47
+- A **closure over a flag** lets a helper report success without returning it: `send()` inside
+  `notify_credit_reminder` sets `sent = True`, and `nonlocal sent` is what allows that inner
+  function to write the outer variable. Without `nonlocal`, the assignment would create a new
+  local name and the outer flag would never move (`apps/notifications/order_notices.py`).
+  .NET comparison: a captured local in a lambda, which C# allows without any keyword.
+- A **dict comprehension with `enumerate(..., start=1)`** numbers the DLT variables:
+  `{f"VAR{number}": value for number, field in enumerate(fields, start=1)}` turns the tuple of
+  field names into `{"VAR1": ..., "VAR2": ...}` with no index arithmetic
+  (`apps/notifications/messages.py`, `notice_variables`). .NET comparison: `fields.Select((f, i) =>
+  $"VAR{i + 1}")` zipped into a dictionary.
+- A **`Mapping` check before `.get`** keeps a settings value safe: `SMS_VARIABLE_ORDER`-style lookups
+  read `settings.MSG91_TEMPLATE_IDS` through `isinstance(templates, Mapping)` first, because
+  `env.dict` returns a dict but an override in a test could set anything, and `.get` on the wrong
+  type raises (`apps/notifications/msg91.py`, `_template_id`). .NET comparison:
+  `value as IDictionary<string, string>` before indexing.
+- A **local import inside a function** breaks an import cycle: `delivery._queue_retry` imports
+  `retry_notification` at call time, because `tasks.py` imports `delivery.py` at the top; the
+  import runs only when a retry is actually queued (`apps/notifications/delivery.py`).
+  .NET comparison: resolving a service from the container at the call site instead of injecting it
+  in the constructor.
+- **`lambda: ...` as a zero-argument callable** is how the caller hands work to `deliver` without
+  it knowing about SMS or email: `send=lambda: get_sms_backend().send_notice(...)` runs only
+  inside `deliver`'s `try`, so one failure is logged and never raised
+  (`apps/notifications/order_notices.py`). .NET comparison: passing `() => SendAsync()` as an
+  `Action` or `Func<Task>`.

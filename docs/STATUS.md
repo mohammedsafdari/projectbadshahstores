@@ -222,6 +222,8 @@ Terminology: phase numbers come from the build plan in `PROJECT_INSTRUCTIONS.md`
 | 45f2 | An invoice line links to the order line it came from (D86): `InvoiceLine.order_item` (nullable FK to `OrderItem`, PROTECT, related_name invoice_lines) and the `orders` migration 0009; `_product_line` sets the link and `_fee_line` leaves it empty; `apps/reports/queries.py` reads brand, category, own_brand and the cost price through `order_item__variant__...` in the one money query, `_owner_names`/`_line_owner` and the name key are gone, and an unlinked line keeps the unknown owner with no cost. Three margin tests (two packs of one product, either creation order, and two products with one name and HSN) and three invoice tests; one existing test now clears `order_item` instead of renaming the line. The owner runs `migrate`. |
 | 46 | SEO and the real home page per D87: `apps/storefront/seo.py` (`ROBOTS_PRIVATE_PREFIXES`, `site_origin`, `absolute_url`, `canonical_url`, `dump_json_ld`, `breadcrumb_json_ld`, `organization_json_ld`, `website_json_ld`, `sitemap_paths`, `sitemap_xml_text`, `robots_text`); the thin `robots_txt` and `sitemap_xml` views and their two routes; `apps/storefront/presentation.py` (the home and listing sentences, `format_cutoff`, `shop_display_name`, `home_title`, `listing_description`, the extended `home_text`); `apps/delivery/services.py` (`served_pincodes`); the shared `head_seo` and `head_json_ld` blocks in `templates/base.html`; the rewritten `templates/storefront/home.html`; the Open Graph, canonical and JSON-LD context in `HomeView`, `_render_listing` and `product_detail`; the `{% if coupon_code %}` around the checkout Remove button. 48 new tests in `apps/storefront/tests/test_seo.py`, two existing tests changed, `tools/mutations/mutations-46.json`. Docs: D87, this row, the Phase 6 plan, the open questions and the Python recap. |
 
+| 47 | Real senders, a send log and a retry per D88: `SmsBackend.send_notice` with its inherited default; `apps/notifications/msg91.py` (`Msg91SmsBackend`, the constants block, `Msg91Error`); `apps/notifications/delivery.py` (`deliver`, `mask_recipient`, `mask_email`, `error_summary`, `retry_delay`, `RETRY_DELAYS`, `RETRYABLE_PURPOSES`, `MAX_ATTEMPTS`); `apps/notifications/tasks.py` (`retry_notification`); `notifications.NotificationLog` and its read-only admin; `messages.SMS_VARIABLE_ORDER`, `notice_variables`, `credit_reminder_notice` and the new `credit_balance` field; every send in `order_notices.py`, `email_codes.py` and `accounts/otp.py` through `deliver`; the MSG91 and email settings in `base.py`; `docs/dlt_templates.md`. 48 new tests (21 in `test_msg91.py`, 16 in `test_notification_log.py`, 11 in `test_notification_retry.py`) and `tools/mutations/mutations-47.json` (20 mutations, all caught). One existing test changed in `apps/credit/tests/test_staff_dues_views.py` (`send_notice` instead of `send_message`). Docs: D88, this row, the Phase 6 plan, the open questions, `docs/dlt_templates.md` and the Python recap. The `notifications` migration 0001 is written by the owner. |
+
 ## Remaining Phase 2 slices
 
 14. (done) ProductImage and media storage.
@@ -275,10 +277,11 @@ Phase 5 is complete. The Phase 6 plan is below. Packing that weighs again and fu
 ## Phase 6 plan
 
 - 46 (done): SEO and the home page (D87) — `robots.txt`, `sitemap.xml`, the title, description, canonical, Open Graph and JSON-LD tags on the public pages, the real home page copy and the checkout coupon Remove fix.
-- 47: real senders — the MSG91 SMS backend, SMTP/Brevo email, a send log with Celery retry, the daily low-stock and expiry email, search-word logging, and per-IP limits on OTP, sign-up and login.
-- 48: performance — query counts, the search index and cache headers.
-- 49: PWA.
-- 50: Hindi scaffolding, the Devanagari font and the Phase 6 wrap-up.
+- 47 (done): real senders, a send log and a retry (D88) — the MSG91 Flow backend behind the existing interface, the SMTP email settings, one `NotificationLog` row per attempt with a masked contact and a digit-cleaned error, and two more tries for a failed order or staff message.
+- 48: owner alerts (the daily low-stock and expiry email), the search-word log, and per-IP limits on OTP, sign-up and login.
+- 49: performance — query counts, the search index and cache headers.
+- 50: PWA.
+- 51: Hindi scaffolding, the Devanagari font and the Phase 6 wrap-up.
 
 Packing that weighs again stays after Phase 6; the Tailwind build step stays in Phase 7.
 

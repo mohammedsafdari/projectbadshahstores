@@ -1,0 +1,153 @@
+{
+  "tests": [
+    "apps/notifications/tests/test_msg91.py",
+    "apps/notifications/tests/test_notification_log.py",
+    "apps/notifications/tests/test_notification_retry.py",
+    "apps/notifications/tests/test_order_notices.py",
+    "apps/notifications/tests/test_sms.py",
+    "apps/notifications/tests/test_sms_message.py",
+    "apps/credit/tests/test_staff_dues_views.py"
+  ],
+  "mutations": [
+    {
+      "id": "47-01-phone-keeps-the-plus",
+      "file": "apps/notifications/msg91.py",
+      "old": "    return phone.strip().removeprefix(\"+\")",
+      "new": "    return phone.strip()",
+      "note": "MSG91 receives +919876543210 instead of 919876543210"
+    },
+    {
+      "id": "47-02-missing-auth-key-allowed",
+      "file": "apps/notifications/msg91.py",
+      "old": "    if not key:\n        raise ImproperlyConfigured(\"MSG91_AUTH_KEY is not configured.\")",
+      "new": "    if False:\n        raise ImproperlyConfigured(\"MSG91_AUTH_KEY is not configured.\")",
+      "note": "a blank auth key no longer refuses the send"
+    },
+    {
+      "id": "47-03-provider-error-ignored",
+      "file": "apps/notifications/msg91.py",
+      "old": "        if str(data.get(REPLY_TYPE_KEY, \"\")).lower() == ERROR_REPLY_TYPE:",
+      "new": "        if False:",
+      "note": "a reply whose type is error is treated as sent"
+    },
+    {
+      "id": "47-04-http-error-ignored",
+      "file": "apps/notifications/msg91.py",
+      "old": "        except HTTPError as error:\n            # The status and the event only: never the key, the phone or a body.\n            raise Msg91Error(\n                f\"MSG91 refused the {template_key} message (HTTP {error.code}).\"\n            ) from error",
+      "new": "        except HTTPError:\n            data = {}",
+      "note": "an HTTP error status is swallowed and looks like a sent message"
+    },
+    {
+      "id": "47-05-template-id-from-the-wrong-key",
+      "file": "apps/notifications/msg91.py",
+      "old": "        template_id = str(templates.get(event, \"\") or \"\").strip()",
+      "new": "        template_id = str(templates.get(OTP_TEMPLATE_KEY, \"\") or \"\").strip()",
+      "note": "every notice is sent with the OTP template"
+    },
+    {
+      "id": "47-06-variables-not-cut",
+      "file": "apps/notifications/messages.py",
+      "old": "        f\"VAR{number}\": _variable_value(field, notice)[:SMS_VARIABLE_MAX_LENGTH]",
+      "new": "        f\"VAR{number}\": _variable_value(field, notice)",
+      "note": "a variable can exceed the DLT 30-character limit"
+    },
+    {
+      "id": "47-07-otp-is-retryable",
+      "file": "apps/notifications/delivery.py",
+      "old": "    NotificationLog.Purpose.ORDER,\n    NotificationLog.Purpose.STAFF,\n)",
+      "new": "    NotificationLog.Purpose.ORDER,\n    NotificationLog.Purpose.STAFF,\n    NotificationLog.Purpose.OTP,\n)",
+      "note": "a failed login code is queued for a late retry"
+    },
+    {
+      "id": "47-08-reminder-is-retryable",
+      "file": "apps/notifications/delivery.py",
+      "old": "RETRYABLE_PURPOSES = (\n    NotificationLog.Purpose.ORDER,",
+      "new": "RETRYABLE_PURPOSES = (\n    NotificationLog.Purpose.CREDIT_REMINDER,\n    NotificationLog.Purpose.ORDER,",
+      "note": "a failed manual reminder is repeated automatically"
+    },
+    {
+      "id": "47-09-masked-phone-shows-five-digits",
+      "file": "apps/notifications/sms.py",
+      "old": "    return f\"{phone[:3]}******{phone[-4:]}\"",
+      "new": "    return f\"{phone[:3]}******{phone[-5:]}\"",
+      "note": "the mask shows five digits instead of four"
+    },
+    {
+      "id": "47-10-digit-run-limit-twelve",
+      "file": "apps/notifications/delivery.py",
+      "old": "_LONG_DIGIT_RUN = re.compile(r\"\\d{6,}\")",
+      "new": "_LONG_DIGIT_RUN = re.compile(r\"\\d{12,}\")",
+      "note": "a ten-digit phone number survives in the error summary"
+    },
+    {
+      "id": "47-11-event-holds-the-message-text",
+      "file": "apps/notifications/email_codes.py",
+      "old": "        event=\"\",\n        order_id=None,\n        recipient=email,",
+      "new": "        event=email_body(code)[:40],\n        order_id=None,\n        recipient=email,",
+      "note": "the log row stores part of the email body, code and all"
+    },
+    {
+      "id": "47-12-deliver-re-raises",
+      "file": "apps/notifications/delivery.py",
+      "old": "        logger.exception(\"Notification send failed: purpose=%s event=%s\", purpose, event)",
+      "new": "        logger.exception(\"Notification send failed: purpose=%s event=%s\", purpose, event)\n        raise",
+      "note": "a failed send escapes deliver and can break an order"
+    },
+    {
+      "id": "47-13-retry-queued-immediately",
+      "file": "apps/notifications/delivery.py",
+      "old": "    transaction.on_commit(lambda: retry_notification.apply_async(args=[log.pk], countdown=delay))",
+      "new": "    retry_notification.apply_async(args=[log.pk], countdown=delay)",
+      "note": "the retry is queued before the transaction commits"
+    },
+    {
+      "id": "47-14-retry-status-check-removed",
+      "file": "apps/notifications/tasks.py",
+      "old": "        if log is None or log.status != NotificationLog.Status.RETRY_PENDING:",
+      "new": "        if log is None:",
+      "note": "a row that is already sent is sent again"
+    },
+    {
+      "id": "47-15-retry-lock-removed",
+      "file": "apps/notifications/tasks.py",
+      "old": "        log = NotificationLog.objects.select_for_update().filter(pk=log_id).first()",
+      "new": "        log = NotificationLog.objects.filter(pk=log_id).first()",
+      "note": "two tasks for one row can both send"
+    },
+    {
+      "id": "47-16-attempts-not-increased",
+      "file": "apps/notifications/tasks.py",
+      "old": "    log.attempts += 1",
+      "new": "    log.attempts = log.attempts",
+      "note": "a retried row never counts its attempts"
+    },
+    {
+      "id": "47-17-gave-up-after-four",
+      "file": "apps/notifications/tasks.py",
+      "old": "    if log.attempts >= MAX_ATTEMPTS:",
+      "new": "    if log.attempts > MAX_ATTEMPTS:",
+      "note": "the row is retried one time too many"
+    },
+    {
+      "id": "47-18-backoff-list-changed",
+      "file": "apps/notifications/delivery.py",
+      "old": "RETRY_DELAYS = (60, 300, 1800)",
+      "new": "RETRY_DELAYS = (60, 240, 1800)",
+      "note": "the second wait is four minutes instead of five"
+    },
+    {
+      "id": "47-19-sms-switch-removed",
+      "file": "apps/notifications/order_notices.py",
+      "old": "    if not settings.ORDER_SMS_ENABLED:\n        return\n    # ``deliver`` runs the lambda",
+      "new": "    # ``deliver`` runs the lambda",
+      "note": "an order SMS is sent even with ORDER_SMS_ENABLED off"
+    },
+    {
+      "id": "47-20-updated-at-left-out",
+      "file": "apps/notifications/tasks.py",
+      "old": "    log.save(update_fields=[*fields, \"updated_at\"])",
+      "new": "    log.save(update_fields=fields)",
+      "note": "a retry changes the row but leaves updated_at alone"
+    }
+  ]
+}

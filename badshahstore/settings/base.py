@@ -255,6 +255,23 @@ ORDER_EMAIL_ENABLED = env.bool("ORDER_EMAIL_ENABLED", default=False)
 # The From address on every order email; the console backend prints it in dev.
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Badshah Stores <noreply@localhost>")
 
+# Email (D88). The console backend is the development default in dev.py; these
+# values are the real SMTP settings a deployment supplies.
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+
+# MSG91 SMS (D88). An empty auth key leaves every send logged as failed and
+# never breaks an order. The template ids are one per event, written as
+# OTP=abc,ORDER_PLACED=def. The timeout applies to one HTTP call.
+MSG91_AUTH_KEY = env("MSG91_AUTH_KEY", default="")
+MSG91_TEMPLATE_IDS = env.dict("MSG91_TEMPLATE_IDS", default={})
+MSG91_TIMEOUT_SECONDS = env.int("MSG91_TIMEOUT_SECONDS", default=10)
+
 # Online payments (D77). The provider name is empty until the owner turns it
 # on, so checkout offers cash only until then.
 PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="")

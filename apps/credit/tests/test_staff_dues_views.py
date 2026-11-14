@@ -164,9 +164,12 @@ def test_reminder_button_sends_through_the_notification_service() -> None:
         )
 
     assert response.status_code == 200
-    backend.return_value.send_message.assert_called_once()
-    phone, text = backend.return_value.send_message.call_args.args
+    # The reminder is a DLT notice, so it goes through send_notice (D88).
+    backend.return_value.send_notice.assert_called_once()
+    phone, event, variables, text = backend.return_value.send_notice.call_args.args
     assert phone == user.phone
+    assert event == "CREDIT_PAYMENT_REMINDER"
+    assert variables == {"VAR1": "500.00"}
     assert "500.00" in text
     assert "pending" in text
 

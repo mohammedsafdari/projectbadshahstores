@@ -27,6 +27,10 @@ EVENT_STAFF_REFUND_FAILED = "STAFF_REFUND_FAILED"
 # The customer is not tied to one order, so it has its own builder below.
 EVENT_CREDIT_REMINDER = "CREDIT_PAYMENT_REMINDER"
 
+# The DLT variable names, in order. Each value is cut to this many characters,
+# which is the usual portal limit; confirm it with MSG91 (D88).
+SMS_VARIABLE_MAX_LENGTH = 30
+
 # The customer events. The staff event is email only.
 CUSTOMER_EVENTS = (
     EVENT_PLACED,
@@ -101,6 +105,23 @@ class OrderNotice:
     # zero, so every other event keeps its old wording.
     refund_amount: Decimal = Decimal("0.00")
     refund_fee: Decimal = Decimal("0.00")
+    # The amount a manual credit reminder names (D79, D88). Zero for every
+    # message about one order, because a reminder is not about an order.
+    credit_balance: Decimal = Decimal("0.00")
+
+
+# Which notice field fills VAR1, VAR2 and so on for each SMS event (D88).
+# docs/dlt_templates.md is generated from this table, so the code and the
+# registered DLT templates cannot disagree about a variable.
+SMS_VARIABLE_ORDER: dict[str, tuple[str, ...]] = {
+    EVENT_PLACED: ("order_number", "grand_total", "promised_delivery_date"),
+    EVENT_CANCELLED: ("order_number",),
+    EVENT_OUT_FOR_DELIVERY: ("order_number", "amount_due_on_delivery"),
+    EVENT_DELIVERED: ("order_number",),
+    EVENT_PAYMENT_FAILED: ("order_number",),
+    EVENT_REFUND_PROCESSED: ("order_number", "refund_amount"),
+    EVENT_CREDIT_REMINDER: ("credit_balance",),
+}
 
 
 def _amount(value: Decimal) -> str:
@@ -227,6 +248,56 @@ def credit_reminder_text(balance: Decimal) -> str:
         f"{SHOP_NAME}: Your credit account has Rs {_amount(balance)} pending. "
         "Please pay at the shop."
     )
+
+
+def credit_reminder_notice(balance: Decimal) -> OrderNotice:
+    """A notice that carries only the balance, for a manual reminder (D88).
+
+    A reminder is about one customer, not one order, so the order fields stay
+    blank; the notice object is the shared shape ``notice_variables`` reads.
+    """
+    return OrderNotice(
+        order_number="",
+        customer_name="",
+        payment_method="",
+        grand_total=Decimal("0.00"),
+        amount_due_on_delivery=Decimal("0.00"),
+        # date.min stands in for "no delivery promised", and is never read.
+        promised_delivery_date=date.min,
+        ship_city="",
+        ship_pincode="",
+        ship_phone="",
+        credit_balance=balance,
+    )
+
+
+def _variable_value(field: str, notice: OrderNotice) -> str:
+    """The text one notice field puts in a DLT variable."""
+    if field == "order_number":
+        return notice.order_number
+    if field == "grand_total":
+        return _amount(notice.grand_total)
+    if field == "amount_due_on_delivery":
+        return _amount(notice.amount_due_on_delivery)
+    if field == "promised_delivery_date":
+        return _date(notice.promised_delivery_date)
+    if field == "refund_amount":
+        return _amount(notice.refund_amount)
+    if field == "credit_balance":
+        return _amount(notice.credit_balance)
+    raise ValueError(f"No SMS variable value for notice field {field!r}.")
+
+
+def notice_variables(event: str, notice: OrderNotice) -> dict[str, str]:
+    """The DLT variables for one event: VAR1, VAR2, ... each cut to 30 (D88)."""
+    fields = SMS_VARIABLE_ORDER.get(event)
+    if fields is None:
+        raise ValueError(f"No SMS variables for event {event!r}.")
+    # enumerate(..., start=1) pairs each field with its 1-based VAR number.
+    return {
+        f"VAR{number}": _variable_value(field, notice)[:SMS_VARIABLE_MAX_LENGTH]
+        for number, field in enumerate(fields, start=1)
+    }
 
 
 def email_subject(event: str, notice: OrderNotice) -> str:

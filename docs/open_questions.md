@@ -32,6 +32,12 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Cancellation fee percent kept from a customer-cancelled online order (`ShopSettings.refund_fee_percent`, copied to each order) — owner; ask again before launch; default in use: 0%, so the whole payment goes back (D78)
 - [ ] Does the live gateway report refunds and settlements through the same API the test mode does, and is a settlement report available? — provider; ask again at KYC time; default in use: refunds are checked through the provider's refund API only, never a bank statement (D78)
 
+### Added in Slice 47 (real senders, D88)
+- [ ] MSG91 account, DLT entity and the ten template ids: owner task before real SMS; default in use: `MSG91_AUTH_KEY` blank, so every SMS is a logged FAILED row and no real message is sent. The texts and the variable lists to register are in `docs/dlt_templates.md` — owner/provider
+- [ ] MSG91 variable length limit: confirm the 30-character cut (`SMS_VARIABLE_MAX_LENGTH`), and whether one template per event is enough for the three placed wordings and the two out-for-delivery wordings — provider; before the first real send; default in use: 30 characters and one template per event — provider
+- [ ] Brevo SMTP credentials and the sending domain's SPF and DKIM records: owner task before Phase 7; default in use: the console email backend in development and off in production — owner
+- [ ] NotificationLog retention: nothing is deleted yet; ask again before Phase 7; default in use: every row is kept for ever — owner/developer
+
 ## Catalog and inventory
 - [ ] Which variants are sold loose by weight (pulses, dry fruits, masalas), and in what smallest step? The owner will send the exact list later and staff will mark the variants in the admin (Slice 29c) — owner; ask again before production data entry; default in use: nothing is loose until `is_sold_loose` is set per variant (D42, D55)
 - [ ] POS export format for stock/price sync — unknown; planned as one-way CSV import with validation report, plus CSV stock-count adjustment flow — owner (from your billing software); a sample export of about 10 rows is needed by Slice 20 (CSV import); default in use: the website ledger is primary and the billing export is a one-way import
