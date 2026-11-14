@@ -4,7 +4,7 @@
 {% block title %}{{ page_title }}{% endblock title %}
 
 {% block head_extra %}
-  <meta name="description" content="{{ meta_description }}">
+  {# The description and the canonical come from base.html; the product block stays here (D52, D87). #}
   <script type="application/ld+json">{{ detail.json_ld|safe }}</script>
 {% endblock head_extra %}
 

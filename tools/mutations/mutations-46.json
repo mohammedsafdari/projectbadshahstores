@@ -1,0 +1,139 @@
+{
+  "tests": [
+    "apps/storefront/tests/test_seo.py",
+    "apps/storefront/tests/test_home.py",
+    "apps/storefront/tests/test_home_promotions.py",
+    "apps/storefront/tests/test_cut_meta.py",
+    "apps/storefront/tests/test_listing_views.py",
+    "apps/storefront/tests/test_product_detail_views.py",
+    "apps/orders/tests/test_checkout_coupon_views.py"
+  ],
+  "mutations": [
+    {
+      "id": "46-01-robots-drops-a-prefix",
+      "file": "apps/storefront/seo.py",
+      "old": "    \"/search/\",\n",
+      "new": "    \"/searching/\",\n",
+      "note": "robots.txt no longer keeps a search engine out of /search/"
+    },
+    {
+      "id": "46-02-sitemap-inactive-categories",
+      "file": "apps/storefront/seo.py",
+      "old": "        Category.objects.filter(pk__in=visible_category_ids)",
+      "new": "        Category.objects.filter()",
+      "note": "the sitemap lists an inactive category"
+    },
+    {
+      "id": "46-03-sitemap-inactive-brands",
+      "file": "apps/storefront/seo.py",
+      "old": "        Brand.objects.filter(is_active=True).order_by(\"name\").values_list(\"slug\", flat=True)",
+      "new": "        Brand.objects.filter().order_by(\"name\").values_list(\"slug\", flat=True)",
+      "note": "the sitemap lists an inactive brand"
+    },
+    {
+      "id": "46-04-sitemap-omits-categories",
+      "file": "apps/storefront/seo.py",
+      "old": "    for slug in category_slugs:\n        paths.append(reverse(\"category_detail\", args=[slug]))",
+      "new": "    for slug in category_slugs:\n        pass",
+      "note": "no category reaches the sitemap"
+    },
+    {
+      "id": "46-05-sitemap-forces-http",
+      "file": "apps/storefront/seo.py",
+      "old": "    origin = site_origin(request)",
+      "new": "    origin = \"http://\" + request.get_host()",
+      "note": "every sitemap address is http, whatever the site's base URL"
+    },
+    {
+      "id": "46-06-canonical-keeps-the-query-string",
+      "file": "apps/storefront/seo.py",
+      "old": "    return absolute_url(request, request.path)\n",
+      "new": "    return absolute_url(request, request.path + \"?\" + request.GET.urlencode())\n",
+      "note": "a filtered page points at itself, filters and all"
+    },
+    {
+      "id": "46-07-noindex-condition-inverted",
+      "file": "apps/storefront/views.py",
+      "old": "        \"robots\": \"noindex\" if is_search else (\"noindex, follow\" if filtered else \"\"),",
+      "new": "        \"robots\": \"\" if is_search else (\"noindex, follow\" if filtered else \"noindex\"),",
+      "note": "a clean listing is noindex and a filtered one is indexable"
+    },
+    {
+      "id": "46-08-canonical-drops-page",
+      "file": "apps/storefront/seo.py",
+      "old": "    if not filtered and page.isdigit() and int(page) > 1:",
+      "new": "    if False:",
+      "note": "the second page loses its page number"
+    },
+    {
+      "id": "46-09-og-image-with-no-image",
+      "file": "templates/base.html",
+      "old": "  {% if og_image %}<meta property=\"og:image\" content=\"{{ og_image }}\">{% endif %}",
+      "new": "  <meta property=\"og:image\" content=\"{{ og_image }}\">",
+      "note": "an empty og:image is printed when the page has no picture"
+    },
+    {
+      "id": "46-10-breadcrumb-position-0",
+      "file": "apps/storefront/seo.py",
+      "old": "    for position, crumb in enumerate(breadcrumbs, start=1):",
+      "new": "    for position, crumb in enumerate(breadcrumbs, start=0):",
+      "note": "the breadcrumb positions start at 0"
+    },
+    {
+      "id": "46-11-escaping-removed",
+      "file": "apps/storefront/seo.py",
+      "old": "    return dumped.replace(\"<\", \"\\\\u003c\").replace(\">\", \"\\\\u003e\").replace(\"&\", \"\\\\u0026\")",
+      "new": "    return dumped",
+      "note": "a product name holding </script> closes the JSON-LD element"
+    },
+    {
+      "id": "46-12-blank-shop-fields-kept",
+      "file": "apps/storefront/seo.py",
+      "old": "    if shop.phone:",
+      "new": "    if True:",
+      "note": "a blank phone number is written into the shop JSON-LD"
+    },
+    {
+      "id": "46-13-h1-fallback-removed",
+      "file": "apps/storefront/presentation.py",
+      "old": "    return shop_name.strip() or SHOP_NAME_FALLBACK",
+      "new": "    return shop_name",
+      "note": "a blank shop name leaves the h1 empty"
+    },
+    {
+      "id": "46-14-delivery-pins-hard-coded",
+      "file": "apps/storefront/presentation.py",
+      "old": "            pins_sentence = str(HOME_DELIVERY_PINS) % {\"pincodes\": \", \".join(pincodes)}",
+      "new": "            pins_sentence = str(HOME_DELIVERY_PINS) % {\"pincodes\": \"452012, 452014, 453331\"}",
+      "note": "the home page promises three pin codes typed into the code"
+    },
+    {
+      "id": "46-15-pin-check-link-changed",
+      "file": "templates/storefront/home.html",
+      "old": "href=\"{% url \"delivery_check\" %}\"",
+      "new": "href=\"/delivery/\"",
+      "note": "the pin-code button no longer opens the pin-code check"
+    },
+    {
+      "id": "46-16-remove-button-condition-inverted",
+      "file": "templates/orders/checkout.html",
+      "old": "        {% if coupon_code %}\n        <button type=\"submit\" name=\"coupon_action\" value=\"remove\" data-coupon-remove",
+      "new": "        {% if not coupon_code %}\n        <button type=\"submit\" name=\"coupon_action\" value=\"remove\" data-coupon-remove",
+      "note": "Remove is shown with no coupon and hidden with one"
+    },
+    {
+      "id": "46-17-search-action-template",
+      "file": "apps/storefront/seo.py",
+      "old": "\"?q={search_term_string}\"",
+      "new": "\"?query={search_term_string}\"",
+      "note": "the search action posts the wrong parameter name"
+    },
+    {
+      "id": "46-18-description-limit-200",
+      "file": "apps/storefront/views.py",
+      "old": "def cut_meta(text: str, limit: int = 160) -> str:",
+      "new": "def cut_meta(text: str, limit: int = 200) -> str:",
+      "note": "a meta description may run to 200 characters"
+    }
+  ]
+}

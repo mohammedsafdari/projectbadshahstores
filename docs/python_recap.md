@@ -456,3 +456,21 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
   `raise ValidationError({"link_url": error.messages}) from None`; the admin then prints the
   sentence beside that input. `from None` hides the inner exception from the traceback, which is
   what you want for an expected refusal (`apps/promotions/models.py`, `Banner.clean`).
+
+## New in Slice 46
+- `json.dumps(payload).replace("<", "\\u003c")` makes a JSON-LD block safe inside a `<script>`:
+  the text `\u003c` is the same character to a JSON reader, so a product name holding `</script>`
+  cannot end the element early (`apps/storefront/seo.py`, `dump_json_ld`). .NET comparison:
+  `JsonSerializer.Serialize` followed by a `Replace` of every `<`, `>` and `&` (`\u003c` etc.).- A generator expression inside `"".join(...)` builds the XML without a temporary list:
+  `"".join(f"<url><loc>{...}</loc></url>" for path in sitemap_paths())`. Nothing is built until
+  `join` asks for the next piece (`apps/storefront/seo.py`). .NET comparison: a `StringBuilder`
+  loop, or `string.Concat(paths.Select(p => ...))`.- `any(key != "page" for key in request.GET)` answers "is this address filtered?" without copying
+  the query dict; iterating a `QueryDict` yields one entry per **name**, so a blank `?min_price=`
+  still counts as a filter (`apps/storefront/seo.py`, `canonical_url`). .NET comparison:
+  `Request.Query.Keys.Any(k => k != "page")`.- A template **block with a default body** lets one page change a shared tag:
+  `<html lang="{% block html_lang %}en-IN{% endblock html_lang %}">` renders `en-IN` unless a child
+  template overrides it (`templates/base.html`). .NET comparison: a layout with a virtual property
+  and a default implementation.- A lazy string is formatted with its own `%` **after** `str()` turns it into text:
+  `str(HOME_TITLE) % {"shop": name}`, because a `gettext_lazy` proxy only resolves when it is read
+  (`apps/storefront/presentation.py`). .NET comparison: calling `.ToString()` on a resource lookup
+  before `string.Format`, instead of formatting the resource object itself.

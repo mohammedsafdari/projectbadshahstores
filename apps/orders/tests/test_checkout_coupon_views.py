@@ -110,7 +110,8 @@ def test_checkout_page_shows_the_coupon_box() -> None:
     assert "Have a coupon?" in html
     assert 'name="coupon_code"' in html
     assert 'name="coupon_action" value="apply"' in html
-    assert 'name="coupon_action" value="remove"' in html
+    # Remove is only on the page once a code is applied (Slice 46).
+    assert 'name="coupon_action" value="remove"' not in html
 
 
 def test_the_coupon_box_has_a_visible_label_and_a_named_input() -> None:

@@ -44,7 +44,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [ ] Who takes the own-brand product photos, and should every product have a label photo (net quantity, MRP, FSSAI number) for Legal Metrology? — owner/CA; needed before launch; default in use: no label photo required
 - [ ] Is a 2 MB limit, 8000 px longest side and JPG/PNG/WebP enough for the staff's phone cameras, and how many photos per product? — owner; needed before launch; default in use: those limits, constants in `apps/catalog/validators.py`
 - [ ] Photo files are not deleted from disk when an image row or a product is deleted — developer; a clean-up job is needed before production; default in use: files are left in place
-- [ ] When to add resized and WebP versions of photos — developer; planned for the storefront slices (23 and 25) or Phase 6; default in use: originals only
+- [x] When to add resized and WebP versions of photos — done and closed in Slice 46: Slices 23 and 25 already make a 400 px WebP thumbnail for a card, a 900 px WebP for the detail page and a 1200 px WebP for a banner (D50, D52, D84) — developer
 - [ ] Production hardening of the stock ledger: a Postgres trigger or a restricted database role so movement rows cannot be changed with raw SQL — developer; before production; default in use: the Django-level guard only (D42)
 - [x] Purchase cost per received lot, for stock valuation — answered (11 November 2026): all defaults, so `ProductVariant.cost_price` stays the one cost figure and no invoice prints a cost — owner/CA
 - [ ] Should a purchase with an expiry date in the past be refused or only warned about? — owner; default in use: allowed, no warning; the Receive page accepts a past date (D43, D45)
@@ -187,11 +187,12 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Final VPS provider and size — recorded: one paid VPS in an India region, reference DigitalOcean Bangalore, 1 vCPU / 2 GB to start and 2 vCPU / 4 GB if memory is tight (D76); the provider is not final — owner; ask again before Phase 7
 - [ ] Oracle Cloud Always Free pay-as-you-go status, scarce capacity and idle reclaim (CPU under about 10-20% for a week) — owner; ask again before Phase 7; default in use: staging only, never production (D76)
 - [ ] Production domain and registrar, with Cloudflare DNS and HTTPS — owner/deployment; ask again before Phase 7; default in use: Cloudflare free DNS and Let's Encrypt
+- [ ] `SITE_BASE_URL` must be set in production for the sitemap and the canonical links — owner/deployment; ask again before Phase 7; default in use: blank, so every absolute address uses the request's own scheme and host (D87)
 - [ ] Cloudflare R2 free-tier limits re-verified before relying on them — owner; ask again before Phase 7; default in use: 10 GB, 1M writes and 10M reads a month, no egress fees, not re-verified (D76)
 - [ ] GST treatment of hosting and SMS invoices (input credit and the invoice details the CA needs) — CA/legal; ask the CA before Phase 7; default in use: add GST where it applies and claim nothing
 
 ## Storefront content
-- [ ] Home page still says "Online store coming soon" and has the Alpine demo (owner and developer, before launch) — owner/developer; the real shop introduction, the delivery promise and a photograph are not written yet; default in use: the placeholder copy and the demo are kept exactly as they were (D84)
+- [x] Home page still said "Online store coming soon" and carried the Alpine demo — closed (Slice 46, 14 November 2026, D87): the shop's own name, the introduction, the delivery promise built from the shop's cut-off and served pin codes, the three ways to pay and the pin-code link are live. There is still no photograph and no opening hours, by the owner's choice (D87) — owner/developer
 - [ ] Home page banners: five, hand-ordered, with an optional link; featured products: twelve, hand-ordered — owner; ask again before launch; default in use: five banners and twelve featured products, in the order staff set (D84)
 - [ ] Banner image clean-up and a click count are not built (developer, later) — developer; a replaced or removed image leaves its old file on disk, and no banner counts its clicks (D84)
 

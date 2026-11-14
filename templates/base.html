@@ -1,10 +1,23 @@
 {% load static %}
 <!doctype html>
-<html lang="en-IN">
+<html lang="{% block html_lang %}en-IN{% endblock html_lang %}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Badshah Store{% endblock title %}</title>
+  {# The search-engine tags live here once, and a page fills them from its view (D87). A page that prints none of them has no meta description, no canonical and no Open Graph block. #}
+  {% block head_seo %}
+  {% if meta_description %}<meta name="description" content="{{ meta_description }}">{% endif %}
+  {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+  {% if robots %}<meta name="robots" content="{{ robots }}">{% endif %}
+  {% if og_title %}
+  <meta property="og:title" content="{{ og_title }}">
+  {% if og_description %}<meta property="og:description" content="{{ og_description }}">{% endif %}
+  <meta property="og:type" content="{{ og_type|default:"website" }}">
+  <meta property="og:url" content="{{ og_url|default:canonical_url }}">
+  {% if og_image %}<meta property="og:image" content="{{ og_image }}">{% endif %}
+  {% endif %}
+  {% endblock head_seo %}
   {% block head_extra %}{% endblock head_extra %}
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script>
@@ -29,6 +42,10 @@
   <script defer src="{% static "vendor/alpine/alpine-3.14.8.min.js" %}"></script>
   {# x-cloak keeps the suggestion panel hidden until Alpine has loaded. #}
   <style>[x-cloak] { display: none !important; }</style>
+  {# Every JSON-LD block is escaped by apps/storefront/seo.py, so |safe cannot let a name close the script tag (D87). #}
+  {% block head_json_ld %}{% for data_block in json_ld_blocks %}
+  <script type="application/ld+json">{{ data_block|safe }}</script>{% endfor %}
+  {% endblock head_json_ld %}
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <a class="sr-only focus:not-sr-only focus:fixed focus:z-50 focus:inline-block focus:p-4 focus:bg-brand-500 focus:text-white focus:rounded focus:outline-none" href="#content">Skip to content</a>

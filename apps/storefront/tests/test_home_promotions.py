@@ -219,8 +219,8 @@ def test_an_out_of_stock_product_still_shows_its_card(client: Client) -> None:
 
 
 def test_the_existing_home_content_is_unchanged(client: Client, settings) -> None:
-    # The debug-only section is a context processor: it needs DEBUG and the test
-    # client's address listed as internal, exactly as a developer's browser is.
+    # The placeholder line, the Alpine demo and the debug-only developer check
+    # are gone since Slice 46; the shop name and the new introduction stay.
     settings.DEBUG = True
     settings.INTERNAL_IPS = ["127.0.0.1"]
     make_banner()
@@ -229,8 +229,8 @@ def test_the_existing_home_content_is_unchanged(client: Client, settings) -> Non
     html = _home(client)
 
     assert "Badshah Store" in html
-    assert "Online store coming soon" in html
-    assert "Developer check" in html
+    assert "A neighbourhood provision shop" in html
+    assert "Online store coming soon" not in html
 
 
 # ---------------------------------------------------------------------------

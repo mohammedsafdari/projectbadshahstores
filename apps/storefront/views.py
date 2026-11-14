@@ -18,10 +18,18 @@ from django.views.generic import TemplateView
 
 from apps.catalog.models import Brand, Category, Product
 from apps.catalog.search import get_search_backend, normalise_query
+from apps.core.services import get_shop_settings
+from apps.delivery.services import served_pincodes
 from apps.promotions.home import featured_product_ids, visible_banners
+from apps.storefront import seo
 from apps.storefront.filter_options import brand_options
 from apps.storefront.filters import parse_filters
-from apps.storefront.presentation import home_text
+from apps.storefront.presentation import (
+    home_text,
+    home_title,
+    listing_description,
+    shop_display_name,
+)
 from apps.storefront.product_detail import get_product_detail
 from apps.storefront.services import (
     CategoryTree,
@@ -130,6 +138,13 @@ def _render_listing(
     heading = page_title
     if is_search:
         heading = f"Search results for “{query_text}”" if query_text else "Search"
+    # SEO (D87): one description, one canonical and the Open Graph tags. Any
+    # query string other than "page" is a filter or a sort, so that page is
+    # never indexed and points at its clean address instead.
+    shop_name = get_shop_settings().shop_name
+    meta_description = cut_meta(listing_description(page_title, shop_name))
+    filtered = any(key != "page" for key in request.GET)
+    canonical = seo.canonical_url(request)
     context: dict[str, object] = {
         "current_sort": sort,
         "sort_options": sort_options,
@@ -142,8 +157,19 @@ def _render_listing(
         "clear_url": _clear_url(request, sort, query=query, default_sort=default_sort),
         "is_search": is_search,
         "query": query_text,
-        "noindex": is_search,
+        "meta_description": meta_description,
+        "canonical_url": canonical,
+        # A search page keeps the plain "noindex" it has always sent (D53).
+        "robots": "noindex" if is_search else ("noindex, follow" if filtered else ""),
+        "og_title": page_title,
+        "og_description": meta_description,
+        "og_type": "website",
+        "og_url": canonical,
+        "og_image": "",
     }
+    if category is not None:
+        # The page already shows this trail, so the JSON-LD costs nothing (D87).
+        context["json_ld_blocks"] = [seo.breadcrumb_json_ld(request, breadcrumbs)]
     if is_search:
         # The no-results block links to the top-level categories, and the brand
         # filter uses the same list as All products (the whole active catalogue).
@@ -199,8 +225,18 @@ class HomeView(TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context["text"] = home_text()
-        context["banners"] = visible_banners()
+        request = self.request
+        shop = get_shop_settings()
+        shop_name = shop_display_name(shop.shop_name)
+        # The cut-off and the pin codes come from the shop's own data (D87).
+        text = home_text(
+            shop_name=shop.shop_name,
+            cutoff=shop.same_day_cutoff,
+            pincodes=served_pincodes(),
+        )
+        context["text"] = text
+        banners = visible_banners()
+        context["banners"] = banners
         featured_ids = featured_product_ids()
         cards: list[ProductCard] = []
         if featured_ids:
@@ -215,7 +251,42 @@ class HomeView(TemplateView):
                 )
             )
         context["featured_cards"] = cards
+        canonical = seo.absolute_url(request, reverse("home"))
+        og_image = ""
+        if banners:
+            # The first banner is the picture a link preview shows (D87).
+            banner_file = banners[0].display or banners[0].image
+            if banner_file:
+                og_image = seo.absolute_url(request, banner_file.url)
+        context.update(
+            {
+                "page_title": home_title(shop.shop_name),
+                "meta_description": cut_meta(text["intro"]),
+                "canonical_url": canonical,
+                "og_title": shop_name,
+                "og_description": cut_meta(text["intro"]),
+                "og_type": "website",
+                "og_url": canonical,
+                "og_image": og_image,
+                "json_ld_blocks": [
+                    seo.organization_json_ld(request, shop),
+                    seo.website_json_ld(request, shop_name),
+                ],
+            }
+        )
         return context
+
+
+@require_GET
+def robots_txt(request: HttpRequest) -> HttpResponse:
+    """robots.txt as a view, so the sitemap address follows the site's own URL."""
+    return HttpResponse(seo.robots_text(request), content_type="text/plain")
+
+
+@require_GET
+def sitemap_xml(request: HttpRequest) -> HttpResponse:
+    """Every public page as XML, through the listing pages' own rule (D50, D87)."""
+    return HttpResponse(seo.sitemap_xml_text(request), content_type="application/xml")
 
 
 def product_list(request: HttpRequest) -> HttpResponse:
@@ -292,6 +363,13 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         }
     )
     breadcrumbs.append({"label": product.name_en, "url": None})
+    og_image = ""
+    if detail.images:
+        main_image = detail.images[0]
+        main_file = main_image.medium or main_image.image
+        if main_file:
+            og_image = seo.absolute_url(request, main_file.url)
+    canonical = seo.canonical_url(request)
     context = {
         "detail": detail,
         "product": product,
@@ -299,6 +377,13 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "page_title": f"{product.name_en} — {product.brand.name} — Badshah Store",
         "breadcrumbs": breadcrumbs,
         "shop_fssai": getattr(settings, "SHOP_FSSAI_LICENCE", ""),
+        "canonical_url": canonical,
+        "og_title": f"{product.name_en} — {product.brand.name}",
+        "og_description": meta_description,
+        "og_type": "product",
+        "og_url": canonical,
+        "og_image": og_image,
+        "json_ld_blocks": [seo.breadcrumb_json_ld(request, breadcrumbs)],
     }
     return render(request, "storefront/product_detail.html", context)
 

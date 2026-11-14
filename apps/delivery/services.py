@@ -67,6 +67,20 @@ def get_zone_for_pincode(pincode: str) -> DeliveryZone | None:
     return DeliveryZone.objects.filter(pin_codes__pincode=value, is_active=True).first()
 
 
+def served_pincodes() -> list[str]:
+    """Every pin code an active zone serves, smallest first, each once (D87).
+
+    The home page prints this list, so the shop's delivery area is read from
+    the admin data and never typed into a page or a template.
+    """
+    return list(
+        PinCodeZone.objects.filter(zone__is_active=True)
+        .order_by("pincode")
+        .values_list("pincode", flat=True)
+        .distinct()
+    )
+
+
 def address_is_served(address: Address) -> bool:
     """Whether a saved address's pin code is served (used by Slice 36)."""
     return is_pincode_served(address.pincode)

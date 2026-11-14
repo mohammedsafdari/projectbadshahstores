@@ -95,8 +95,10 @@
         </div>
         <button type="submit" name="coupon_action" value="apply" data-coupon-apply
                 class="rounded border border-brand-500 px-3 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.coupon_apply_button }}</button>
+        {% if coupon_code %}
         <button type="submit" name="coupon_action" value="remove" data-coupon-remove
                 class="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{{ text.coupon_remove_button }}</button>
+        {% endif %}
       </div>
       {% if coupon_message %}
         <p data-coupon-message class="mt-2 text-sm font-medium text-green-700">{{ coupon_message }}</p>
