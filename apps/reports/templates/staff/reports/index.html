@@ -26,6 +26,9 @@
     <li>
       <a class="underline" href="{% url 'reports_stock_valuation' %}">{% translate "Stock valuation" %}</a>
     </li>
+    <li>
+      <a class="underline" href="{% url 'reports_search_words' %}">{% translate "Search words" %}</a>
+    </li>
     {% if can_manage_cost_prices %}
       <li>
         <a class="underline" href="{% url 'reports_cost_prices' %}">{% translate "Enter cost prices" %}</a>

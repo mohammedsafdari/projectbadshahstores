@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -192,6 +193,23 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.payments.tasks.send_pending_refunds",
         "schedule": 300.0,
     },
+    # A retry whose queue call failed waits in RETRY_PENDING with no task; this
+    # job queues it again (D89). Sending nothing twice is the row lock's job.
+    "sweep-stuck-notification-retries": {
+        "task": "apps.notifications.tasks.sweep_stuck_retries",
+        "schedule": 600.0,
+    },
+    # The daily stock email at 08:00 Indian time, because CELERY_TIMEZONE is the
+    # shop's own zone (D89).
+    "send-stock-digest": {
+        "task": "apps.notifications.tasks.send_stock_digest",
+        "schedule": crontab(hour=8, minute=0),
+    },
+    # The search word log keeps 180 days, so this deletes what is older (D89).
+    "delete-old-search-terms": {
+        "task": "apps.storefront.tasks.delete_old_search_terms",
+        "schedule": crontab(hour=3, minute=30),
+    },
 }
 
 
@@ -217,6 +235,10 @@ TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 LANGUAGE_CODE = "en-IN"
+
+# Celery reads its own clock setting, so a crontab hour means Indian time
+# rather than the server's own zone (D89). Interval jobs are not affected.
+CELERY_TIMEZONE = TIME_ZONE
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +316,11 @@ PAYMENT_RECONCILE_MIN_AGE_MINUTES = env.int("PAYMENT_RECONCILE_MIN_AGE_MINUTES",
 # The absolute site address used in messages (for example the cart link after
 # a failed payment). Blank means the link is left relative.
 SITE_BASE_URL = env("SITE_BASE_URL", default="")
+
+# The header that carries the visitor's real address behind a proxy (D89).
+# Blank means every limit counts REMOTE_ADDR, which is the proxy itself when
+# one stands in front of the site.
+CLIENT_IP_HEADER = env("CLIENT_IP_HEADER", default="")
 
 # Razorpay test-mode credentials. They are read from the environment only and
 # never stored in the repository (D76).

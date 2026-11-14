@@ -31,6 +31,7 @@ from apps.accounts.auth_presentation import (
     EMAIL_UNCHANGED_MESSAGE,
     EMAIL_UNUSABLE_MESSAGE,
     FORGOT_SENT_MESSAGE,
+    IP_LIMITED_MESSAGE,
     LOGIN_LOCKED_MESSAGE,
     PASSWORD_CHANGED_MESSAGE,
     PASSWORD_PAGE_HEADING_CHANGE,
@@ -69,6 +70,7 @@ from apps.accounts.verification_presentation import (
     mask_email,
     mask_phone,
 )
+from apps.core.ratelimit import OTP_REQUESTS_PER_HOUR, SCOPE_OTP, is_limited, record
 
 LOGIN_URL = reverse_lazy("account_login")
 
@@ -83,10 +85,21 @@ def forgot_password(request: HttpRequest) -> HttpResponse:
     """
     form = ForgotPasswordForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        result = request_password_reset(form.cleaned_data["identifier"])
-        # Only these two values ever enter the session.
-        request.session[SESSION_RESET_PHONE] = result.phone
-        request.session[SESSION_RESET_CHANNEL] = result.channel
+        identifier = form.cleaned_data["identifier"]
+        if is_limited(request, SCOPE_OTP, OTP_REQUESTS_PER_HOUR):
+            # Nothing is sent, but the answer stays the same neutral page. The
+            # session holds no phone, exactly like an unknown address (D59).
+            request.session[SESSION_RESET_PHONE] = ""
+            request.session[SESSION_RESET_CHANNEL] = (
+                CHANNEL_EMAIL if "@" in identifier else CHANNEL_PHONE
+            )
+            messages.error(request, IP_LIMITED_MESSAGE)
+        else:
+            record(request, SCOPE_OTP)
+            result = request_password_reset(identifier)
+            # Only these two values ever enter the session.
+            request.session[SESSION_RESET_PHONE] = result.phone
+            request.session[SESSION_RESET_CHANNEL] = result.channel
         messages.info(request, FORGOT_SENT_MESSAGE)
         return redirect("account_reset_password")
     return render(

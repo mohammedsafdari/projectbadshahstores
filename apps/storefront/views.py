@@ -31,6 +31,7 @@ from apps.storefront.presentation import (
     shop_display_name,
 )
 from apps.storefront.product_detail import get_product_detail
+from apps.storefront.search_log import record_search
 from apps.storefront.services import (
     CategoryTree,
     ProductCard,
@@ -93,6 +94,20 @@ def _wants_partial(request: HttpRequest) -> bool:
     # After the Back button htmx asks for the page again and needs all of it.
     is_history_restore = request.headers.get("HX-History-Restore-Request") == "true"
     return is_htmx and not is_history_restore
+
+
+def _record_search(request: HttpRequest, query: str, result_count: int) -> None:
+    """Count one search word, on the search page's first page only (D89).
+
+    Page 2 of the same results is the same search, so counting it again would
+    double the figure. The suggest endpoint never comes here.
+    """
+    if request.method != "GET" or not query:
+        return
+    # "page" is absent on page 1; a blank value means page 1 as well.
+    if (request.GET.get("page") or "1") != "1":
+        return
+    record_search(query, result_count)
 
 
 def _clear_url(
@@ -202,6 +217,9 @@ def _render_listing(
                 "result_count": paginator.count,
             }
         )
+        if is_search:
+            # The page is rendered either way; a log failure is swallowed.
+            _record_search(request, query_text, paginator.count)
     if _wants_partial(request):
         response = render(request, "storefront/_listing_results.html", context)
     else:

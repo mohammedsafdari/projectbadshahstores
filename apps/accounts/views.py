@@ -17,15 +17,17 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.accounts.auth_presentation import (
+    IP_LIMITED_MESSAGE,
     LOGIN_ERROR_MESSAGE,
     LOGIN_LOCKED_MESSAGE,
+    SEND_FAILED_MESSAGE,
     SIGNUP_DONE_MESSAGE,
     SIGNUP_EXISTS_MESSAGE,
     auth_text,
 )
 from apps.accounts.forms import OtpVerifyForm, PasswordLoginForm, PhoneLoginForm, SignupForm
 from apps.accounts.models import User
-from apps.accounts.otp import request_code, verify_code
+from apps.accounts.otp import REASON_SEND_FAILED, request_code, verify_code
 from apps.accounts.passwords import (
     REASON_LOCKED,
     REASON_OK,
@@ -37,6 +39,16 @@ from apps.accounts.verification import claim_account_by_otp_login
 from apps.accounts.verification_presentation import PASSWORD_RESET_FOR_SAFETY_MESSAGE
 from apps.cart.services import merge_guest_cart
 from apps.cart.stores import clear_guest_cart, read_guest_items
+from apps.core.ratelimit import (
+    OTP_REQUESTS_PER_HOUR,
+    PASSWORD_FAILURES_PER_HOUR,
+    SCOPE_LOGIN,
+    SCOPE_OTP,
+    SCOPE_SIGNUP,
+    SIGNUPS_PER_HOUR,
+    is_limited,
+    record,
+)
 
 # The phone waiting for its code, and an optional page to return to after login.
 SESSION_PHONE_KEY = "otp_phone"
@@ -136,32 +148,51 @@ def login_view(request: HttpRequest) -> HttpResponse:
         if method == "password":
             password_form = PasswordLoginForm(request.POST)
             if password_form.is_valid():
-                login_result = authenticate_customer_password(
-                    password_form.cleaned_data["identifier"],
-                    password_form.cleaned_data["password"],
-                )
-                if login_result.reason == REASON_OK and login_result.user is not None:
-                    return _finish_customer_login(request, login_result.user, next_url)
-                if login_result.reason == REASON_LOCKED:
-                    messages.error(request, LOGIN_LOCKED_MESSAGE)
+                if is_limited(request, SCOPE_LOGIN, PASSWORD_FAILURES_PER_HOUR):
+                    messages.error(request, IP_LIMITED_MESSAGE)
                 else:
-                    messages.error(request, LOGIN_ERROR_MESSAGE)
+                    login_result = authenticate_customer_password(
+                        password_form.cleaned_data["identifier"],
+                        password_form.cleaned_data["password"],
+                    )
+                    if login_result.reason == REASON_OK and login_result.user is not None:
+                        return _finish_customer_login(request, login_result.user, next_url)
+                    # Only a refused try counts: a success neither counts nor
+                    # resets the counter (D89).
+                    record(request, SCOPE_LOGIN)
+                    if login_result.reason == REASON_LOCKED:
+                        messages.error(request, LOGIN_LOCKED_MESSAGE)
+                    else:
+                        messages.error(request, LOGIN_ERROR_MESSAGE)
         else:
             # A POST without "method" is the old code form, so every existing
             # code test keeps working (D72).
             otp_form = PhoneLoginForm(request.POST)
             if otp_form.is_valid():
                 phone = otp_form.cleaned_data["phone"]
-                otp_result = request_code(phone)
-                if otp_result.sent:
-                    request.session[SESSION_PHONE_KEY] = phone
-                    if next_url is not None:
-                        request.session[SESSION_NEXT_KEY] = next_url
+                if is_limited(request, SCOPE_OTP, OTP_REQUESTS_PER_HOUR):
+                    # One address may not ask for codes without end (D89).
+                    messages.error(request, IP_LIMITED_MESSAGE)
+                else:
+                    # Counted before the code is sent, so a provider that fails
+                    # cannot be tried for free.
+                    record(request, SCOPE_OTP)
+                    otp_result = request_code(phone)
+                    if otp_result.sent:
+                        request.session[SESSION_PHONE_KEY] = phone
+                        if next_url is not None:
+                            request.session[SESSION_NEXT_KEY] = next_url
+                        else:
+                            request.session.pop(SESSION_NEXT_KEY, None)
+                        return redirect("account_verify")
+                    if otp_result.reason == REASON_SEND_FAILED:
+                        # The provider refused: say so, so the customer tries
+                        # again instead of waiting for a code that is not coming.
+                        messages.error(request, SEND_FAILED_MESSAGE)
                     else:
-                        request.session.pop(SESSION_NEXT_KEY, None)
-                    return redirect("account_verify")
-                # A rate-limited request is the same for known and unknown phones.
-                messages.error(request, RATE_LIMITED_MESSAGE)
+                        # A rate-limited request is the same for known and
+                        # unknown phones.
+                        messages.error(request, RATE_LIMITED_MESSAGE)
 
     return render(
         request,
@@ -192,19 +223,25 @@ def signup_view(request: HttpRequest) -> HttpResponse:
     # is unbound and shows empty fields.
     form = SignupForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        try:
-            user = register_customer(
-                phone=form.cleaned_data["phone"],
-                email=form.cleaned_data["email"],
-                full_name=form.cleaned_data["full_name"],
-                password=form.cleaned_data["password1"],
-            )
-        except AccountExistsError:
-            # One generic sentence: never say which of the two details matched.
-            form.add_error(None, SIGNUP_EXISTS_MESSAGE)
+        if is_limited(request, SCOPE_SIGNUP, SIGNUPS_PER_HOUR):
+            # Only a form that would have made an account is counted, so a
+            # mistyped field never uses up a neighbour's allowance (D89).
+            form.add_error(None, IP_LIMITED_MESSAGE)
         else:
-            messages.success(request, SIGNUP_DONE_MESSAGE)
-            return _finish_customer_login(request, user, next_url)
+            record(request, SCOPE_SIGNUP)
+            try:
+                user = register_customer(
+                    phone=form.cleaned_data["phone"],
+                    email=form.cleaned_data["email"],
+                    full_name=form.cleaned_data["full_name"],
+                    password=form.cleaned_data["password1"],
+                )
+            except AccountExistsError:
+                # One generic sentence: never say which of the two details matched.
+                form.add_error(None, SIGNUP_EXISTS_MESSAGE)
+            else:
+                messages.success(request, SIGNUP_DONE_MESSAGE)
+                return _finish_customer_login(request, user, next_url)
 
     return render(
         request,

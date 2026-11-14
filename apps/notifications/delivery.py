@@ -79,6 +79,12 @@ def retry_delay(attempts: int) -> int:
 
 def _queue_retry(log: NotificationLog) -> None:
     """Mark the row RETRY_PENDING and queue the task after the commit (D88)."""
+    if log.order_id is None:
+        # A retry rebuilds its message from the order, so a row with no order
+        # (a digest, a manual reminder) can never be sent again: it stays
+        # FAILED for a person to look at in the admin (D89).
+        logger.warning("Notification retry skipped, no order: log_id=%s", log.pk)
+        return
     log.status = NotificationLog.Status.RETRY_PENDING
     log.save(update_fields=["status", "updated_at"])
     # Imported here, not at the top: tasks.py imports this module, so a
@@ -138,7 +144,7 @@ def deliver(
         try:
             _queue_retry(log)
         except Exception:
-            # The row stays FAILED, so a person can see it in the admin even
-            # when the queue itself is down.
+            # The row stays RETRY_PENDING, and the sweep in ``tasks.py`` queues
+            # it again later, so a queue that was down loses nothing (D89).
             logger.exception("Notification retry could not be queued: log_id=%s", log.pk)
     return log

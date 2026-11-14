@@ -45,6 +45,7 @@ from apps.reports.queries import (
     own_brand_report,
     parse_range,
     sales_reports,
+    search_words_report,
     stock_valuation_report,
 )
 
@@ -281,7 +282,37 @@ def stock_valuation_csv(request: HttpRequest) -> HttpResponse:
 
 
 # ---------------------------------------------------------------------------
-# 6. Cost prices
+# 6. Search words
+# ---------------------------------------------------------------------------
+@staff_required(Capability.VIEW_REPORTS)
+@require_http_methods(["GET"])
+@never_cache
+def search_words_page(request: HttpRequest) -> HttpResponse:
+    """The most searched words and the words that found nothing (D89)."""
+    user = _current_user(request)
+    period = _period(request)
+    context: dict[str, Any] = _page_context(user, request, period)
+    if period.ok:
+        context["report"] = search_words_report(user, period)
+    return render(request, "staff/reports/search_words.html", context)
+
+
+@staff_required(Capability.VIEW_REPORTS)
+@require_http_methods(["GET"])
+@never_cache
+def search_words_csv(request: HttpRequest) -> HttpResponse:
+    """Both search-word lists as one CSV file (D89)."""
+    user = _current_user(request)
+    period = _period(request)
+    if not period.ok:
+        return _bad_range(request, period, "reports_search_words")
+    response = _csv_response(_filename("search-words", period))
+    csv_output.write_search_words_csv(search_words_report(user, period), response)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# 7. Cost prices
 # ---------------------------------------------------------------------------
 @staff_required(Capability.MANAGE_COST_PRICES)
 @require_http_methods(["GET", "POST"])

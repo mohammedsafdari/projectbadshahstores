@@ -234,3 +234,9 @@ Revisit these if the shop says otherwise.
 - [ ] Four GST points for the CA, whose answers replace the note on the GST report and in its CSV ("Unconfirmed until the CA answers: GST on a coupon discount, delivery fee GST, regular or composition dealer, cancelled invoices.") — CA/owner; ask again before launch; default in use: the note stays on the page and as the first row of the CSV
 - [ ] Should the cost be frozen on the order line, so a margin report does not change when a cost price is edited later? — owner/developer; ask again before launch; default in use: no (every margin figure is at today's cost price, and the report says so, D85)
 - [ ] Should a report be emailed to the owner on a schedule (daily sales, weekly margin)? — owner; ask again before launch; default in use: no, the pages and the CSV downloads only (D85)
+
+### Added in Slice 48 (owner alerts, search words and IP limits, D89)
+- [ ] Expiry list is an estimate (oldest purchase sells first): confirm against real stock before launch — owner; default in use: the whole on-hand figure is handed to the newest-received lots (D89)
+- [ ] `CLIENT_IP_HEADER` must be set to `HTTP_CF_CONNECTING_IP` in Phase 7, or every visitor shares the proxy's address and one limit locks everybody out — owner/deployment; before Phase 7; default in use: blank, so every limit counts `REMOTE_ADDR` (D89)
+- [ ] IP limit numbers (20, 20, 30 per hour): review after launch — owner; after launch; default in use: `OTP_REQUESTS_PER_HOUR = 20`, `SIGNUPS_PER_HOUR = 20` and `PASSWORD_FAILURES_PER_HOUR = 30` (D89)
+- [ ] Search words kept 180 days: ask again before Phase 7 — owner; before Phase 7; default in use: `RETENTION_DAYS = 180`, then the row is deleted (D89)

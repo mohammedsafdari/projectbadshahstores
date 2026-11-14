@@ -47,6 +47,8 @@ REASON_WRONG_CODE = "wrong_code"
 # Reasons returned by request_code when no message was sent.
 REASON_TOO_SOON = "too_soon"
 REASON_TOO_MANY_REQUESTS = "too_many_requests"
+# The SMS provider refused the code, so nothing reached the phone (D89).
+REASON_SEND_FAILED = "send_failed"
 
 
 @dataclass(frozen=True)
@@ -157,7 +159,7 @@ def request_code(
         ).update(consumed_at=now)
 
         code = generate_code()
-        OtpChallenge.objects.create(
+        challenge = OtpChallenge.objects.create(
             phone=normalised,
             purpose=purpose,
             code_hmac=_code_hmac(normalised, purpose, code),
@@ -173,7 +175,7 @@ def request_code(
         # Every attempt is logged, but a code is never retried: a late code is
         # no use to the customer (D88). `deliver` never raises, so a missing
         # MSG91 key cannot break the login page.
-        deliver(
+        log = deliver(
             channel=NotificationLog.Channel.SMS,
             purpose=NotificationLog.Purpose.OTP,
             event="",
@@ -181,6 +183,16 @@ def request_code(
             recipient=normalised,
             send=lambda: get_sms_backend().send_otp(normalised, code),
         )
+        if log is not None and log.status == NotificationLog.Status.FAILED:
+            # The code never reached the phone. Delete the row just created:
+            # keeping it would make the customer wait out "too soon" for a
+            # code that was never sent (D89).
+            challenge.delete()
+            return OtpRequestResult(
+                phone=normalised,
+                sent=False,
+                reason=REASON_SEND_FAILED,
+            )
     return OtpRequestResult(phone=normalised, sent=True, reason=REASON_OK)
 
 

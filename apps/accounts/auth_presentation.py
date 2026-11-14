@@ -24,6 +24,10 @@ SIGNUP_LINK = _("New here? Create an account")
 
 LOGIN_ERROR_MESSAGE = _("The phone number, email or password is not right.")
 LOGIN_LOCKED_MESSAGE = _("Too many tries. Please wait 15 minutes, or log in with a code instead.")
+# The SMS provider refused the code, so nothing reached the phone (D89).
+SEND_FAILED_MESSAGE = _("We could not send the code just now. Please try again in a minute.")
+# Too many tries from one connection, whatever address the visitor typed (D89).
+IP_LIMITED_MESSAGE = _("Too many attempts from this connection. Please try again later.")
 
 SIGNUP_TITLE = _("Create an account")
 SIGNUP_HEADING = _("Create an account")

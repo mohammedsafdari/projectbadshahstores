@@ -18,8 +18,10 @@ from django.urls import reverse, reverse_lazy
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
+from apps.accounts.auth_presentation import IP_LIMITED_MESSAGE, SEND_FAILED_MESSAGE
 from apps.accounts.forms import VerificationCodeForm
 from apps.accounts.models import User
+from apps.accounts.otp import REASON_SEND_FAILED
 from apps.accounts.verification import (
     confirm_email_code,
     confirm_phone_code,
@@ -38,6 +40,7 @@ from apps.accounts.verification_presentation import (
     mask_phone,
     verification_text,
 )
+from apps.core.ratelimit import OTP_REQUESTS_PER_HOUR, SCOPE_OTP, is_limited, record
 
 LOGIN_URL = reverse_lazy("account_login")
 
@@ -77,9 +80,17 @@ def _verification_page(request: HttpRequest, *, is_email: bool) -> HttpResponse:
     if request.method == "POST" and not verified and not no_email:
         action = request.POST.get(ACTION_FIELD)
         if action == SEND_ACTION:
+            if is_limited(request, SCOPE_OTP, OTP_REQUESTS_PER_HOUR):
+                # A resend is an OTP request too, so it shares the limit (D89).
+                messages.error(request, IP_LIMITED_MESSAGE)
+                return redirect(page_name)
+            record(request, SCOPE_OTP)
             result = request_email_code(user) if is_email else request_phone_code(user)
             if result.sent:
                 messages.success(request, CODE_SENT_MESSAGE)
+            elif result.reason == REASON_SEND_FAILED:
+                # The provider refused, so waiting would be the wrong advice.
+                messages.error(request, SEND_FAILED_MESSAGE)
             else:
                 # "Too soon" and "too many requests" share one wait message.
                 messages.error(request, WAIT_MESSAGE)

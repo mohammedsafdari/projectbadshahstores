@@ -24,6 +24,7 @@ from apps.reports.queries import (
     GstRow,
     OwnBrandReport,
     SalesReport,
+    SearchWordsReport,
     ValuationReport,
 )
 
@@ -312,3 +313,29 @@ def write_valuation_csv(report: ValuationReport, file: SupportsWrite) -> int:
             ]
         )
     return write_rows(file, VALUATION_HEADER, rows)
+
+
+# ---------------------------------------------------------------------------
+# Search words
+# ---------------------------------------------------------------------------
+SEARCH_WORDS_HEADER = ("list", "term", "searches", "empty_searches")
+
+MOST_SEARCHED_LABEL = "Most searched"
+NO_RESULTS_LABEL = "No results"
+
+
+def _search_word_row(label: str, term: str, searches: int, empty_searches: int) -> list[str]:
+    """One CSV row of a search-word list, with the list name in the first cell."""
+    return [label, safe_text(term), str(searches), str(empty_searches)]
+
+
+def write_search_words_csv(report: SearchWordsReport, file: SupportsWrite) -> int:
+    """Both search-word lists in one file, a ``list`` column telling them apart."""
+    rows: list[list[str]] = []
+    for row in report.most_searched:
+        rows.append(
+            _search_word_row(MOST_SEARCHED_LABEL, row.term, row.searches, row.empty_searches)
+        )
+    for row in report.no_results:
+        rows.append(_search_word_row(NO_RESULTS_LABEL, row.term, row.searches, row.empty_searches))
+    return write_rows(file, SEARCH_WORDS_HEADER, rows)

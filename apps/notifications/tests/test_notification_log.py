@@ -50,13 +50,22 @@ def _clean_environment():
     clear_settings()
 
 
-def _sms(send, purpose=NotificationLog.Purpose.ORDER, event=EVENT_PLACED) -> NotificationLog:
-    """Run deliver for one SMS and return the row it wrote."""
+def _sms(
+    send,
+    purpose=NotificationLog.Purpose.ORDER,
+    event=EVENT_PLACED,
+    order_id: int | None = None,
+) -> NotificationLog:
+    """Run deliver for one SMS and return the row it wrote.
+
+    A row is only retried when it carries an order, so a test that expects a
+    retry passes ``order_id`` (D89).
+    """
     log = deliver(
         NotificationLog.Channel.SMS,
         purpose,
         event,
-        None,
+        order_id,
         PHONE,
         send,
     )
@@ -93,7 +102,7 @@ def test_failed_sms_writes_failed_then_retry_pending_for_order() -> None:
     def boom() -> str:
         raise RuntimeError("provider down")
 
-    log = _sms(boom)
+    log = _sms(boom, order_id=OrderFactory().pk)
 
     stored = NotificationLog.objects.get(pk=log.pk)
     assert stored.status == NotificationLog.Status.RETRY_PENDING
@@ -116,7 +125,7 @@ def test_retry_pending_save_includes_updated_at(monkeypatch) -> None:
     def boom() -> str:
         raise RuntimeError("provider down")
 
-    _sms(boom)
+    _sms(boom, order_id=OrderFactory().pk)
 
     assert ["status", "updated_at"] in saved
 

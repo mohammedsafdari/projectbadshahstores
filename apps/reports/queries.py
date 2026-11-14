@@ -33,6 +33,7 @@ from apps.inventory.models import InventoryMovement
 from apps.orders.models import CodCollection, Invoice, InvoiceLine, OrderItem
 from apps.orders.staff_queries import cash_reconciliation
 from apps.orders.staff_services import StaffPermissionError
+from apps.storefront.models import SearchTermDay
 
 # Money and quantity zeros. ``sum`` and a missing database sum both start here,
 # so an empty report still shows money as ``0.00`` and units as ``0.000``.
@@ -46,6 +47,9 @@ MAX_RANGE_DAYS = 366
 
 # How many variants without a cost price a page lists before it only counts them.
 BLANK_COST_LIMIT = 50
+
+# How many search words each list of the search-word page shows.
+SEARCH_WORDS_LIMIT = 50
 
 # The four sections of the sales page. Plain strings, so a template and a test
 # can compare them without importing an enum.
@@ -919,4 +923,77 @@ def stock_valuation_report(actor: User) -> ValuationReport:
         grand_total=grand_total,
         blank_cost_count=blank_count,
         blank_cost_variants=blank_rows,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6. Search words
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class SearchTermRow:
+    """One search word of the range and its two counts."""
+
+    term: str
+    searches: int
+    empty_searches: int
+
+
+@dataclass(frozen=True)
+class SearchWordsReport:
+    """The two lists of the search-word page: most searched and no results."""
+
+    period: DateRange
+    most_searched: list[SearchTermRow]
+    no_results: list[SearchTermRow]
+
+
+def _term_rows(rows: list[dict[str, Any]]) -> list[SearchTermRow]:
+    """Turn the grouped database rows into the rows a page prints."""
+    return [
+        SearchTermRow(
+            term=row["term"],
+            searches=int(row["searches"] or 0),
+            empty_searches=int(row["empty_searches"] or 0),
+        )
+        for row in rows
+    ]
+
+
+def _grouped_terms(
+    period: DateRange,
+    order_by: str,
+    *,
+    only_empty: bool,
+) -> list[dict[str, Any]]:
+    """The range's daily rows added up per word, in the given order.
+
+    ``day__gte``/``day__lte`` are plain dates, so the range is inclusive at
+    both ends without any time-zone boundary. One query per list, whatever the
+    number of words.
+    """
+    queryset = SearchTermDay.objects.filter(day__gte=period.start, day__lte=period.end)
+    if only_empty:
+        # A word that never found nothing has nothing to say in this list.
+        queryset = queryset.filter(empty_searches__gt=0)
+    return list(
+        queryset.values("term")
+        .annotate(searches=Sum("searches"), empty_searches=Sum("empty_searches"))
+        .order_by(order_by, "term")[:SEARCH_WORDS_LIMIT]
+    )
+
+
+def search_words_report(actor: User, period: DateRange) -> SearchWordsReport:
+    """The most searched words and the words that found nothing (D89).
+
+    Both lists are cut to ``SEARCH_WORDS_LIMIT`` rows by the database, and the
+    per-day counters are added up there too, so the number of queries does not
+    grow with the number of words.
+    """
+    require_reports(actor)
+    most = _grouped_terms(period, "-searches", only_empty=False)
+    empty = _grouped_terms(period, "-empty_searches", only_empty=True)
+    return SearchWordsReport(
+        period=period,
+        most_searched=_term_rows(most),
+        no_results=_term_rows(empty),
     )

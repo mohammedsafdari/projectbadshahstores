@@ -501,3 +501,21 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
   inside `deliver`'s `try`, so one failure is logged and never raised
   (`apps/notifications/order_notices.py`). .NET comparison: passing `() => SendAsync()` as an
   `Action` or `Func<Task>`.
+
+## New in Slice 48
+- **`F("searches") + 1` is a database expression, not a number**: `SearchTermDay.objects.filter(pk=...).update(searches=F("searches") + 1)
+  makes the database add one to the value it holds right now, so two searches at the same moment both count
+  (`apps/storefront/search_log.py`). .NET comparison: `ExecuteUpdate(s => s.SetProperty(x => x.Searches, x => x.Searches + 1))`.
+- **A queryset `update()` skips `auto_now`**, so a column that should move is named by hand:
+  the same call passes `updated_at=timezone.now()` beside the `F()` expression, because `save()` is what normally
+  refreshes that field (`apps/storefront/search_log.py`). .NET comparison: setting `UpdatedAt` yourself in a
+  `ExecuteUpdate`, because no change tracker is watching.
+- **`ipaddress.ip_address("1.2.3.4")` raises `ValueError` for anything that is not an address**, which is the
+  cheapest way to refuse a header a visitor typed: try it, `pass` on the error, and fall back to the real
+  connection address (`apps/core/ratelimit.py`). .NET comparison: `IPAddress.TryParse`.
+- **`dict(zip(...))`-free pairing by sorting**: `sorted(lots, key=lambda lot: (lot.created_at, lot.pk), reverse=True)`
+  orders the received lots newest first, and the tuple second key breaks a tie between two lots saved in the same
+  microsecond (`apps/inventory/alerts.py`). .NET comparison: `OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)`.
+- **`@dataclass(frozen=True)` as a small read-only row**: `LowStockRow` and `ExpiryRow` carry only the values a line
+  of an email prints, so a test can build one without a database and the reader cannot change it
+  (`apps/inventory/alerts.py`). .NET comparison: a positional `record` with `init`-only properties.

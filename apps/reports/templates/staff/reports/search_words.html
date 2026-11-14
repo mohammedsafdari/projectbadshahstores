@@ -1,0 +1,75 @@
+{% extends "staff/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Search words" %}{% endblock title %}
+
+{% block content %}
+  <h1 class="text-xl font-bold">{% translate "Search words" %}</h1>
+  <p class="mt-1 text-sm text-gray-700">
+    {% translate "The words customers typed in the shop search box. No name, phone number or address is kept with them, and a word is deleted after 180 days." %}
+  </p>
+
+  {% include "staff/reports/_range_form.html" %}
+
+  <p class="mt-2">
+    <a class="underline text-sm" href="{% url 'reports_search_words_csv' %}?from={{ from_value }}&amp;to={{ to_value }}">{% translate "Download this report as CSV" %}</a>
+  </p>
+
+  {% if report %}
+    <section class="mt-6" data-search-words="most">
+      <h2 class="text-lg font-bold">{% translate "Most searched" %}</h2>
+      <table class="mt-2 w-full border-collapse text-sm">
+        <thead>
+          <tr class="bg-gray-200 text-left">
+            <th class="border border-gray-400 px-2 py-1">{% translate "Word" %}</th>
+            <th class="border border-gray-400 px-2 py-1">{% translate "Searches" %}</th>
+            <th class="border border-gray-400 px-2 py-1">{% translate "Found nothing" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in report.most_searched %}
+            <tr>
+              <th class="border border-gray-400 px-2 py-1 text-left font-normal">{{ row.term }}</th>
+              <td class="border border-gray-400 px-2 py-1 text-right">{{ row.searches }}</td>
+              <td class="border border-gray-400 px-2 py-1 text-right">{{ row.empty_searches }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="3" class="border border-gray-400 px-2 py-2">
+                {% translate "No search in this range." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="mt-6" data-search-words="empty">
+      <h2 class="text-lg font-bold">{% translate "Searched with no results" %}</h2>
+      <table class="mt-2 w-full border-collapse text-sm">
+        <thead>
+          <tr class="bg-gray-200 text-left">
+            <th class="border border-gray-400 px-2 py-1">{% translate "Word" %}</th>
+            <th class="border border-gray-400 px-2 py-1">{% translate "Searches" %}</th>
+            <th class="border border-gray-400 px-2 py-1">{% translate "Found nothing" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in report.no_results %}
+            <tr>
+              <th class="border border-gray-400 px-2 py-1 text-left font-normal">{{ row.term }}</th>
+              <td class="border border-gray-400 px-2 py-1 text-right">{{ row.searches }}</td>
+              <td class="border border-gray-400 px-2 py-1 text-right">{{ row.empty_searches }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="3" class="border border-gray-400 px-2 py-2">
+                {% translate "Every search in this range found something." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+{% endblock content %}

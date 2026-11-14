@@ -294,7 +294,8 @@ def test_retry_is_queued_only_after_commit(
             NotificationLog.Channel.SMS,
             NotificationLog.Purpose.ORDER,
             EVENT_PLACED,
-            None,
+            # A row without an order is never retried, so this one carries one.
+            OrderFactory().pk,
             "+919876543210",
             boom,
         )

@@ -1,0 +1,167 @@
+{
+  "tests": [
+    "apps/notifications/tests/test_stock_digest.py",
+    "apps/notifications/tests/test_sweep_and_otp_failure.py",
+    "apps/accounts/tests/test_otp_send_failure.py",
+    "apps/core/tests/test_ratelimit.py",
+    "apps/accounts/tests/test_ip_limits.py",
+    "apps/storefront/tests/test_search_log.py",
+    "apps/reports/tests/test_search_words.py"
+  ],
+  "mutations": [
+    {
+      "id": "48-01-sweep-age-five-minutes",
+      "file": "apps/notifications/tasks.py",
+      "old": "STUCK_AFTER_MINUTES = 45",
+      "new": "STUCK_AFTER_MINUTES = 5",
+      "note": "the sweep also queues a retry that only just failed"
+    },
+    {
+      "id": "48-02-sweep-cap-removed",
+      "file": "apps/notifications/tasks.py",
+      "old": ".values_list(\"pk\", flat=True)[:SWEEP_LIMIT]",
+      "new": ".values_list(\"pk\", flat=True)[:1000]",
+      "note": "one sweep queues a thousand rows instead of two hundred"
+    },
+    {
+      "id": "48-03-queue-ignores-missing-order",
+      "file": "apps/notifications/delivery.py",
+      "old": "    if log.order_id is None:",
+      "new": "    if False:",
+      "note": "a row with no order is queued for a retry that cannot build a message"
+    },
+    {
+      "id": "48-04-otp-failure-returns-sent",
+      "file": "apps/accounts/otp.py",
+      "old": "                sent=False,\n                reason=REASON_SEND_FAILED,",
+      "new": "                sent=True,\n                reason=REASON_SEND_FAILED,",
+      "note": "a code the provider refused is reported as sent"
+    },
+    {
+      "id": "48-05-challenge-kept-on-failure",
+      "file": "apps/accounts/otp.py",
+      "old": "            challenge.delete()",
+      "new": "            str(challenge)",
+      "note": "the undelivered challenge blocks the next request as too soon"
+    },
+    {
+      "id": "48-06-send-failure-hidden-on-resend",
+      "file": "apps/accounts/verification_views.py",
+      "old": "            elif result.reason == REASON_SEND_FAILED:",
+      "new": "            elif False:",
+      "note": "the verification resend shows the wait message for a refused send"
+    },
+    {
+      "id": "48-07-client-ip-trusts-the-header",
+      "file": "apps/core/ratelimit.py",
+      "old": "        if first:\n            try:\n                ipaddress.ip_address(first)\n            except ValueError:\n                # A header the visitor typed is not an address to trust.\n                pass\n            else:\n                return first",
+      "new": "        if first:\n            return first",
+      "note": "a typed proxy header becomes the rate-limit key"
+    },
+    {
+      "id": "48-08-client-ip-takes-the-last-value",
+      "file": "apps/core/ratelimit.py",
+      "old": "        first = str(raw).split(\",\")[0].strip()",
+      "new": "        first = str(raw).split(\",\")[-1].strip()",
+      "note": "the proxy's own address is counted instead of the visitor's"
+    },
+    {
+      "id": "48-09-limit-uses-greater-than",
+      "file": "apps/core/ratelimit.py",
+      "old": "    return int(count) >= limit",
+      "new": "    return int(count) > limit",
+      "note": "the twenty-first request also gets through"
+    },
+    {
+      "id": "48-10-hour-bucket-removed",
+      "file": "apps/core/ratelimit.py",
+      "old": "    bucket = timezone.now().strftime(HOUR_FORMAT)",
+      "new": "    bucket = \"\"",
+      "note": "one counter never resets, so the limit is for ever"
+    },
+    {
+      "id": "48-11-cache-error-fails-closed",
+      "file": "apps/core/ratelimit.py",
+      "old": "        logger.warning(\"Rate limit cache failed: scope=%s\", scope)\n        return False",
+      "new": "        logger.warning(\"Rate limit cache failed: scope=%s\", scope)\n        return True",
+      "note": "a broken cache locks every visitor out"
+    },
+    {
+      "id": "48-12-password-success-counted",
+      "file": "apps/accounts/views.py",
+      "old": "                    if login_result.reason == REASON_OK and login_result.user is not None:\n                        return _finish_customer_login(request, login_result.user, next_url)\n                    # Only a refused try counts: a success neither counts nor\n                    # resets the counter (D89).\n                    record(request, SCOPE_LOGIN)",
+      "new": "                    record(request, SCOPE_LOGIN)\n                    if login_result.reason == REASON_OK and login_result.user is not None:\n                        return _finish_customer_login(request, login_result.user, next_url)",
+      "note": "each successful password login uses up one try"
+    },
+    {
+      "id": "48-13-invalid-signup-counted",
+      "file": "apps/accounts/views.py",
+      "old": "    form = SignupForm(request.POST or None)\n    if request.method == \"POST\" and form.is_valid():",
+      "new": "    form = SignupForm(request.POST or None)\n    if request.method == \"POST\":\n        record(request, SCOPE_SIGNUP)\n    if request.method == \"POST\" and form.is_valid():",
+      "note": "a mistyped sign-up form uses up the address's allowance"
+    },
+    {
+      "id": "48-14-low-stock-compares-on-hand",
+      "file": "apps/inventory/alerts.py",
+      "old": "        amount = available.get(variant.pk, Decimal(\"0.000\"))",
+      "new": "        amount = _on_hand_totals([variant.pk]).get(variant.pk, Decimal(\"0.000\"))",
+      "note": "a held line no longer shows up as low stock"
+    },
+    {
+      "id": "48-15-low-stock-below-not-at-threshold",
+      "file": "apps/inventory/alerts.py",
+      "old": "        if amount > threshold:\n            continue",
+      "new": "        if amount >= threshold:\n            continue",
+      "note": "a variant exactly at its threshold no longer alerts"
+    },
+    {
+      "id": "48-16-expiry-window-fortnight",
+      "file": "apps/inventory/alerts.py",
+      "old": "EXPIRY_WINDOW_DAYS = 7",
+      "new": "EXPIRY_WINDOW_DAYS = 14",
+      "note": "a lot two weeks out is reported as expiring soon"
+    },
+    {
+      "id": "48-17-expiry-allocates-oldest-first",
+      "file": "apps/inventory/alerts.py",
+      "old": "    newest_first = sorted(lots, key=lambda lot: (lot.created_at, lot.pk), reverse=True)",
+      "new": "    newest_first = sorted(lots, key=lambda lot: (lot.created_at, lot.pk), reverse=False)",
+      "note": "the estimate assumes the newest purchase is sold first"
+    },
+    {
+      "id": "48-18-digest-sent-when-empty",
+      "file": "apps/notifications/stock_digest.py",
+      "old": "    if not low and not expiring and not expired:\n        return None",
+      "new": "    if False:\n        return None",
+      "note": "the shop gets an email that says nothing three times"
+    },
+    {
+      "id": "48-19-digest-cut-at-500",
+      "file": "apps/notifications/stock_digest.py",
+      "old": "SECTION_LINES = 50",
+      "new": "SECTION_LINES = 500",
+      "note": "a section prints five hundred lines"
+    },
+    {
+      "id": "48-20-clean-term-nine-digits",
+      "file": "apps/storefront/search_log.py",
+      "old": "LONG_DIGIT_RUN = re.compile(r\"\\d{6,}\")",
+      "new": "LONG_DIGIT_RUN = re.compile(r\"\\d{9,}\")",
+      "note": "a six-digit code or phone tail reaches the search log"
+    },
+    {
+      "id": "48-21-page-two-recorded",
+      "file": "apps/storefront/views.py",
+      "old": "    if (request.GET.get(\"page\") or \"1\") != \"1\":\n        return",
+      "new": "    if False:\n        return",
+      "note": "paging through one search counts it again"
+    },
+    {
+      "id": "48-22-retention-eighteen-days",
+      "file": "apps/storefront/tasks.py",
+      "old": "RETENTION_DAYS = 180",
+      "new": "RETENTION_DAYS = 18",
+      "note": "search words are deleted after eighteen days"
+    }
+  ]
+}

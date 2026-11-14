@@ -245,6 +245,9 @@ def test_search_query_count_does_not_grow_with_results(client: Client) -> None:
             name_en=f"Count Item {number}", brand=brand, category=category, is_active=True
         )
         ProductVariantFactory(product=product, is_active=True)
+    # The first search of a word inserts its log row, so the row is created
+    # before the first count: this test measures the product queries (D89).
+    client.get("/search/", {"q": "count"})
     with CaptureQueriesContext(connection) as small:
         response = client.get("/search/", {"q": "count"})
     assert response.status_code == 200

@@ -24,5 +24,7 @@ urlpatterns = [
         views.stock_valuation_csv,
         name="reports_stock_valuation_csv",
     ),
+    path("search-words/", views.search_words_page, name="reports_search_words"),
+    path("search-words.csv", views.search_words_csv, name="reports_search_words_csv"),
     path("cost-prices/", views.cost_prices_page, name="reports_cost_prices"),
 ]
