@@ -12,14 +12,23 @@ from django.urls import reverse
 from apps.orders.tests.staff_helpers import staff
 from apps.reports.csv_output import (
     GST_HEADER,
+    OWN_BRAND_HEADER,
     money_text,
     quantity_text,
     safe_text,
     write_gst_csv,
+    write_own_brand_csv,
     write_rows,
     write_sales_csv,
 )
-from apps.reports.queries import GST_NOTE, DateRange, gst_report, sales_reports
+from apps.reports.queries import (
+    GST_NOTE,
+    OWN_BRAND_LABEL,
+    DateRange,
+    gst_report,
+    own_brand_report,
+    sales_reports,
+)
 from apps.reports.tests.helpers import FIRST_DAY, LAST_DAY, make_variant, sold, staff_client
 
 pytestmark = pytest.mark.django_db
@@ -82,6 +91,23 @@ def test_the_gst_file_starts_with_the_note() -> None:
     rows = list(csv.reader(io.StringIO(buffer.getvalue().removeprefix("\ufeff"))))
     assert rows[0] == [GST_NOTE]
     assert rows[1] == list(GST_HEADER)
+
+
+def test_the_own_brand_file_has_a_column_for_uncosted_revenue() -> None:
+    sold(lines=[(make_variant(name="No cost", cost=None, own_brand=True), "2")])
+    buffer = io.StringIO()
+
+    write_own_brand_csv(own_brand_report(staff(), NOVEMBER), buffer)
+
+    rows = list(csv.reader(io.StringIO(buffer.getvalue().removeprefix("\ufeff"))))
+    assert rows[0] == list(OWN_BRAND_HEADER)
+    own_row = rows[1]
+    assert own_row[0] == OWN_BRAND_LABEL
+    # Nothing has a cost, so all of the revenue is in the uncosted column.
+    assert own_row[2] == "0.00"
+    assert own_row[3] == own_row[1]
+    assert own_row[3] != "0.00"
+    assert own_row[5] == "0.00"
 
 
 def test_a_download_is_a_csv_attachment() -> None:

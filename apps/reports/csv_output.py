@@ -120,7 +120,15 @@ def write_sales_csv(reports: list[SalesReport], file: SupportsWrite) -> int:
 # ---------------------------------------------------------------------------
 # Own brand
 # ---------------------------------------------------------------------------
-OWN_BRAND_HEADER = ("group", "revenue_taxable", "cost_at_todays_cost", "margin", "margin_percent")
+OWN_BRAND_HEADER = (
+    "group",
+    "revenue_taxable",
+    "revenue_with_cost",
+    "revenue_without_cost",
+    "cost_at_todays_cost",
+    "margin",
+    "margin_percent",
+)
 
 
 def write_own_brand_csv(report: OwnBrandReport, file: SupportsWrite) -> int:
@@ -131,6 +139,8 @@ def write_own_brand_csv(report: OwnBrandReport, file: SupportsWrite) -> int:
             [
                 safe_text(group.label),
                 money_text(group.revenue),
+                money_text(group.costed_revenue),
+                money_text(group.uncosted_revenue),
                 money_text(group.cost),
                 money_text(group.margin),
                 money_text(group.margin_percent),
@@ -138,7 +148,15 @@ def write_own_brand_csv(report: OwnBrandReport, file: SupportsWrite) -> int:
         )
     for variant in report.blank_cost_variants:
         rows.append(
-            [safe_text(f"No cost price: {variant.sku_code} {variant.name}"), "", "", "", ""]
+            [
+                safe_text(f"No cost price: {variant.sku_code} {variant.name}"),
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]
         )
     return write_rows(file, OWN_BRAND_HEADER, rows)
 
@@ -222,9 +240,10 @@ def write_cod_credit_csv(report: CodCreditReport, file: SupportsWrite) -> int:
     """What the door collected, what it still owes, and the khata figures."""
     rows: list[list[str]] = [
         ["COD collected", money_text(report.cod_collected), str(report.cod_collected_count)],
-        ["COD pending", money_text(report.cod_pending), str(report.cod_pending_count)],
+        # These two figures are today's, not the range's, so the label says so.
+        ["COD pending (now)", money_text(report.cod_pending), str(report.cod_pending_count)],
         [
-            "Khata outstanding",
+            "Khata outstanding (now)",
             money_text(report.khata_outstanding),
             str(report.khata_account_count),
         ],

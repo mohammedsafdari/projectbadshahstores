@@ -309,11 +309,13 @@ class SalesReport:
 
 @dataclass(frozen=True)
 class LineOwner:
-    """The brand, the category and the own-brand flag behind one invoice line."""
+    """What the product behind one invoice line was, frozen nowhere on the line."""
 
     brand: str
     category: str
     own_brand: bool
+    # True only when the variant has a cost price, because a margin needs one.
+    has_cost: bool
 
 
 def _owner_names(period: DateRange) -> dict[tuple[int, str, str], LineOwner]:
@@ -322,7 +324,8 @@ def _owner_names(period: DateRange) -> dict[tuple[int, str, str], LineOwner]:
     The money of a line is frozen on the invoice, but the brand and the category
     are not, so they come from the order line the invoice was built from. Two
     packs of one product share the name and the HSN and therefore the same brand
-    and category, so whichever of them is picked the answer is the same.
+    and category, so whichever of them is picked the answer is the same. Whether
+    the variant has a cost price comes along in the same query (D85).
     """
     rows = (
         OrderItem.objects.filter(
@@ -338,14 +341,22 @@ def _owner_names(period: DateRange) -> dict[tuple[int, str, str], LineOwner]:
             "variant__product__brand__name",
             "variant__product__category__name",
             "variant__product__is_own_brand",
+            # The cost price itself, so a blank can be told apart from 0 (D85);
+            # ``isnull`` is a lookup, not a field that values_list can read.
+            "variant__cost_price",
         )
     )
     owners: dict[tuple[int, str, str], LineOwner] = {}
-    for order_id, name, hsn, brand, category, own_brand in rows:
+    for order_id, name, hsn, brand, category, own_brand, cost_price in rows:
         # setdefault keeps the first (lowest pk) row and does nothing after it.
         owners.setdefault(
             (order_id, name, hsn),
-            LineOwner(brand=brand, category=category, own_brand=bool(own_brand)),
+            LineOwner(
+                brand=brand,
+                category=category,
+                own_brand=bool(own_brand),
+                has_cost=cost_price is not None,
+            ),
         )
     return owners
 
@@ -355,7 +366,11 @@ def _line_owner(
     row: dict[str, Any],
 ) -> LineOwner:
     key = (row["invoice__order_id"], row["description"], row["hsn_code"])
-    return owners.get(key, LineOwner(brand=UNKNOWN_GROUP, category=UNKNOWN_GROUP, own_brand=False))
+    # A line no order line explains has no brand, no category and no known cost.
+    return owners.get(
+        key,
+        LineOwner(brand=UNKNOWN_GROUP, category=UNKNOWN_GROUP, own_brand=False, has_cost=False),
+    )
 
 
 def _lines_with_owner(period: DateRange) -> list[dict[str, Any]]:
@@ -497,10 +512,12 @@ def sales_reports(actor: User, period: DateRange) -> list[SalesReport]:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class MarginGroup:
-    """One group of the margin report: revenue, cost at today's cost, margin."""
+    """One group: its revenue, the part of it a margin can use, and the margin."""
 
     label: str
     revenue: Decimal
+    costed_revenue: Decimal
+    uncosted_revenue: Decimal
     cost: Decimal
     margin: Decimal
     margin_percent: Decimal
@@ -570,12 +587,30 @@ def _revenue_by_own_brand(period: DateRange) -> dict[bool, Decimal]:
     return revenue
 
 
+def _costed_revenue_by_own_brand(period: DateRange) -> dict[bool, Decimal]:
+    """Taxable value of only the lines whose variant has a cost price, by owner.
+
+    One pass over the same lines the revenue reads, so the report costs the same
+    number of queries as before. A blank cost is never read as zero (D85): the
+    revenue of such a line is reported on its own and is not part of the margin.
+    """
+    owners = _owner_names(period)
+    costed = {True: ZERO, False: ZERO}
+    for row in _lines_with_owner(period):
+        owner = _line_owner(owners, row)
+        if not owner.has_cost:
+            continue
+        costed[owner.own_brand] += _dec(row["taxable_value"])
+    return costed
+
+
 def _cost_by_own_brand(period: DateRange) -> dict[bool, Decimal]:
     """Cost of the goods sold in the range, at the variant's cost price today.
 
-    A variant with no cost price is skipped, not counted as free (D85), so the
-    margin of a group with such a variant is overstated until the cost is
-    entered; the page lists those variants.
+    A variant with no cost price is skipped, not counted as free (D85). Its sale
+    is left out of the margin as well, so a group is never shown as a 100 percent
+    margin just because the cost was never entered; the page lists those
+    variants and their revenue.
     """
     cost = {True: ZERO, False: ZERO}
     rows = OrderItem.objects.filter(
@@ -599,20 +634,25 @@ def own_brand_report(actor: User, period: DateRange) -> OwnBrandReport:
     """Own brand against third-party: revenue, cost at today's cost, margin.
 
     Every margin figure is at today's cost, because no order line, invoice line
-    or stock movement freezes a cost (D85).
+    or stock movement freezes a cost (D85). The margin covers only the sales of
+    variants that have a cost price; the rest is shown as uncosted revenue.
     """
     require_reports(actor)
     revenue = _revenue_by_own_brand(period)
+    costed = _costed_revenue_by_own_brand(period)
     cost = _cost_by_own_brand(period)
 
     def group(label: str, own_brand: bool) -> MarginGroup:
-        margin = revenue[own_brand] - cost[own_brand]
+        costed_revenue = costed[own_brand]
+        margin = costed_revenue - cost[own_brand]
         return MarginGroup(
             label=label,
             revenue=revenue[own_brand],
+            costed_revenue=costed_revenue,
+            uncosted_revenue=revenue[own_brand] - costed_revenue,
             cost=cost[own_brand],
             margin=margin,
-            margin_percent=_percent(margin, revenue[own_brand]),
+            margin_percent=_percent(margin, costed_revenue),
         )
 
     blank_count, blank_rows = blank_cost_variants()

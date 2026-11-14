@@ -1,0 +1,95 @@
+{
+  "tests": [
+    "apps/reports/tests/test_own_brand.py",
+    "apps/reports/tests/test_csv_output.py",
+    "apps/reports/tests/test_cod_credit.py",
+    "apps/reports/tests/test_consistency.py",
+    "apps/reports/tests/test_query_counts.py"
+  ],
+  "mutations": [
+    {
+      "id": "45f1-01-has-cost-always-true",
+      "file": "apps/reports/queries.py",
+      "old": "                has_cost=cost_price is not None,",
+      "new": "                has_cost=True,",
+      "note": "a variant with no cost price is treated as having one"
+    },
+    {
+      "id": "45f1-02-has-cost-inverted",
+      "file": "apps/reports/queries.py",
+      "old": "                has_cost=cost_price is not None,",
+      "new": "                has_cost=cost_price is None,",
+      "note": "only the variants with no cost price count as costed"
+    },
+    {
+      "id": "45f1-03-margin-uses-revenue",
+      "file": "apps/reports/queries.py",
+      "old": "        margin = costed_revenue - cost[own_brand]",
+      "new": "        margin = revenue[own_brand] - cost[own_brand]",
+      "note": "the margin includes the sales with no cost price"
+    },
+    {
+      "id": "45f1-04-percent-over-revenue",
+      "file": "apps/reports/queries.py",
+      "old": "            margin_percent=_percent(margin, costed_revenue),",
+      "new": "            margin_percent=_percent(margin, revenue[own_brand]),",
+      "note": "the margin percent is taken over all the revenue"
+    },
+    {
+      "id": "45f1-05-uncosted-is-costed",
+      "file": "apps/reports/queries.py",
+      "old": "            uncosted_revenue=revenue[own_brand] - costed_revenue,",
+      "new": "            uncosted_revenue=costed_revenue,",
+      "note": "the uncosted column shows the costed revenue"
+    },
+    {
+      "id": "45f1-06-costed-column-is-revenue",
+      "file": "apps/reports/queries.py",
+      "old": "            costed_revenue=costed_revenue,",
+      "new": "            costed_revenue=revenue[own_brand],",
+      "note": "the costed column shows all the revenue"
+    },
+    {
+      "id": "45f1-07-unknown-line-is-costed",
+      "file": "apps/reports/queries.py",
+      "old": "        LineOwner(brand=UNKNOWN_GROUP, category=UNKNOWN_GROUP, own_brand=False, has_cost=False),",
+      "new": "        LineOwner(brand=UNKNOWN_GROUP, category=UNKNOWN_GROUP, own_brand=False, has_cost=True),",
+      "note": "a line with no order line counts as having a cost"
+    },
+    {
+      "id": "45f1-08-groups-swapped",
+      "file": "apps/reports/queries.py",
+      "old": "        costed[owner.own_brand] += _dec(row[\"taxable_value\"])",
+      "new": "        costed[not owner.own_brand] += _dec(row[\"taxable_value\"])",
+      "note": "the costed revenue of each group lands in the other group"
+    },
+    {
+      "id": "45f1-09-all-lines-costed",
+      "file": "apps/reports/queries.py",
+      "old": "        if not owner.has_cost:\n            continue",
+      "new": "        if False:\n            continue",
+      "note": "every line counts as costed revenue"
+    },
+    {
+      "id": "45f1-10-csv-pending-label",
+      "file": "apps/reports/csv_output.py",
+      "old": "        [\"COD pending (now)\", money_text(report.cod_pending), str(report.cod_pending_count)],",
+      "new": "        [\"COD pending\", money_text(report.cod_pending), str(report.cod_pending_count)],",
+      "note": "the CSV label loses its (now)"
+    },
+    {
+      "id": "45f1-11-page-pending-label",
+      "file": "apps/reports/templates/staff/reports/cod_credit.html",
+      "old": "{% translate \"COD pending (now)\" %}",
+      "new": "{% translate \"COD pending\" %}",
+      "note": "the page label loses its (now)"
+    },
+    {
+      "id": "45f1-12-now-sentence-dropped",
+      "file": "apps/reports/templates/staff/reports/cod_credit.html",
+      "old": " Khata payments are the payments recorded in this range. COD pending and khata outstanding are as of now, not for the chosen range.\" %}",
+      "new": " Khata payments are the payments recorded in this range.\" %}",
+      "note": "the page note no longer says the two figures are today's"
+    }
+  ]
+}

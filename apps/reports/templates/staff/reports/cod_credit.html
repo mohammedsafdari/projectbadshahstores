@@ -6,7 +6,7 @@
 {% block content %}
   <h1 class="text-xl font-bold">{% translate "COD and credit" %}</h1>
   <p class="mt-1 text-sm text-gray-700">
-    {% translate "Cash collected is the money the delivery staff recorded in this range. COD pending is every order that still owes cash, using the same rule as the cash page. Khata payments are the payments recorded in this range." %}
+    {% translate "Cash collected is the money the delivery staff recorded in this range. COD pending is every order that still owes cash, using the same rule as the cash page. Khata payments are the payments recorded in this range. COD pending and khata outstanding are as of now, not for the chosen range." %}
   </p>
 
   {% include "staff/reports/_range_form.html" %}
@@ -31,12 +31,12 @@
           <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cod_collected_count }}</td>
         </tr>
         <tr>
-          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "COD pending" %}</th>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "COD pending (now)" %}</th>
           <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cod_pending }}</td>
           <td class="border border-gray-400 px-2 py-1 text-right">{{ report.cod_pending_count }}</td>
         </tr>
         <tr>
-          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "Khata outstanding" %}</th>
+          <th class="border border-gray-400 px-2 py-1 text-left font-normal">{% translate "Khata outstanding (now)" %}</th>
           <td class="border border-gray-400 px-2 py-1 text-right">{{ report.khata_outstanding }}</td>
           <td class="border border-gray-400 px-2 py-1 text-right">{{ report.khata_account_count }}</td>
         </tr>

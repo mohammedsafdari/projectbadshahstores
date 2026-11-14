@@ -6,6 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
+from django.urls import reverse
 
 from apps.credit.models import CreditEntry
 from apps.credit.tests.factories import CreditAccountFactory
@@ -17,7 +18,7 @@ from apps.reports.queries import (
     ReportsPermissionError,
     cod_and_credit_report,
 )
-from apps.reports.tests.helpers import FIRST_DAY, IST, LAST_DAY
+from apps.reports.tests.helpers import FIRST_DAY, IST, LAST_DAY, staff_client
 from tests.factories import UserFactory
 
 pytestmark = pytest.mark.django_db
@@ -139,6 +140,20 @@ def test_a_khata_payment_outside_the_range_is_left_out() -> None:
 
     assert report.khata_payments == Decimal("0.00")
     assert report.khata_payment_count == 0
+
+
+def test_the_two_todays_figures_say_now_on_the_page_and_in_the_csv() -> None:
+    client = staff_client()
+    params = {"from": FIRST_DAY.isoformat(), "to": LAST_DAY.isoformat()}
+
+    page = client.get(reverse("reports_cod_credit"), params).content.decode()
+    csv_text = client.get(reverse("reports_cod_credit_csv"), params).content.decode("utf-8-sig")
+
+    assert "COD pending (now)" in page
+    assert "Khata outstanding (now)" in page
+    assert "COD pending and khata outstanding are as of now, not for the chosen range" in page
+    assert "COD pending (now)" in csv_text
+    assert "Khata outstanding (now)" in csv_text
 
 
 def test_a_user_without_the_capability_cannot_read_the_cod_report() -> None:

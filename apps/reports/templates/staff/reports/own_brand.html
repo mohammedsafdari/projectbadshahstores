@@ -6,7 +6,7 @@
 {% block content %}
   <h1 class="text-xl font-bold">{% translate "Own brand against third-party" %}</h1>
   <p class="mt-1 text-sm text-gray-700">
-    {% translate "Revenue is the taxable value on the invoice. Cost is today's cost price of the quantity that went out, so every margin figure is at today's cost, not the cost on the day of the sale." %}
+    {% translate "Revenue is the taxable value on the invoice. Cost is today's cost price of the quantity that went out, so every margin figure is at today's cost, not the cost on the day of the sale. The margin covers only the sales of variants that have a cost price: the revenue of a variant with no cost price is shown in its own column and is left out of the margin, never counted as free." %}
   </p>
 
   {% include "staff/reports/_range_form.html" %}
@@ -21,6 +21,8 @@
         <tr class="bg-gray-200 text-left">
           <th class="border border-gray-400 px-2 py-1">{% translate "Group" %}</th>
           <th class="border border-gray-400 px-2 py-1">{% translate "Revenue (taxable value)" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "Revenue with a cost price" %}</th>
+          <th class="border border-gray-400 px-2 py-1">{% translate "Revenue without a cost price, left out of the margin" %}</th>
           <th class="border border-gray-400 px-2 py-1">{% translate "Cost at today's cost" %}</th>
           <th class="border border-gray-400 px-2 py-1">{% translate "Margin" %}</th>
           <th class="border border-gray-400 px-2 py-1">{% translate "Margin percent" %}</th>
@@ -31,6 +33,8 @@
           <tr>
             <th class="border border-gray-400 px-2 py-1 text-left font-normal">{{ group.label }}</th>
             <td class="border border-gray-400 px-2 py-1 text-right">{{ group.revenue }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ group.costed_revenue }}</td>
+            <td class="border border-gray-400 px-2 py-1 text-right">{{ group.uncosted_revenue }}</td>
             <td class="border border-gray-400 px-2 py-1 text-right">{{ group.cost }}</td>
             <td class="border border-gray-400 px-2 py-1 text-right">{{ group.margin }}</td>
             <td class="border border-gray-400 px-2 py-1 text-right">{{ group.margin_percent }}%</td>
