@@ -144,9 +144,10 @@ def website_json_ld(request: HttpRequest, shop_name: str) -> str:
 def sitemap_paths() -> list[str]:
     """Every public address, home first, then categories, brands and products.
 
-    A category is listed only when it and all its ancestors are active, and a
-    product only when it passes the listing pages' one rule, so a hidden row
-    can never reach the sitemap.
+    A category is listed only when it and all its ancestors are active, a brand
+    only when it is active and has a product the listing pages show, and a
+    product only when it passes that same rule, so a hidden row can never reach
+    the sitemap.
     """
     tree = CategoryTree()
     paths = [reverse("home")]
@@ -158,12 +159,21 @@ def sitemap_paths() -> list[str]:
     )
     for slug in category_slugs:
         paths.append(reverse("category_detail", args=[slug]))
+    # One product query feeds both the brand list and the product list, so the
+    # sitemap costs the same however many brands there are (D90).
+    products = visible_products(tree=tree, sort="name")
+    # A brand page is public only when the brand is active AND it has at least
+    # one product the listing pages show. distinct() keeps one id per brand, so
+    # a brand with fifty products still adds one path.
+    visible_brand_ids = products.values_list("brand_id", flat=True).distinct()
     brand_slugs = (
-        Brand.objects.filter(is_active=True).order_by("name").values_list("slug", flat=True)
+        Brand.objects.filter(is_active=True, pk__in=visible_brand_ids)
+        .order_by("name")
+        .values_list("slug", flat=True)
     )
     for slug in brand_slugs:
         paths.append(reverse("brand_detail", args=[slug]))
-    product_slugs = visible_products(tree=tree, sort="name").values_list("slug", flat=True)
+    product_slugs = products.values_list("slug", flat=True)
     for slug in product_slugs:
         paths.append(reverse("product_detail", args=[slug]))
     return paths

@@ -240,3 +240,7 @@ Revisit these if the shop says otherwise.
 - [ ] `CLIENT_IP_HEADER` must be set to `HTTP_CF_CONNECTING_IP` in Phase 7, or every visitor shares the proxy's address and one limit locks everybody out — owner/deployment; before Phase 7; default in use: blank, so every limit counts `REMOTE_ADDR` (D89)
 - [ ] IP limit numbers (20, 20, 30 per hour): review after launch — owner; after launch; default in use: `OTP_REQUESTS_PER_HOUR = 20`, `SIGNUPS_PER_HOUR = 20` and `PASSWORD_FAILURES_PER_HOUR = 30` (D89)
 - [ ] Search words kept 180 days: ask again before Phase 7 — owner; before Phase 7; default in use: `RETENTION_DAYS = 180`, then the row is deleted (D89)
+
+### Added in Slice 49 (performance, D90)
+- [ ] Should the sitemap also skip categories with no visible products? — owner; ask again before Phase 7; default in use: no, a category is listed whenever it and all its ancestors are active (D90)
+- [ ] Measure Lighthouse (and the largest paint cost of the Tailwind CDN) — owner/developer; ask again before Phase 7, after the Tailwind build replaces the CDN; default in use: no number is recorded yet (D90)

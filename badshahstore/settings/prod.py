@@ -49,3 +49,12 @@ CSRF_COOKIE_SECURE = True
 if env("SECURE_PROXY_SSL_HEADER", default=()):
     SECURE_PROXY_SSL_HEADER = env("SECURE_PROXY_SSL_HEADER")
     USE_X_FORWARDED_HOST = env("USE_X_FORWARDED_HOST", default=True)
+
+# Production collects static files with ManifestStaticFilesStorage, so every
+# name carries a content hash (app.<hash>.css). That is what lets nginx and
+# Cloudflare cache a static file for a year without ever serving a stale one
+# (D90). Development and test keep Django's plain storage.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+}

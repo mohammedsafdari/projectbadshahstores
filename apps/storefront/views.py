@@ -12,7 +12,7 @@ from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils.cache import patch_vary_headers
-from django.views.decorators.cache import never_cache
+from django.views.decorators.cache import cache_control, never_cache
 from django.views.decorators.http import require_GET
 from django.views.generic import TemplateView
 
@@ -295,13 +295,17 @@ class HomeView(TemplateView):
         return context
 
 
+# These two files are the same for every visitor and cost a few queries, so a
+# proxy may keep them for an hour. They carry no customer data (D90).
 @require_GET
+@cache_control(public=True, max_age=3600)
 def robots_txt(request: HttpRequest) -> HttpResponse:
     """robots.txt as a view, so the sitemap address follows the site's own URL."""
     return HttpResponse(seo.robots_text(request), content_type="text/plain")
 
 
 @require_GET
+@cache_control(public=True, max_age=3600)
 def sitemap_xml(request: HttpRequest) -> HttpResponse:
     """Every public page as XML, through the listing pages' own rule (D50, D87)."""
     return HttpResponse(seo.sitemap_xml_text(request), content_type="application/xml")

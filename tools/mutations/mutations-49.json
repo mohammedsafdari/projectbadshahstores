@@ -1,0 +1,152 @@
+{
+  "tests": [
+    "apps/storefront/tests/test_cache_headers.py",
+    "apps/storefront/tests/test_sitemap_brands.py",
+    "apps/storefront/tests/test_image_attributes.py",
+    "apps/storefront/tests/test_query_budgets.py",
+    "apps/orders/tests/test_query_budgets_orders.py",
+    "apps/orders/tests/test_checkout_views.py"
+  ],
+  "mutations": [
+    {
+      "id": "49-01-brand-filter-drops-is-active",
+      "file": "apps/storefront/seo.py",
+      "old": "Brand.objects.filter(is_active=True, pk__in=visible_brand_ids)",
+      "new": "Brand.objects.filter(pk__in=visible_brand_ids)",
+      "note": "an archived brand with a visible product reaches the sitemap"
+    },
+    {
+      "id": "49-02-brand-filter-drops-visible-products",
+      "file": "apps/storefront/seo.py",
+      "old": "        Brand.objects.filter(is_active=True, pk__in=visible_brand_ids)",
+      "new": "        Brand.objects.filter(is_active=True)",
+      "note": "every active brand is listed, even one with no products"
+    },
+    {
+      "id": "49-03-sitemap-max-age-zero",
+      "file": "apps/storefront/views.py",
+      "old": "@cache_control(public=True, max_age=3600)\ndef sitemap_xml(",
+      "new": "@cache_control(public=True, max_age=0)\ndef sitemap_xml(",
+      "note": "the sitemap may no longer be kept for an hour"
+    },
+    {
+      "id": "49-04-robots-not-cacheable",
+      "file": "apps/storefront/views.py",
+      "old": "@require_GET\n@cache_control(public=True, max_age=3600)\ndef robots_txt(",
+      "new": "@require_GET\ndef robots_txt(",
+      "note": "robots.txt loses its cache header"
+    },
+    {
+      "id": "49-05-robots-not-public",
+      "file": "apps/storefront/views.py",
+      "old": "@cache_control(public=True, max_age=3600)\ndef robots_txt(",
+      "new": "@cache_control(max_age=3600)\ndef robots_txt(",
+      "note": "robots.txt stops saying it is public"
+    },
+    {
+      "id": "49-06-checkout-cacheable",
+      "file": "apps/orders/views.py",
+      "old": "@require_http_methods([\"GET\", \"POST\"])\n@never_cache\ndef checkout(",
+      "new": "@require_http_methods([\"GET\", \"POST\"])\ndef checkout(",
+      "note": "the checkout page loses its no-store header"
+    },
+    {
+      "id": "49-07-checkout-rebuilds-the-cart",
+      "file": "apps/orders/views.py",
+      "old": "    if summary is None:\n        summary = _cart_for(user)",
+      "new": "    if True:\n        summary = _cart_for(user)",
+      "note": "the cart is built a second time on the GET page"
+    },
+    {
+      "id": "49-08-checkout-rereads-addresses",
+      "file": "apps/orders/views.py",
+      "old": "    rows = cards if cards is not None else _address_rows(user, selected_address)",
+      "new": "    rows = _address_rows(user, selected_address)",
+      "note": "the address cards are read again instead of reused"
+    },
+    {
+      "id": "49-09-checkout-reads-addresses-twice",
+      "file": "apps/orders/views.py",
+      "old": "        summary=summary,\n        cards=cards,",
+      "new": "        summary=summary,\n        cards=_address_rows(user, selected),",
+      "note": "the GET page reads the addresses twice again"
+    },
+    {
+      "id": "49-10-addresses-always-served",
+      "file": "apps/orders/views.py",
+      "old": "                \"is_served\": address.pincode in served,",
+      "new": "                \"is_served\": False,",
+      "note": "no saved address is ever called served"
+    },
+    {
+      "id": "49-11-card-image-no-async",
+      "file": "templates/storefront/_product_card.html",
+      "old": "src=\"{{ card.image_url }}\" alt=\"{{ card.alt_text }}\" width=\"400\" height=\"400\" loading=\"lazy\" decoding=\"async\">",
+      "new": "src=\"{{ card.image_url }}\" alt=\"{{ card.alt_text }}\" width=\"400\" height=\"400\" loading=\"lazy\">",
+      "note": "a card photo blocks the parser again"
+    },
+    {
+      "id": "49-12-banner-no-width",
+      "file": "templates/storefront/home.html",
+      "old": "{% if banner.width %}width=\"{{ banner.width }}\" height=\"{{ banner.height }}\"{% endif %}",
+      "new": "{% if banner.width %}height=\"{{ banner.height }}\"{% endif %}",
+      "note": "the banner no longer reserves its width"
+    },
+    {
+      "id": "49-13-banner-no-async",
+      "file": "templates/storefront/home.html",
+      "old": "        decoding=\"async\"\n      >",
+      "new": "      >",
+      "note": "the banner decodes synchronously again"
+    },
+    {
+      "id": "49-14-detail-main-becomes-lazy",
+      "file": "templates/storefront/product_detail.html",
+      "old": "src=\"{{ main.medium.url }}\" alt=\"{{ product.name_en }}\" width=\"900\" height=\"900\" loading=\"eager\" decoding=\"async\">",
+      "new": "src=\"{{ main.medium.url }}\" alt=\"{{ product.name_en }}\" width=\"900\" height=\"900\" loading=\"lazy\" decoding=\"async\">",
+      "note": "the main photo waits for the scroll again"
+    },
+    {
+      "id": "49-15-gallery-no-async",
+      "file": "templates/storefront/product_detail.html",
+      "old": "src=\"{{ img.thumbnail.url }}\" alt=\"{{ product.name_en }}\" width=\"64\" height=\"64\" loading=\"lazy\" decoding=\"async\">",
+      "new": "src=\"{{ img.thumbnail.url }}\" alt=\"{{ product.name_en }}\" width=\"64\" height=\"64\" loading=\"lazy\">",
+      "note": "a gallery photo decodes synchronously again"
+    },
+    {
+      "id": "49-16-gallery-wrong-width",
+      "file": "templates/storefront/product_detail.html",
+      "old": "src=\"{{ img.thumbnail.url }}\" alt=\"{{ product.name_en }}\" width=\"64\"",
+      "new": "src=\"{{ img.thumbnail.url }}\" alt=\"{{ product.name_en }}\" width=\"65\"",
+      "note": "a gallery box no longer matches its thumbnail"
+    },
+    {
+      "id": "49-17-suggestion-wrong-width",
+      "file": "templates/storefront/_search_suggestions.html",
+      "old": "src=\"{{ card.image_url }}\" alt=\"{{ card.alt_text }}\" width=\"40\" height=\"40\"",
+      "new": "src=\"{{ card.image_url }}\" alt=\"{{ card.alt_text }}\" width=\"41\" height=\"40\"",
+      "note": "the suggestion thumbnail reserves the wrong width"
+    },
+    {
+      "id": "49-18-suggestion-eager",
+      "file": "templates/storefront/_search_suggestions.html",
+      "old": "src=\"{{ card.image_url }}\" alt=\"{{ card.alt_text }}\" width=\"40\" height=\"40\" loading=\"lazy\" decoding=\"async\">",
+      "new": "src=\"{{ card.image_url }}\" alt=\"{{ card.alt_text }}\" width=\"40\" height=\"40\" loading=\"eager\" decoding=\"async\">",
+      "note": "a suggestion photo is fetched eagerly again"
+    },
+    {
+      "id": "49-19-prod-static-storage-unhashed",
+      "file": "badshahstore/settings/prod.py",
+      "old": "\"staticfiles\": {\"BACKEND\": \"django.contrib.staticfiles.storage.ManifestStaticFilesStorage\"},",
+      "new": "\"staticfiles\": {\"BACKEND\": \"django.contrib.staticfiles.storage.StaticFilesStorage\"},",
+      "note": "production loses the hashed static names"
+    },
+    {
+      "id": "49-20-prod-storages-swapped",
+      "file": "badshahstore/settings/prod.py",
+      "old": "    \"default\": {\"BACKEND\": \"django.core.files.storage.FileSystemStorage\"},\n    \"staticfiles\": {\"BACKEND\": \"django.contrib.staticfiles.storage.ManifestStaticFilesStorage\"},",
+      "new": "    \"default\": {\"BACKEND\": \"django.contrib.staticfiles.storage.ManifestStaticFilesStorage\"},\n    \"staticfiles\": {\"BACKEND\": \"django.core.files.storage.FileSystemStorage\"},",
+      "note": "the two storage backends are swapped"
+    }
+  ]
+}

@@ -3,11 +3,11 @@
   <div class="h-16 w-16 shrink-0 bg-gray-100">
     {% with image=line.variant.product.images.all|first %}
       {% if image and image.thumbnail %}
-        <img class="h-full w-full object-contain" src="{{ image.thumbnail.url }}" alt="{{ line.variant.product.name_en }}" loading="lazy">
+        <img class="h-full w-full object-contain" src="{{ image.thumbnail.url }}" alt="{{ line.variant.product.name_en }}" width="64" height="64" loading="lazy" decoding="async">
       {% elif image and image.image %}
-        <img class="h-full w-full object-contain" src="{{ image.image.url }}" alt="{{ line.variant.product.name_en }}" loading="lazy">
+        <img class="h-full w-full object-contain" src="{{ image.image.url }}" alt="{{ line.variant.product.name_en }}" width="64" height="64" loading="lazy" decoding="async">
       {% else %}
-        <img class="h-full w-full object-contain" src="{% static "img/product-placeholder.svg" %}" alt="{{ line.variant.product.name_en }}" loading="lazy">
+        <img class="h-full w-full object-contain" src="{% static "img/product-placeholder.svg" %}" alt="{{ line.variant.product.name_en }}" width="64" height="64" loading="lazy" decoding="async">
       {% endif %}
     {% endwith %}
   </div>

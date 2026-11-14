@@ -3,9 +3,9 @@
   <a class="flex h-full flex-col" href="{% url "product_detail" card.slug %}">
   <div class="aspect-square w-full bg-gray-100">
     {% if card.image_url %}
-      <img class="h-full w-full object-contain" src="{{ card.image_url }}" alt="{{ card.alt_text }}" loading="lazy">
+      <img class="h-full w-full object-contain" src="{{ card.image_url }}" alt="{{ card.alt_text }}" width="400" height="400" loading="lazy" decoding="async">
     {% else %}
-      <img class="h-full w-full object-contain" src="{% static "img/product-placeholder.svg" %}" alt="{{ card.alt_text }}" loading="lazy">
+      <img class="h-full w-full object-contain" src="{% static "img/product-placeholder.svg" %}" alt="{{ card.alt_text }}" width="400" height="400" loading="lazy" decoding="async">
     {% endif %}
   </div>
   <div class="flex flex-1 flex-col p-3">

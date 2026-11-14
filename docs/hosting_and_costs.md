@@ -77,3 +77,24 @@ One-time costs: the DLT entity fee (a few thousand rupees, unverified) and the d
 - [ ] Confirm that the live gateway reports refunds through the same API the test mode does, and
       whether a settlement report is available. Until then reconciliation asks the refund API only
       (D78), and the cancellation fee percent stays 0 (the whole payment goes back).
+
+## 6. Phase 7 nginx cache rules
+
+No code for this is written yet. The rules below are what the server must do once the VPS exists
+(D90). The reason static files and media may be cached for a year is that neither name can ever
+mean new bytes: `prod.py` now uses `ManifestStaticFilesStorage`, so a static file is called
+`app.<content hash>.css`, and an uploaded photo keeps a random uuid in its name, so a changed photo
+is a new address.
+
+- **Static files:** `Cache-Control: public, max-age=31536000, immutable`. This makes `collectstatic`
+  part of **every** deploy, because the manifest and the hashed names must exist before the first
+  request; a deploy that forgets it serves missing files.
+- **Media:** the same header (`public, max-age=31536000, immutable`), for the same reason: a new
+  picture is a new file name, so an old name never needs to change.
+- **HTML:** never cached — `Cache-Control: no-store` from Django already, and nginx must not add a
+  cache header of its own. A page depends on who is asking, so a proxy must not keep it.
+- **Compression:** `gzip on` for text types (HTML, CSS, JS, JSON, XML and SVG). Brotli is optional
+  and needs its own module.
+- **Cloudflare:** cache by file extension (CSS, JS, the image types, fonts) and not HTML. Its
+  "Cache Everything" rule must not be switched on for the site, because that would cache pages,
+  which the private-page audit of Slice 49 exists to prevent.

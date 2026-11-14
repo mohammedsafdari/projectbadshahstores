@@ -6,9 +6,11 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
+from django.db.models.functions import Upper
 
 from apps.catalog.validators import (
     validate_image_content,
@@ -132,6 +134,23 @@ class Product(TimeStampedModel, ArchivableModel):
 
     class Meta:
         ordering = ["name_en"]
+        # The search page's icontains rules become UPPER(column) LIKE UPPER(...)
+        # on PostgreSQL, so a plain column index would never be used. A trigram
+        # GIN index on the UPPER expression is what the planner can match (D90).
+        indexes = [
+            GinIndex(
+                OpClass(Upper("name_en"), name="gin_trgm_ops"),
+                name="product_name_en_trgm",
+            ),
+            GinIndex(
+                OpClass(Upper("name_hi"), name="gin_trgm_ops"),
+                name="product_name_hi_trgm",
+            ),
+            GinIndex(
+                OpClass(Upper("search_keywords"), name="gin_trgm_ops"),
+                name="product_keywords_trgm",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name_en

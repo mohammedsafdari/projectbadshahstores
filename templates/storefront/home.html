@@ -17,6 +17,7 @@
         alt="{{ banner.alt_text }}"
         {% if banner.width %}width="{{ banner.width }}" height="{{ banner.height }}"{% endif %}
         {% if forloop.first %}loading="eager"{% else %}loading="lazy"{% endif %}
+        decoding="async"
       >
       {% if banner.link_url %}</a>{% else %}</div>{% endif %}
     {% endfor %}

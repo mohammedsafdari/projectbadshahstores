@@ -106,6 +106,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Django needs this app installed to compile OpClass expressions into a
+    # valid index (the trigram indexes in catalog.Product.Meta). Without it a
+    # migration writes (UPPER(col) opclass) instead of (UPPER(col)) opclass.
+    "django.contrib.postgres",
     # Slice 4 app shells (all except accounts).
     "apps.core",
     "apps.catalog",

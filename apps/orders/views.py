@@ -29,7 +29,7 @@ from apps.cart.services import CartSummary, build_cart
 from apps.cart.stores import DbCartStore
 from apps.core.services import get_shop_settings
 from apps.credit.services import available_credit
-from apps.delivery.services import address_is_served, get_delivery_promise
+from apps.delivery.services import get_delivery_promise, served_pincodes
 from apps.inventory.reservations import ReservationShortfallError
 from apps.orders.forms import CancelOrderForm, CheckoutForm
 from apps.orders.invoice_pdf import invoice_pdf_response
@@ -122,13 +122,18 @@ def _cart_for(user: User) -> CartSummary:
 
 
 def _address_rows(user: User, selected: str) -> list[dict[str, object]]:
-    """One small dict per saved address, so the template only prints values."""
+    """One small dict per saved address, so the template only prints values.
+
+    The served pin codes are read once, so the page costs one query rather than
+    one per address (D90).
+    """
+    served = set(served_pincodes())
     rows: list[dict[str, object]] = []
     for address in list_addresses(user):
         rows.append(
             {
                 "address": address,
-                "is_served": address_is_served(address),
+                "is_served": address.pincode in served,
                 "selected": str(address.pk) == selected,
             }
         )
@@ -328,9 +333,16 @@ def _render_checkout(
     remainder_method: str = Order.PaymentMethod.COD,
     error: str | None = None,
     coupon_message: str = "",
+    summary: CartSummary | None = None,
+    cards: list[dict[str, object]] | None = None,
 ) -> HttpResponse:
-    """Render the checkout page with a fresh cart, address list and promise."""
-    summary = _cart_for(user)
+    """Render the checkout page with a fresh cart, address list and promise.
+
+    ``summary`` and ``cards`` let the caller hand in reads it has already done,
+    so the GET page builds the cart and reads the addresses once (D90).
+    """
+    if summary is None:
+        summary = _cart_for(user)
     # Every render judges the stored code again; a dead code is dropped here.
     coupon, coupon_code = _coupon_state(request, user, summary)
     if coupon is not None and not coupon.ok and error is None:
@@ -343,7 +355,7 @@ def _render_checkout(
         delivery_discount = Decimal("0.00")
     # The cart's fee is the fee before any coupon; the discounts come off here.
     grand_total = summary.grand_total - discount_total - delivery_discount
-    rows = _address_rows(user, selected_address)
+    rows = cards if cards is not None else _address_rows(user, selected_address)
     has_served_address = any(bool(row["is_served"]) for row in rows)
     cod_cap = get_shop_settings().cod_cap
     payment = _payment_state(user)
@@ -464,8 +476,13 @@ def _checkout_get(request: HttpRequest, user: User) -> HttpResponse:
         next_url = reverse("checkout")
         return redirect(f"{reverse('address_add')}?next={quote(next_url)}")
 
-    rows = _address_rows(user, "")
-    selected = _first_served_pk(rows)
+    cards = _address_rows(user, "")
+    selected = _first_served_pk(cards)
+    # Mark the chosen card in the list already built, so the page reads the
+    # addresses and the served pin codes once, not twice (D90).
+    for card in cards:
+        card_address = cast(Address, card["address"])
+        card["selected"] = str(card_address.pk) == selected
     form = CheckoutForm(initial={"address": int(selected) if selected else None})
     return _render_checkout(
         request,
@@ -475,6 +492,8 @@ def _checkout_get(request: HttpRequest, user: User) -> HttpResponse:
         selected_substitution=Order.SubstitutionPreference.CALL_ME,
         # Ticked by default whenever the customer has credit to use (D74).
         use_credit=True,
+        summary=summary,
+        cards=cards,
     )
 
 

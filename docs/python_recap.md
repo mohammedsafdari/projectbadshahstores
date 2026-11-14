@@ -519,3 +519,23 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
 - **`@dataclass(frozen=True)` as a small read-only row**: `LowStockRow` and `ExpiryRow` carry only the values a line
   of an email prints, so a test can build one without a database and the reader cannot change it
   (`apps/inventory/alerts.py`). .NET comparison: a positional `record` with `init`-only properties.
+
+## New in Slice 49
+- **An expression index puts a function into the index itself**: `GinIndex(OpClass(Upper("name_en"),
+  name="gin_trgm_ops"))` indexes `UPPER(name_en)` with the trigram operator class, which is the only
+  thing that can answer Django's `icontains` on PostgreSQL, because it compiles to
+  `UPPER(col) LIKE UPPER(%s)`. The operator class is what a **plain** column index cannot offer here.
+  Django compiles `OpClass` correctly only when `"django.contrib.postgres"` is in `INSTALLED_APPS`
+  (`apps/catalog/models.py`). .NET comparison: a computed or filtered index declared in the model
+  configuration, where the expression must match the query exactly.
+- **`CaptureQueriesContext(connection)` is a context manager that records the SQL a block runs**:
+  `with CaptureQueriesContext(connection) as queries:` then `len(queries.captured_queries)` is the
+  query count, which is how a budget of "the count plus two" is asserted
+  (`apps/storefront/tests/test_query_budgets.py`). .NET comparison: an EF Core
+  `DbCommandInterceptor` collecting commands, or MiniProfiler around one request.
+- **`never_cache` and `cache_control` are two different decorators**: `@never_cache` is the safe
+  default for a private page (it sends `no-store` and `private`);
+  `@cache_control(public=True, max_age=3600)` is the deliberate exception for a file that is the
+  same for everybody (`apps/storefront/views.py`). Both wrap the response on the way out, so the
+  decorator order matters only for which response they see. .NET comparison: setting the
+  `Cache-Control` header in middleware versus on one endpoint with `[ResponseCache]`.

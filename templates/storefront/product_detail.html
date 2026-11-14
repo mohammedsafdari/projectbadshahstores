@@ -30,12 +30,12 @@
   {% with main=detail.images|first %}
     {% if main %}
       {% if main.medium %}
-        <img class="w-full max-w-md" src="{{ main.medium.url }}" alt="{{ product.name_en }}" loading="eager">
+        <img class="w-full max-w-md" src="{{ main.medium.url }}" alt="{{ product.name_en }}" width="900" height="900" loading="eager" decoding="async">
       {% elif main.image %}
-        <img class="w-full max-w-md" src="{{ main.image.url }}" alt="{{ product.name_en }}" loading="eager">
+        <img class="w-full max-w-md" src="{{ main.image.url }}" alt="{{ product.name_en }}" width="900" height="900" loading="eager" decoding="async">
       {% endif %}
     {% else %}
-      <img class="w-full max-w-md" src="{% static "img/product-placeholder.svg" %}" alt="{{ product.name_en }}" loading="eager">
+      <img class="w-full max-w-md" src="{% static "img/product-placeholder.svg" %}" alt="{{ product.name_en }}" width="900" height="900" loading="eager" decoding="async">
     {% endif %}
   {% endwith %}
 </div>
@@ -46,9 +46,9 @@
       {% if forloop.first %}{% else %}
         <a href="{% if img.thumbnail %}{{ img.thumbnail.url }}{% else %}{{ img.image.url }}{% endif %}">
           {% if img.thumbnail %}
-            <img class="h-16 w-16 object-contain" src="{{ img.thumbnail.url }}" alt="{{ product.name_en }}" loading="lazy">
+            <img class="h-16 w-16 object-contain" src="{{ img.thumbnail.url }}" alt="{{ product.name_en }}" width="64" height="64" loading="lazy" decoding="async">
           {% else %}
-            <img class="h-16 w-16 object-contain" src="{{ img.image.url }}" alt="{{ product.name_en }}" loading="lazy">
+            <img class="h-16 w-16 object-contain" src="{{ img.image.url }}" alt="{{ product.name_en }}" width="64" height="64" loading="lazy" decoding="async">
           {% endif %}
         </a>
       {% endif %}
