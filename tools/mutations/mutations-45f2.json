@@ -1,0 +1,89 @@
+{
+  "tests": [
+    "apps/reports/tests/test_own_brand.py",
+    "apps/reports/tests/test_sales_reports.py",
+    "apps/reports/tests/test_consistency.py",
+    "apps/reports/tests/test_query_counts.py",
+    "apps/reports/tests/test_csv_output.py",
+    "apps/orders/tests/test_invoice_issue.py"
+  ],
+  "mutations": [
+    {
+      "id": "45f2-01-link-not-set",
+      "file": "apps/orders/invoices.py",
+      "old": "        \"order_item\": item,",
+      "new": "        \"order_item\": None,",
+      "note": "a product line is written with no order line behind it"
+    },
+    {
+      "id": "45f2-02-fee-line-linked",
+      "file": "apps/orders/invoices.py",
+      "old": "        \"order_item\": None,",
+      "new": "        \"order_item\": OrderItem.objects.first(),",
+      "note": "the delivery-fee line points at some order line"
+    },
+    {
+      "id": "45f2-03-has-cost-always-true",
+      "file": "apps/reports/queries.py",
+      "old": "        has_cost=row[\"order_item__variant__cost_price\"] is not None,",
+      "new": "        has_cost=True,",
+      "note": "every linked line counts as having a cost price"
+    },
+    {
+      "id": "45f2-04-has-cost-inverted",
+      "file": "apps/reports/queries.py",
+      "old": "        has_cost=row[\"order_item__variant__cost_price\"] is not None,",
+      "new": "        has_cost=row[\"order_item__variant__cost_price\"] is None,",
+      "note": "only the variants with a blank cost count as costed"
+    },
+    {
+      "id": "45f2-05-costed-revenue-all-lines",
+      "file": "apps/reports/queries.py",
+      "old": "        if not owner.has_cost:\n            continue",
+      "new": "        if False:\n            continue",
+      "note": "the costed revenue includes the lines with no cost"
+    },
+    {
+      "id": "45f2-06-unknown-is-costed",
+      "file": "apps/reports/queries.py",
+      "old": "            own_brand=False,\n            has_cost=False,",
+      "new": "            own_brand=False,\n            has_cost=True,",
+      "note": "the unknown owner counts as having a cost"
+    },
+    {
+      "id": "45f2-07-never-own-brand",
+      "file": "apps/reports/queries.py",
+      "old": "        own_brand=bool(row[\"order_item__variant__product__is_own_brand\"]),",
+      "new": "        own_brand=False,",
+      "note": "every product is reported as third-party"
+    },
+    {
+      "id": "45f2-08-unknown-guard-inverted",
+      "file": "apps/reports/queries.py",
+      "old": "    if brand is None:",
+      "new": "    if brand is not None:",
+      "note": "a linked line becomes unknown and an unlinked one is read"
+    },
+    {
+      "id": "45f2-09-brand-label-uses-category",
+      "file": "apps/reports/queries.py",
+      "old": "        label = owner.brand if key == SALES_BY_BRAND else owner.category",
+      "new": "        label = owner.category",
+      "note": "the brand section groups by category"
+    },
+    {
+      "id": "45f2-10-category-reads-brand",
+      "file": "apps/reports/queries.py",
+      "old": "        category=row[\"order_item__variant__product__category__name\"],",
+      "new": "        category=row[\"order_item__variant__product__brand__name\"],",
+      "note": "the category section shows the brand name"
+    },
+    {
+      "id": "45f2-11-costed-revenue-one-group",
+      "file": "apps/reports/queries.py",
+      "old": "        costed[owner.own_brand] += _dec(row[\"taxable_value\"])",
+      "new": "        costed[False] += _dec(row[\"taxable_value\"])",
+      "note": "the own-brand costed revenue is added to the third-party group"
+    }
+  ]
+}

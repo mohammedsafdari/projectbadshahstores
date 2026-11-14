@@ -318,70 +318,48 @@ class LineOwner:
     has_cost: bool
 
 
-def _owner_names(period: DateRange) -> dict[tuple[int, str, str], LineOwner]:
-    """Map (order id, frozen product name, HSN) to the product's brand and category.
+def _owner_of(row: dict[str, Any]) -> LineOwner:
+    """The brand, the category, the own-brand flag and the cost of one line.
 
-    The money of a line is frozen on the invoice, but the brand and the category
-    are not, so they come from the order line the invoice was built from. Two
-    packs of one product share the name and the HSN and therefore the same brand
-    and category, so whichever of them is picked the answer is the same. Whether
-    the variant has a cost price comes along in the same query (D85).
+    They come from the variant of the order line the invoice line links to
+    (D86), so two packs of one product (Atta 1 kg with a cost, Atta 5 kg with
+    none) each keep their own answer: the name and the HSN are the same, the
+    variant is not. A line with no link — the delivery-fee line, or an invoice
+    written before the link existed — keeps the unknown owner and counts as
+    having no cost, because guessing from a name is what let the wrong variant
+    through.
     """
-    rows = (
-        OrderItem.objects.filter(
-            order__invoice__isnull=False,
-            order__invoice__cancelled_at__isnull=True,
-            **_window("order__invoice__issued_at", period),
+    brand = row["order_item__variant__product__brand__name"]
+    if brand is None:
+        return LineOwner(
+            brand=UNKNOWN_GROUP,
+            category=UNKNOWN_GROUP,
+            own_brand=False,
+            has_cost=False,
         )
-        .order_by("pk")
-        .values_list(
-            "order_id",
-            "product_name",
-            "hsn_code",
-            "variant__product__brand__name",
-            "variant__product__category__name",
-            "variant__product__is_own_brand",
-            # The cost price itself, so a blank can be told apart from 0 (D85);
-            # ``isnull`` is a lookup, not a field that values_list can read.
-            "variant__cost_price",
-        )
-    )
-    owners: dict[tuple[int, str, str], LineOwner] = {}
-    for order_id, name, hsn, brand, category, own_brand, cost_price in rows:
-        # setdefault keeps the first (lowest pk) row and does nothing after it.
-        owners.setdefault(
-            (order_id, name, hsn),
-            LineOwner(
-                brand=brand,
-                category=category,
-                own_brand=bool(own_brand),
-                has_cost=cost_price is not None,
-            ),
-        )
-    return owners
-
-
-def _line_owner(
-    owners: dict[tuple[int, str, str], LineOwner],
-    row: dict[str, Any],
-) -> LineOwner:
-    key = (row["invoice__order_id"], row["description"], row["hsn_code"])
-    # A line no order line explains has no brand, no category and no known cost.
-    return owners.get(
-        key,
-        LineOwner(brand=UNKNOWN_GROUP, category=UNKNOWN_GROUP, own_brand=False, has_cost=False),
+    return LineOwner(
+        brand=brand,
+        category=row["order_item__variant__product__category__name"],
+        own_brand=bool(row["order_item__variant__product__is_own_brand"]),
+        # The cost price itself, so a blank can be told apart from 0 (D85).
+        has_cost=row["order_item__variant__cost_price"] is not None,
     )
 
 
 def _lines_with_owner(period: DateRange) -> list[dict[str, Any]]:
-    """One row per invoice line, with what is needed to add it up by owner."""
+    """One row per invoice line, with the product behind it and its four totals.
+
+    The join follows the invoice line's own order line (D86), which is one query
+    for the whole range: the owner is never looked up once per line.
+    """
     # dict() turns each typed row into a plain lookup table the loops below read.
     return [
         dict(row)
         for row in _lines_in_range(period).values(
-            "invoice__order_id",
-            "description",
-            "hsn_code",
+            "order_item__variant__product__brand__name",
+            "order_item__variant__product__category__name",
+            "order_item__variant__product__is_own_brand",
+            "order_item__variant__cost_price",
             "quantity",
             "taxable_value",
             "cgst",
@@ -405,14 +383,13 @@ def _row_totals(row: dict[str, Any]) -> MoneyTotals:
 def _totals_by_label(period: DateRange, key: str) -> dict[str, MoneyTotals]:
     """Add the invoice lines up by brand or by category.
 
-    The brand and the category are not stored on an invoice line, so the lines
-    are read once and added up here; the money still comes from the line, never
-    from a recomputed price.
+    The brand and the category are read through the line's own order line (D86),
+    in the same single query that reads the money, so the lines are added up
+    here; the money still comes from the line, never from a recomputed price.
     """
-    owners = _owner_names(period)
     totals: dict[str, MoneyTotals] = {}
     for row in _lines_with_owner(period):
-        owner = _line_owner(owners, row)
+        owner = _owner_of(row)
         label = owner.brand if key == SALES_BY_BRAND else owner.category
         line = _row_totals(row)
         totals[label] = _add(totals[label], line) if label in totals else line
@@ -421,10 +398,9 @@ def _totals_by_label(period: DateRange, key: str) -> dict[str, MoneyTotals]:
 
 def _totals_by_own_brand(period: DateRange) -> dict[bool, MoneyTotals]:
     """Add the invoice lines up by the own-brand flag of their product."""
-    owners = _owner_names(period)
     totals: dict[bool, MoneyTotals] = {}
     for row in _lines_with_owner(period):
-        own_brand = _line_owner(owners, row).own_brand
+        own_brand = _owner_of(row).own_brand
         line = _row_totals(row)
         totals[own_brand] = _add(totals[own_brand], line) if own_brand in totals else line
     return totals
@@ -594,10 +570,9 @@ def _costed_revenue_by_own_brand(period: DateRange) -> dict[bool, Decimal]:
     number of queries as before. A blank cost is never read as zero (D85): the
     revenue of such a line is reported on its own and is not part of the margin.
     """
-    owners = _owner_names(period)
     costed = {True: ZERO, False: ZERO}
     for row in _lines_with_owner(period):
-        owner = _line_owner(owners, row)
+        owner = _owner_of(row)
         if not owner.has_cost:
             continue
         costed[owner.own_brand] += _dec(row["taxable_value"])

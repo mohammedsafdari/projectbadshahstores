@@ -6,6 +6,14 @@ from decimal import Decimal
 
 import pytest
 
+from apps.catalog.models import Product, ProductVariant
+from apps.catalog.tests.factories import (
+    BrandFactory,
+    CategoryFactory,
+    ProductFactory,
+    ProductVariantFactory,
+)
+from apps.inventory.services import receive_stock
 from apps.orders.tests.staff_helpers import staff
 from apps.reports.queries import (
     OWN_BRAND_LABEL,
@@ -20,6 +28,41 @@ from apps.reports.tests.helpers import FIRST_DAY, LAST_DAY, make_variant, sold
 pytestmark = pytest.mark.django_db
 
 NOVEMBER = DateRange(FIRST_DAY, LAST_DAY)
+
+
+def _pack(product: Product, *, pack_size: str, cost: str | None) -> ProductVariant:
+    """One pack of an existing product, really in stock, with its own cost price."""
+    variant = ProductVariantFactory(
+        product=product,
+        unit=ProductVariant.Unit.PACKET,
+        pack_size=Decimal(pack_size),
+        is_sold_loose=False,
+        quantity_step=Decimal("1"),
+        hsn_code="1101",
+        gst_rate_percent=Decimal("5.00"),
+        mrp=Decimal("190.00"),
+        selling_price=Decimal("95.00"),
+        cost_price=None if cost is None else Decimal(cost),
+    )
+    receive_stock(variant=variant, quantity=Decimal("20.000"))
+    return variant
+
+
+def _one_product_two_packs(
+    first_cost: str | None,
+    second_cost: str | None,
+) -> tuple[ProductVariant, ProductVariant]:
+    """Two packs of ONE product: the same name and HSN, two different variants."""
+    product = ProductFactory(
+        name_en="Atta",
+        brand=BrandFactory(),
+        category=CategoryFactory(),
+        is_own_brand=True,
+    )
+    return (
+        _pack(product, pack_size="1.000", cost=first_cost),
+        _pack(product, pack_size="5.000", cost=second_cost),
+    )
 
 
 def test_the_own_brand_group_reads_its_revenue_and_cost() -> None:
@@ -171,10 +214,10 @@ def test_a_line_with_no_order_line_counts_as_uncosted() -> None:
     variant = make_variant(name="Haldi", price="95.00", cost="60.00", own_brand=True)
     _order, invoice = sold(lines=[(variant, "1")])
     line = invoice.lines.get(is_fee_line=False)
-    # A name the order never had: the line can no longer be matched to a product,
-    # so the fallback owner has no brand and, above all, no known cost.
-    line.description = "A name the order never had"
-    line.save(update_fields=["description"])
+    # An invoice written before the link existed (D86): there is no order line to
+    # read a brand, a category or a cost price from.
+    line.order_item = None
+    line.save(update_fields=["order_item"])
 
     report = own_brand_report(staff(), NOVEMBER)
 
@@ -219,6 +262,62 @@ def test_each_group_keeps_its_own_costed_and_uncosted_figures() -> None:
     assert report.third_party.uncosted_revenue == Decimal("0.00")
     assert report.own_brand.cost == Decimal("60.00")
     assert report.third_party.cost == Decimal("120.00")
+
+
+def test_two_packs_of_one_product_keep_their_own_cost() -> None:
+    costed, blank = _one_product_two_packs("60.00", None)
+    _order, invoice = sold(lines=[(costed, "1"), (blank, "2")])
+    costed_line = invoice.lines.get(order_item__variant=costed)
+    blank_line = invoice.lines.get(order_item__variant=blank)
+
+    report = own_brand_report(staff(), NOVEMBER)
+    group = report.own_brand
+
+    # The two lines carry the same name and HSN, which is why a name-keyed
+    # lookup gave them one answer; the variant behind each line is different.
+    assert costed_line.description == blank_line.description
+    assert costed_line.hsn_code == blank_line.hsn_code
+    assert group.costed_revenue == costed_line.taxable_value
+    assert group.uncosted_revenue == blank_line.taxable_value
+    assert group.revenue == costed_line.taxable_value + blank_line.taxable_value
+    # The cost query is per variant, so the margin must agree with it.
+    assert group.cost == Decimal("60.00")
+    assert group.margin == costed_line.taxable_value - Decimal("60.00")
+
+
+def test_the_blank_pack_created_first_keeps_the_cost_on_the_other_line() -> None:
+    blank, costed = _one_product_two_packs(None, "60.00")
+    _order, invoice = sold(lines=[(blank, "2"), (costed, "1")])
+    costed_line = invoice.lines.get(order_item__variant=costed)
+    blank_line = invoice.lines.get(order_item__variant=blank)
+
+    report = own_brand_report(staff(), NOVEMBER)
+    group = report.own_brand
+
+    # The blank variant is the lower pk now, so a lowest-pk lookup picks it.
+    assert blank.pk < costed.pk
+    assert group.costed_revenue == costed_line.taxable_value
+    assert group.uncosted_revenue == blank_line.taxable_value
+    assert group.cost == Decimal("60.00")
+    assert group.margin == costed_line.taxable_value - Decimal("60.00")
+
+
+def test_two_products_with_one_name_and_hsn_stay_in_their_own_group() -> None:
+    own = make_variant(name="Atta", price="95.00", hsn="1101", cost="60.00", own_brand=True)
+    third = make_variant(name="Atta", price="95.00", hsn="1101", cost="40.00", own_brand=False)
+    _order, invoice = sold(lines=[(own, "1"), (third, "2")])
+    own_line = invoice.lines.get(order_item__variant=own)
+    third_line = invoice.lines.get(order_item__variant=third)
+
+    report = own_brand_report(staff(), NOVEMBER)
+
+    # Same name and same HSN: only the order line tells the two products apart.
+    assert own_line.description == third_line.description
+    assert own_line.hsn_code == third_line.hsn_code
+    assert report.own_brand.revenue == own_line.taxable_value
+    assert report.third_party.revenue == third_line.taxable_value
+    assert report.own_brand.costed_revenue == own_line.taxable_value
+    assert report.third_party.costed_revenue == third_line.taxable_value
 
 
 def test_the_blank_cost_list_is_capped() -> None:

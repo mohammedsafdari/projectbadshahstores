@@ -533,6 +533,17 @@ class InvoiceLine(TimeStampedModel):
         on_delete=models.PROTECT,
         related_name="lines",
     )
+    # The order line this printed line was built from, so a report can reach the
+    # variant behind it (D86). Empty on the delivery-fee line, and on every
+    # invoice written before this link existed; such a line is reported as
+    # "unknown" rather than guessed from its name.
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoice_lines",
+    )
     description = models.CharField(max_length=200)
     # A fee line has no HSN code and no unit, so both may be blank.
     hsn_code = models.CharField(max_length=8, blank=True, default="")

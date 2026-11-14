@@ -389,3 +389,38 @@ def test_the_seller_state_code_comes_from_the_gstin() -> None:
 
     assert invoice.seller_state_code == SHOP_GSTIN[:2]
     assert invoice.seller_state == "Madhya Pradesh"
+
+
+def test_each_product_line_links_to_the_order_line_it_came_from() -> None:
+    order, invoice = sent_out_order()
+    items = list(OrderItem.objects.filter(order=order))
+    product_lines = list(invoice.lines.filter(is_fee_line=False))
+
+    assert len(product_lines) == len(items)
+    for line in product_lines:
+        assert line.order_item is not None
+        assert line.order_item in items
+        assert line.order_item.order_id == order.pk
+        assert line.order_item.product_name == line.description
+
+
+def test_two_lines_of_one_order_link_to_the_variant_of_each_line() -> None:
+    first = gst_variant(price="95.00")
+    second = gst_variant(price="20.00")
+
+    _order, invoice = sent_out_order(lines=[(first, "1"), (second, "2")])
+
+    links = set()
+    for line in invoice.lines.filter(is_fee_line=False):
+        assert line.order_item is not None
+        links.add(line.order_item.variant_id)
+    assert links == {first.pk, second.pk}
+
+
+def test_the_delivery_fee_line_has_no_order_line() -> None:
+    _order, invoice = sent_out_order()
+
+    fee = invoice.lines.get(is_fee_line=True)
+
+    # The fee is not a product, so nothing sold is behind it (D86).
+    assert fee.order_item is None

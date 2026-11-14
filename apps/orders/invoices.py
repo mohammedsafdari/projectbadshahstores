@@ -202,6 +202,8 @@ def _product_line(item: OrderItem, discount: Decimal) -> dict[str, Any]:
     gross = round_money(item.unit_price * item.quantity_fulfilled)
     breakdown = gst_breakdown(round_money(gross - discount), item.gst_rate_percent)
     return {
+        # The line a report reads the variant from (D86), never the money.
+        "order_item": item,
         "description": item.product_name,
         "hsn_code": item.hsn_code,
         "unit": item.unit,
@@ -225,6 +227,8 @@ def _fee_line(delivery_fee: Decimal, gst_rate_percent: Decimal) -> dict[str, Any
     """
     breakdown = gst_breakdown(delivery_fee, gst_rate_percent)
     return {
+        # The fee is not a product, so it has no order line behind it.
+        "order_item": None,
         "description": DELIVERY_FEE_DESCRIPTION,
         "hsn_code": "",
         "unit": "",
