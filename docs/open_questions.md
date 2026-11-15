@@ -106,8 +106,8 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 31
 - [ ] Per-line caps: 99 packets and 50 loose units per cart line — owner; low priority; ask again before launch; default in use: `MAX_PACKETS_PER_LINE = 99` and `MAX_LOOSE_PER_LINE = Decimal("50")` in `apps/cart/rules.py` (D60)
-- [ ] Guest cart lifetime: how long a guest cart should last before it is forgotten — owner; low priority; ask again before launch; default in use: Django's 14-day session age, unchanged (D60)
-- [ ] Deleting saved carts that nobody has touched for a long time — owner; low priority; ask again before launch; default in use: never delete; a clean-up job is needed before production (D60)
+- [x] Guest cart lifetime: how long a guest cart should last before it is forgotten — answered (Slice 53, 15 November 2026, D94): a guest cart lives inside its session and never in a table, so Django's 14-day session age stays unchanged, and the new session clean-up job deletes the expired rows (and every guest cart in them) at 03:50 every day — owner
+- [x] Deleting saved carts that nobody has touched for a long time — answered (Slice 53, 15 November 2026, D94): the `Cart` row is deleted at 03:45 every day when neither the cart nor any of its lines was changed for 30 days (a cart exactly 30 days old is kept), the lines go with the cart, and the customer and the variants stay — owner/developer
 
 ### Added in Slice 33
 - [ ] Does the shop deliver on its weekly off day and on holidays? — owner; ask again before launch; default in use: every day delivers, with no holiday or weekly-off rule (D62)
@@ -259,3 +259,8 @@ Revisit these if the shop says otherwise.
 - [x] The real catalogue — answered (15 November 2026): it will be completed later (Slice 55); the seed catalogue stays the only data until then
 - [x] When the paid providers are switched on — answered (15 November 2026): the paid ones (MSG91, the DLT registration, the live payment gateway) are activated only after the site is finished and tested in development; the free ones (Cloudflare, Brevo, Oracle staging) are set up earlier. The account tasks are still the owner's (D76, D88)
 - [ ] Alpine CSP build instead of `'unsafe-eval'` — owner/developer; low priority; after launch; default in use: the policy allows `'unsafe-eval'` because Alpine's standard build evaluates the expressions in `x-data` and `@click` (D93). The Alpine CSP build with its own `x-` attributes would remove it
+
+### Added in Slice 53 (the production stack, code half, D94)
+- [ ] Raise HSTS from one hour to a year once the site is proven — owner/deployment; after the Slice 55 soft launch; default in use: `SECURE_HSTS_SECONDS = 3600` in `prod.py`, raised by setting `SECURE_HSTS_SECONDS` in production's `.env`, with no `includeSubDomains` and no preload (D94)
+- [ ] The R2 media settings have not touched a real bucket yet: they are proved by the settings tests only, and the first real upload happens on staging in Slice 55 — owner/deployment; before the soft launch; default in use: `R2_BUCKET_NAME` empty, so the local media folder is used (D94)
+- [ ] Photo files are still left behind when an image row or a product is deleted: the two Slice 53 jobs delete expired sessions and stale saved carts, never the picture files, so the photo-file item above stays open — developer; before production; default in use: files are left in place (D94)

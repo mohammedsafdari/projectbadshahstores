@@ -1,0 +1,78 @@
+{
+  "tests": [
+    "apps/cart/tests/test_stale_cart_cleanup.py",
+    "apps/core/tests/test_clear_expired_sessions.py"
+  ],
+  "mutations": [
+    {
+      "id": "53-01-cutoff-not-strict",
+      "file": "apps/cart/tasks.py",
+      "old": "Cart.objects.filter(updated_at__lt=cutoff)",
+      "new": "Cart.objects.filter(updated_at__lte=cutoff)",
+      "note": "a cart exactly 30 days old is deleted instead of kept"
+    },
+    {
+      "id": "53-02-items-condition-dropped",
+      "file": "apps/cart/tasks.py",
+      "old": "        .exclude(items__updated_at__gte=cutoff)\n",
+      "new": "",
+      "note": "a cart whose line was changed yesterday is deleted because its own row is old"
+    },
+    {
+      "id": "53-03-retention-three-days",
+      "file": "apps/cart/tasks.py",
+      "old": "SAVED_CART_RETENTION_DAYS = 30",
+      "new": "SAVED_CART_RETENTION_DAYS = 3",
+      "note": "the window is three days instead of thirty"
+    },
+    {
+      "id": "53-04-returns-the-lines-too",
+      "file": "apps/cart/tasks.py",
+      "old": "    return details.get(Cart._meta.label, 0)",
+      "new": "    return _deleted",
+      "note": "the answer counts the deleted lines as well as the carts"
+    },
+    {
+      "id": "53-05-no-session-command",
+      "file": "apps/core/tasks.py",
+      "old": "    call_command(\"clearsessions\")",
+      "new": "    pass",
+      "note": "the session job runs nothing, so expired rows stay for ever"
+    },
+    {
+      "id": "53-06-created-at-instead-of-updated",
+      "file": "apps/cart/tasks.py",
+      "old": "Cart.objects.filter(updated_at__lt=cutoff)",
+      "new": "Cart.objects.filter(created_at__lt=cutoff)",
+      "note": "the cut-off reads the day the cart was made, not the day it was last touched"
+    },
+    {
+      "id": "53-07-old-line-instead-of-no-recent-line",
+      "file": "apps/cart/tasks.py",
+      "old": ".exclude(items__updated_at__gte=cutoff)",
+      "new": ".filter(items__updated_at__lt=cutoff)",
+      "note": "a cart is deleted only when it holds an old line, so an old empty cart is never cleaned"
+    },
+    {
+      "id": "53-08-deletes-every-cart",
+      "file": "apps/cart/tasks.py",
+      "old": "Cart.objects.filter(pk__in=stale_pks).delete()",
+      "new": "Cart.objects.all().delete()",
+      "note": "every saved cart is deleted, including the recent ones"
+    },
+    {
+      "id": "53-09-cutoff-in-the-future",
+      "file": "apps/cart/tasks.py",
+      "old": "    cutoff = timezone.now() - timedelta(days=SAVED_CART_RETENTION_DAYS)",
+      "new": "    cutoff = timezone.now() + timedelta(days=SAVED_CART_RETENTION_DAYS)",
+      "note": "the cut-off is in the future, so every cart counts as stale"
+    },
+    {
+      "id": "53-10-wrong-model-label",
+      "file": "apps/cart/tasks.py",
+      "old": "    return details.get(Cart._meta.label, 0)",
+      "new": "    return details.get(\"cart.CartItem\", 0)",
+      "note": "the answer is the number of deleted lines, not the carts"
+    }
+  ]
+}

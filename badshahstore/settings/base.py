@@ -228,6 +228,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.storefront.tasks.delete_old_search_terms",
         "schedule": crontab(hour=3, minute=30),
     },
+    # A saved cart nobody has touched for 30 days is deleted, its lines with it
+    # (D94). A line changed inside the window keeps its cart.
+    "delete-stale-saved-carts": {
+        "task": "apps.cart.tasks.delete_stale_saved_carts",
+        "schedule": crontab(hour=3, minute=45),
+    },
+    # Django's own clearsessions: the expired session rows go, and every guest
+    # cart kept inside them goes too (D94).
+    "clear-expired-sessions": {
+        "task": "apps.core.tasks.clear_expired_sessions",
+        "schedule": crontab(hour=3, minute=50),
+    },
 }
 
 
