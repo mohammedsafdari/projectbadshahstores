@@ -1,0 +1,158 @@
+{
+  "tests": [
+    "apps/core/tests/test_csp_middleware.py",
+    "apps/core/tests/test_csp_templates.py",
+    "apps/storefront/tests/test_sitemap_categories.py",
+    "apps/storefront/tests/test_sitemap_brands.py",
+    "apps/storefront/tests/test_query_budgets.py"
+  ],
+  "mutations": [
+    {
+      "id": "52-01-script-src-without-nonce",
+      "file": "apps/core/csp.py",
+      "old": "        f\"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' {PAYMENT_CHECKOUT_ORIGIN}\",",
+      "new": "        f\"script-src 'self' 'unsafe-eval' {PAYMENT_CHECKOUT_ORIGIN}\",",
+      "note": "the policy allows no inline script at all, so the gateway page's script never runs"
+    },
+    {
+      "id": "52-02-one-nonce-for-every-request",
+      "file": "apps/core/csp.py",
+      "old": "    return secrets.token_urlsafe(NONCE_BYTES)",
+      "new": "    return \"one-nonce-for-every-request\"",
+      "note": "the nonce is no longer random, so a page can predict it"
+    },
+    {
+      "id": "52-03-report-only-switch-inverted",
+      "file": "apps/core/csp.py",
+      "old": "        header = REPORT_ONLY_HEADER if settings.CSP_REPORT_ONLY else POLICY_HEADER",
+      "new": "        header = POLICY_HEADER if settings.CSP_REPORT_ONLY else REPORT_ONLY_HEADER",
+      "note": "the switch turns the real policy off instead of into a report-only one"
+    },
+    {
+      "id": "52-04-existing-header-overwritten",
+      "file": "apps/core/csp.py",
+      "old": "        if header not in response:",
+      "new": "        if True:",
+      "note": "another layer's own policy is replaced instead of kept"
+    },
+    {
+      "id": "52-05-frame-ancestors-self",
+      "file": "apps/core/csp.py",
+      "old": "        \"frame-ancestors 'none'\",",
+      "new": "        \"frame-ancestors 'self'\",",
+      "note": "a page of the shop may be framed again"
+    },
+    {
+      "id": "52-06-connect-src-without-the-api",
+      "file": "apps/core/csp.py",
+      "old": "        f\"connect-src 'self' {PAYMENT_API_ORIGIN} {PAYMENT_LOG_ORIGIN}\",",
+      "new": "        f\"connect-src 'self' {PAYMENT_LOG_ORIGIN}\",",
+      "note": "the gateway's API call is blocked, so a payment cannot be confirmed"
+    },
+    {
+      "id": "52-07-permissions-policy-without-camera",
+      "file": "apps/core/csp.py",
+      "old": "PERMISSIONS_POLICY = \"camera=(), microphone=(), geolocation=(), usb=()\"",
+      "new": "PERMISSIONS_POLICY = \"microphone=(), geolocation=(), usb=()\"",
+      "note": "a page may ask for the camera"
+    },
+    {
+      "id": "52-08-context-processor-empty",
+      "file": "apps/core/csp.py",
+      "old": "    return {\"csp_nonce\": request_nonce(request)}",
+      "new": "    return {\"csp_nonce\": \"\"}",
+      "note": "the template's nonce is empty while the header carries a real one"
+    },
+    {
+      "id": "52-09-gateway-script-without-nonce",
+      "file": "templates/payments/gateways/razorpay.html",
+      "old": "<script nonce=\"{{ csp_nonce }}\">",
+      "new": "<script>",
+      "note": "the one inline script the policy allows loses its nonce"
+    },
+    {
+      "id": "52-10-every-visible-category-listed",
+      "file": "apps/storefront/seo.py",
+      "old": "    listed_category_ids = visible_category_ids & categories_with_products",
+      "new": "    listed_category_ids = visible_category_ids",
+      "note": "an empty category reaches the sitemap again"
+    },
+    {
+      "id": "52-11-own-products-only",
+      "file": "apps/storefront/services.py",
+      "old": "            result.add(category.pk)\n            for ancestor in self.ancestors(category):\n                result.add(ancestor.pk)",
+      "new": "            result.add(category.pk)",
+      "note": "a parent of a stocked child looks empty and is dropped"
+    },
+    {
+      "id": "52-12-active-rule-inverted",
+      "file": "apps/storefront/services.py",
+      "old": "            if not category.is_active:\n                continue",
+      "new": "            if category.is_active:\n                continue",
+      "note": "an active category is treated as hidden"
+    },
+    {
+      "id": "52-13-app-css-renamed",
+      "file": "templates/base.html",
+      "old": "  <link rel=\"stylesheet\" href=\"{% static \"css/app.css\" %}\">",
+      "new": "  <link rel=\"stylesheet\" href=\"{% static \"css/app2.css\" %}\">",
+      "note": "the page links a stylesheet that is never built"
+    },
+    {
+      "id": "52-14-cdn-script-back",
+      "file": "templates/base.html",
+      "old": "  <link rel=\"stylesheet\" href=\"{% static \"css/app.css\" %}\">",
+      "new": "  <script src=\"https://cdn.tailwindcss.com/3.4.17\"></script>",
+      "note": "the third-party stylesheet script is back and the built file is not linked"
+    },
+    {
+      "id": "52-15-img-src-without-data",
+      "file": "apps/core/csp.py",
+      "old": "    img_sources = [\"'self'\", \"data:\", PAYMENT_IMAGE_ORIGIN, *extra_img_sources]",
+      "new": "    img_sources = [\"'self'\", PAYMENT_IMAGE_ORIGIN, *extra_img_sources]",
+      "note": "an inline data-URL picture is blocked"
+    },
+    {
+      "id": "52-16-object-src-self",
+      "file": "apps/core/csp.py",
+      "old": "        \"object-src 'none'\",",
+      "new": "        \"object-src 'self'\",",
+      "note": "a plugin object from the shop's own origin is allowed again"
+    },
+    {
+      "id": "52-17-style-src-without-unsafe-inline",
+      "file": "apps/core/csp.py",
+      "old": "        \"style-src 'self' 'unsafe-inline'\",",
+      "new": "        \"style-src 'self'\",",
+      "note": "the inline styles htmx and the gateway add are blocked"
+    },
+    {
+      "id": "52-18-manifest-src-any",
+      "file": "apps/core/csp.py",
+      "old": "        \"manifest-src 'self'\",",
+      "new": "        \"manifest-src *\",",
+      "note": "the web manifest may come from any host"
+    },
+    {
+      "id": "52-19-permissions-policy-only-camera",
+      "file": "apps/core/csp.py",
+      "old": "        response[\"Permissions-Policy\"] = PERMISSIONS_POLICY",
+      "new": "        response[\"Permissions-Policy\"] = \"camera=()\"",
+      "note": "the microphone and the location are no longer denied"
+    },
+    {
+      "id": "52-20-extra-img-sources-ignored",
+      "file": "apps/core/csp.py",
+      "old": "            response[header] = build_policy(nonce, list(settings.CSP_EXTRA_IMG_SOURCES))",
+      "new": "            response[header] = build_policy(nonce, [])",
+      "note": "the media host setting has no effect"
+    },
+    {
+      "id": "52-21-print-button-inline-onclick",
+      "file": "apps/orders/templates/staff/pick_list.html",
+      "old": "    <button type=\"button\" data-print-page class=",
+      "new": "    <button type=\"button\" onclick=\"window.print()\" class=",
+      "note": "an inline handler the policy blocks is back on a staff page"
+    }
+  ]
+}

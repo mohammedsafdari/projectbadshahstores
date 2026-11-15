@@ -26,40 +26,12 @@
   <link rel="icon" type="image/png" sizes="32x32" href="{% static "img/pwa/favicon-32.png" %}">
   {# The Devanagari faces, linked through {% static %} so the production manifest storage hashes their names inside the stylesheet (D92). #}
   <link rel="stylesheet" href="{% static "css/fonts.css" %}">
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <script>
-    {# Phase 1 placeholder: Tailwind is loaded from the pinned CDN for development. A Tailwind build step is required before launch; the CDN must be removed then. Brand colours are defined in one place here so they can be changed later. #}
-    tailwind.config = {
-      theme: {
-        extend: {
-          // Tailwind's own sans stack stays first, so Latin text is unchanged;
-          // the Devanagari face at the end draws Hindi (D92).
-          fontFamily: {
-            sans: [
-              "ui-sans-serif", "system-ui", "sans-serif",
-              '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"',
-              '"Noto Color Emoji"', '"Noto Sans Devanagari"',
-            ],
-          },
-          colors: {
-            brand: {
-              50: "#fef7ed",
-              100: "#fdebd0",
-              500: "#ea580c",
-              600: "#c2410c",
-              700: "#9a3412",
-            },
-          },
-        },
-      },
-    };
-  </script>
+  {# The shop's own stylesheet, built from static/src/tailwind.css by the Tailwind CLI (D93). The brand colours and the Devanagari stack live in tailwind.config.js. #}
+  <link rel="stylesheet" href="{% static "css/app.css" %}">
   <script defer src="{% static "vendor/htmx/htmx-2.0.4.min.js" %}"></script>
   <script defer src="{% static "vendor/alpine/alpine-3.14.8.min.js" %}"></script>
   {# Registers the service worker after the page has loaded; the address is on the tag (D91). #}
   <script defer src="{% static "js/pwa-register.js" %}" data-sw-url="{% url "pwa_service_worker" %}"></script>
-  {# x-cloak keeps the suggestion panel hidden until Alpine has loaded. #}
-  <style>[x-cloak] { display: none !important; }</style>
   {# Every JSON-LD block is escaped by apps/storefront/seo.py, so |safe cannot let a name close the script tag (D87). #}
   {% block head_json_ld %}{% for data_block in json_ld_blocks %}
   <script type="application/ld+json">{{ data_block|safe }}</script>{% endfor %}

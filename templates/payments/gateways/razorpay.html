@@ -14,7 +14,8 @@
 </a>
 
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script>
+{# The nonce is the one in this page's own policy header (D93): the policy allows no other inline script. #}
+<script nonce="{{ csp_nonce }}">
   (function () {
     var box = document.querySelector("[data-razorpay]");
     if (!box) { return; }

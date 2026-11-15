@@ -51,6 +51,20 @@ RUN uv sync --frozen --no-install-project \
     $( [ "$INSTALL_DEV_GROUP" = "1" ] && echo "--group dev" )
 
 # ---------------------------------------------------------------------------
+# The Tailwind CLI (D93)
+# ---------------------------------------------------------------------------
+# The standalone CLI, pinned by version and by checksum, so the build can never
+# download a different file. x64 only: the development PC and the VPS are both
+# x64. The arm64 file's checksum is
+# 69b1378b8133192d7d2feb12a116fa12d035594f58db3eff215879e4ad8cf39b.
+# This image does not copy the source, so the production image that runs the
+# build is Slice 53; the dev compose service uses this copy.
+ADD --checksum=sha256:7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4 \
+    https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64 \
+    /usr/local/bin/tailwindcss
+RUN chmod 755 /usr/local/bin/tailwindcss
+
+# ---------------------------------------------------------------------------
 # Non-root runtime
 # ---------------------------------------------------------------------------
 RUN useradd --system --create-home --home-dir /home/app app && \

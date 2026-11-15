@@ -7,10 +7,16 @@ from pathlib import Path
 from django.conf import settings
 
 # Everything else in apps/ and templates/ says "the gateway" instead.
+# Slice 52 (D93) added the browser hosts of the gateway to the
+# Content-Security-Policy, so its builder and the two tests that pin the header
+# name it too. No other file may.
 ALLOWED = {
     "apps/payments/razorpay_gateway.py",
     "apps/payments/gateways.py",
     "templates/payments/gateways/razorpay.html",
+    "apps/core/csp.py",
+    "apps/core/tests/test_csp_middleware.py",
+    "apps/core/tests/test_csp_templates.py",
 }
 
 

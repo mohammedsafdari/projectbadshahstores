@@ -144,24 +144,38 @@ def website_json_ld(request: HttpRequest, shop_name: str) -> str:
 def sitemap_paths() -> list[str]:
     """Every public address, home first, then categories, brands and products.
 
-    A category is listed only when it and all its ancestors are active, a brand
-    only when it is active and has a product the listing pages show, and a
-    product only when it passes that same rule, so a hidden row can never reach
-    the sitemap.
+    A category is listed only when it and all its ancestors are active **and**
+    the category or a category below it holds at least one product the listing
+    pages show, so a category page with nothing on it never reaches a search
+    engine (D93 changes D90 here). A brand is listed only when it is active and
+    has a product the listing pages show, and a product only when it passes that
+    same rule, so a hidden row can never reach the sitemap.
     """
     tree = CategoryTree()
     paths = [reverse("home")]
+    # One product query answers the product list and the categories that hold a
+    # product, so the sitemap costs the same however many categories there are.
+    # Iterating a QuerySet of two columns gives one (category_id, slug) pair per
+    # row; unpacking it in the comprehension below is the Python `for a, b in`.
+    products = visible_products(tree=tree, sort="name")
+    product_rows = list(products.values_list("category_id", "slug"))
+    # A category page lists the products of its own category and of every
+    # category below it, so the parent of a stocked child is a real page.
+    categories_with_products = tree.ids_holding_products(
+        {category_id for category_id, _slug in product_rows}
+    )
     visible_category_ids = tree.visible_ids()
+    # Set intersection: the categories that are both visible and not empty.
+    listed_category_ids = visible_category_ids & categories_with_products
     category_slugs = (
-        Category.objects.filter(pk__in=visible_category_ids)
+        Category.objects.filter(pk__in=listed_category_ids)
         .order_by("name")
         .values_list("slug", flat=True)
     )
     for slug in category_slugs:
         paths.append(reverse("category_detail", args=[slug]))
-    # One product query feeds both the brand list and the product list, so the
-    # sitemap costs the same however many brands there are (D90).
-    products = visible_products(tree=tree, sort="name")
+    # The same product query feeds the brand list, so the sitemap costs the same
+    # however many brands there are (D90).
     # A brand page is public only when the brand is active AND it has at least
     # one product the listing pages show. distinct() keeps one id per brand, so
     # a brand with fifty products still adds one path.
@@ -173,8 +187,9 @@ def sitemap_paths() -> list[str]:
     )
     for slug in brand_slugs:
         paths.append(reverse("brand_detail", args=[slug]))
-    product_slugs = products.values_list("slug", flat=True)
-    for slug in product_slugs:
+    # The slugs come from the rows read above, in the same name order, so no
+    # second product query is made.
+    for _category_id, slug in product_rows:
         paths.append(reverse("product_detail", args=[slug]))
     return paths
 

@@ -1,11 +1,12 @@
-{% load i18n reports_nav %}
+{% load i18n reports_nav static %}
 <!doctype html>
 <html lang="en-IN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{% translate "Staff" %}{% endblock title %} — Badshah Store</title>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  {# The same built stylesheet the shop pages use (D93); the CDN is gone. #}
+  <link rel="stylesheet" href="{% static "css/app.css" %}">
   {% block head_extra %}{% endblock head_extra %}
   <style>
     @media print {
@@ -53,5 +54,7 @@
   <main class="mx-auto max-w-3xl px-3 py-4">
     {% block content %}{% endblock content %}
   </main>
+  {# The two behaviours that used to be inline attributes: the policy forbids them (D93). #}
+  <script defer src="{% static "js/staff.js" %}"></script>
 </body>
 </html>

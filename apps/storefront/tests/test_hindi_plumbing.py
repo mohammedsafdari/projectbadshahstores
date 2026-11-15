@@ -177,7 +177,9 @@ def test_the_font_stylesheet_names_both_weights_and_the_devanagari_range() -> No
 
 
 def test_the_sans_font_stack_ends_with_noto_sans_devanagari() -> None:
-    source = (Path(settings.BASE_DIR) / "templates" / "base.html").read_text(encoding="utf-8")
+    # The stack moved out of base.html into the Tailwind config in Slice 52
+    # (D93): the CDN is gone and the CLI reads it from there.
+    source = (Path(settings.BASE_DIR) / "tailwind.config.js").read_text(encoding="utf-8")
 
     start = source.index("sans: [")
     block = source[start : source.index("]", start)]

@@ -106,3 +106,23 @@ is a new address.
 - **`collectstatic` carries the new files:** the five icons in `static/img/pwa/` and
   `static/js/pwa-register.js` are static files like any other, so the deploy step of every release
   must copy them, and the hashed names mean the manifest and the page must be rebuilt together.
+
+## 7. The CSS build in a deploy
+
+The stylesheet every page links is built, never committed (D93). `static/css/app.css` comes from
+`static/src/tailwind.css` and `tailwind.config.js` through the pinned standalone Tailwind CLI, and
+production uses `ManifestStaticFilesStorage`, so the file must exist before `collectstatic` reads
+it: the hash in the name is taken from the built bytes.
+
+The order of every deploy is therefore:
+
+1. **Build the CSS:** `tailwindcss -c tailwind.config.js -i static/src/tailwind.css -o static/css/app.css --minify`
+   (inside the image, which carries the CLI; Slice 53 writes the production image and the script).
+2. **`collectstatic`:** copies `static/css/app.css` and everything else into `STATIC_ROOT` and writes
+   the manifest with the hashed names, so `app.<hash>.css` is the name the page asks for.
+3. **Restart:** the running containers pick up the new files and the new manifest.
+
+A deploy that skips step 1 fails at the first page render rather than serving an old stylesheet: the
+manifest storage cannot find a file to hash for a name that was never built, and every page links
+that one name. A deploy that skips step 2 serves 404s for every static file. Neither is recoverable
+by a browser cache, so both belong in the deploy script itself and not in a checklist.

@@ -98,6 +98,22 @@ services:
     environment:
       <<: *common-env
 
+  # Builds static/css/app.css while you work (D93). The image already carries the
+  # Tailwind CLI. --poll because file events do not cross from Windows into the
+  # container. It needs no environment, no database and no depends_on.
+  tailwind:
+    image: badshahstore-app
+    container_name: badshahstore-tailwind
+    restart: unless-stopped
+    # The CLI's watch mode stops as soon as its standard input closes (exit code
+    # 0), which is what a detached container gives it, so it needs a terminal.
+    tty: true
+    command: >
+      tailwindcss -c tailwind.config.js -i static/src/tailwind.css
+      -o static/css/app.css --watch --poll
+    volumes:
+      - .:/app
+
   worker:
     image: badshahstore-app
     container_name: badshahstore-worker

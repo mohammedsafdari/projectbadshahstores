@@ -21,8 +21,8 @@
         {% translate "Mode" %}: {{ form.mode.value }} ·
         {% translate "Date" %}: {{ form.entry_date.value }}
       </p>
-      <form method="post" action="{{ action_url }}" class="mt-3"
-            onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+      {# data-submit-once is handled by static/js/staff.js: the policy forbids an inline onsubmit (D93). #}
+      <form method="post" action="{{ action_url }}" class="mt-3" data-submit-once>
         {% csrf_token %}
         <input type="hidden" name="amount" value="{{ form.amount.value }}">
         <input type="hidden" name="mode" value="{{ form.mode.value }}">

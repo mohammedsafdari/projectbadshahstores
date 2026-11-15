@@ -86,6 +86,23 @@ class CategoryTree:
                 result.add(category.pk)
         return result
 
+    def ids_holding_products(self, category_ids: Iterable[int]) -> set[int]:
+        """Every category that holds a product itself or anywhere below it.
+
+        ``category_ids`` are the categories the products actually sit in, so a
+        parent counts when only a child holds something. The walk up the parents
+        reuses ``ancestors``, which stops on a cycle (D50).
+        """
+        result: set[int] = set()
+        for category_id in category_ids:
+            category = self._by_id.get(category_id)
+            if category is None:
+                continue
+            result.add(category.pk)
+            for ancestor in self.ancestors(category):
+                result.add(ancestor.pk)
+        return result
+
     def descendant_ids(self, category: Category) -> set[int]:
         result: set[int] = set()
         visited: set[int] = set()

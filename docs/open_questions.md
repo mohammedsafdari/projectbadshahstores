@@ -206,13 +206,13 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [x] PWA — closed (Slice 50, 15 November 2026, D91): the manifest, the service worker, the offline page, the head tags and the register script are live, and the worker stores the offline page and static files only, never a page.
 - [ ] How the payment return behaves inside the installed standalone window (Razorpay's return page, the back button and the session) — owner; test on a real phone and ask again at the Phase 7 soft launch; default in use: `standalone`, with `minimal-ui` as the fallback (D91)
 - [ ] Replace the five placeholder icons in `static/img/pwa/` with the real logo under the same file names — owner; before launch; default in use: the letter "B" on orange, and each icon stays under the 100 KiB the icon test allows, a guard against a huge file and not a size target (D91, raised in 50f1)
-- [ ] The Content-Security-Policy arrives in Phase 7 and needs `worker-src 'self'`, `manifest-src 'self'` and `font-src 'self'` for the two bundled Devanagari faces — developer; Phase 7 (D91, D92)
+- [x] The Content-Security-Policy arrives in Phase 7 and needs `worker-src 'self'`, `manifest-src 'self'` and `font-src 'self'` for the two bundled Devanagari faces — closed (Slice 52, 15 November 2026, D93): all three directives are in the policy, which every response now carries
 - [ ] Full Hindi i18n content: the scaffolding is done (Slice 51, 15 November 2026, D92 — the switch, the cookie, the middleware, the header form and the Hindi product name), and no string is translated yet, so the content is still open; `docs/hindi.md` has the order — developer/owner; before `HINDI_ENABLED` is switched on in production
 - [ ] Pan-India shipping for own-brand products — later business phase (Phase 8 in PROJECT_INSTRUCTIONS.md, not the current catalogue and inventory phase)
 - [ ] Subscriptions / monthly basket — deferred
 - [ ] Loyalty program — deferred
 - [ ] FastAPI AI service (semantic search, WhatsApp assistant, demand forecasting) — deferred
-- [ ] Tailwind build step before launch — deferred debt, recorded in decisions
+- [x] Tailwind build step before launch — closed (Slice 52, 15 November 2026, D93): the pinned CDN is gone and every page links `static/css/app.css`, built by the standalone Tailwind CLI v3.4.17 from `static/src/tailwind.css` and `tailwind.config.js`; the dev compose service watches it and CI builds and checks it on every push
 
 ## How to use this file
 - Items with `[TO BE FILLED: ...]` are placeholders in the docs, not guesses.
@@ -245,10 +245,17 @@ Revisit these if the shop says otherwise.
 - [ ] Search words kept 180 days: ask again before Phase 7 — owner; before Phase 7; default in use: `RETENTION_DAYS = 180`, then the row is deleted (D89)
 
 ### Added in Slice 49 (performance, D90)
-- [ ] Should the sitemap also skip categories with no visible products? — owner; ask again before Phase 7; default in use: no, a category is listed whenever it and all its ancestors are active (D90)
-- [ ] Measure Lighthouse (and the largest paint cost of the Tailwind CDN) — owner/developer; ask again before Phase 7, after the Tailwind build replaces the CDN; default in use: no number is recorded yet (D90)
+- [x] Should the sitemap also skip categories with no visible products? — closed (Slice 52, 15 November 2026, D93): yes. A category is listed only when it and all its ancestors are active **and** the category or a category below it holds at least one product the listing pages show, so an empty category page no longer reaches a search engine
+- [ ] Measure Lighthouse — measure on staging after Slice 53, with the procedure in `docs/lighthouse.md` (Chrome DevTools, Lighthouse, mobile, a private window, the staging address; home, a category, a product, search results and the cart); the first run is the baseline and there is no target yet (D90, D93)
 
 ### Missing before Phase 7 (checked at Slice 51, D92)
 - [ ] Run the tests in parallel with pytest-xdist — developer; only as its own slice if the owner asks; default in use: the suite runs serially, one test process (recorded at Phase 6 close)
 - [ ] Packing that weighs again and fulfils part of a line — developer; after Phase 6 and not a launch blocker; default in use: a line is packed whole and the send-out refuses when the on-hand is short
 - [ ] The billing-software handoff (route B in D63) — developer/owner; after Phase 6; default in use: the website ledger is primary and the billing export is a one-way import
+
+### Added in Slice 52 (the Phase 7 kick-off, D93)
+- [x] VPS size to start with — answered (15 November 2026): 1 vCPU / 2 GB, with 2 vCPU / 4 GB only if the memory test on the real stack says so (D76)
+- [x] FSSAI number and the shop WhatsApp number — answered (15 November 2026): both are already in the shop settings. They must be **filled in the production shop settings before launch**, because a blank value shows nothing (D52, D70)
+- [x] The real catalogue — answered (15 November 2026): it will be completed later (Slice 55); the seed catalogue stays the only data until then
+- [x] When the paid providers are switched on — answered (15 November 2026): the paid ones (MSG91, the DLT registration, the live payment gateway) are activated only after the site is finished and tested in development; the free ones (Cloudflare, Brevo, Oracle staging) are set up earlier. The account tasks are still the owner's (D76, D88)
+- [ ] Alpine CSP build instead of `'unsafe-eval'` — owner/developer; low priority; after launch; default in use: the policy allows `'unsafe-eval'` because Alpine's standard build evaluates the expressions in `x-data` and `@click` (D93). The Alpine CSP build with its own `x-` attributes would remove it

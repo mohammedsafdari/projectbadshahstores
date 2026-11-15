@@ -48,5 +48,17 @@ jobs:
         run: uv run ruff format --check .
       - name: Mypy
         run: uv run mypy .
+      # The stylesheet every page links is built, never committed (D93), so CI
+      # builds it with the same pinned CLI and checks the result is real.
+      - name: Tailwind CSS build
+        run: |
+          curl -sSLo /tmp/tailwindcss \
+            https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64
+          echo "7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4  /tmp/tailwindcss" | sha256sum -c -
+          chmod +x /tmp/tailwindcss
+          /tmp/tailwindcss -c tailwind.config.js -i static/src/tailwind.css -o static/css/app.css --minify
+          test -s static/css/app.css
+          grep -q '\.bg-brand-500' static/css/app.css
+          grep -q 'x-cloak' static/css/app.css
       - name: Tests
         run: uv run pytest

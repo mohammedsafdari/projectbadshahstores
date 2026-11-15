@@ -1,0 +1,13 @@
+/*
+ * The Tailwind source file (D93).
+ *
+ * The CLI turns this into static/css/app.css, which no page ever edits and
+ * which is never committed. Everything below is plain CSS: the three
+ * directives pull in Tailwind's own layers, and the last rule is the one the
+ * page needs before Alpine has loaded.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+[x-cloak] { display: none !important; }

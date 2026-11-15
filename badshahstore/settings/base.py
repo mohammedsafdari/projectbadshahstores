@@ -129,6 +129,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # A fresh nonce for every request and the Content-Security-Policy on every
+    # response (D93). Right after SecurityMiddleware so no other middleware can
+    # build a response before the nonce exists.
+    "apps.core.csp.ContentSecurityPolicyMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     # The shop's language choice: Django's own cookie and header rule, except
     # that the staff and admin pages always stay English (D92). It reads the
@@ -158,6 +162,9 @@ TEMPLATES = [
                 # Whether the Hindi switcher shows, and whether the page is
                 # already Hindi. It reads no database row (D92).
                 "apps.storefront.context_processors.language_switch",
+                # The request's Content-Security-Policy nonce, for the one
+                # inline script that needs it (D93).
+                "apps.core.csp.csp_nonce",
             ],
         },
     },
@@ -236,6 +243,13 @@ CSRF_COOKIE_SECURE = env("CSRF_COOKIE_SECURE", default=True)
 if env("SECURE_PROXY_SSL_HEADER", default=()):
     SECURE_PROXY_SSL_HEADER = env("SECURE_PROXY_SSL_HEADER")
     USE_X_FORWARDED_HOST = env("USE_X_FORWARDED_HOST", default=True)
+
+# The Content-Security-Policy (D93). It is on in development, in the tests and
+# in production; the switch sends the same policy under the Report-Only header
+# name, which a browser reports but does not enforce. Extra image hosts go into
+# img-src only (Slice 53 puts the R2 media host here).
+CSP_REPORT_ONLY = env.bool("CSP_REPORT_ONLY", default=False)
+CSP_EXTRA_IMG_SOURCES = _clean_host_list(env("CSP_EXTRA_IMG_SOURCES", default=[]))
 
 
 # ---------------------------------------------------------------------------

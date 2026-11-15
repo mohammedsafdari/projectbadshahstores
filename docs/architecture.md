@@ -191,7 +191,7 @@ The "Import CSV" page on the variant list uploads a file, parses it (`csv_import
 
 - Server-rendered Django templates + HTMX + Alpine.js with Tailwind CSS.
 - Mobile-first, accessible, fast on slow networks: lazy-load images, small JS payload, responsive images in WebP. Target Lighthouse performance >= 85 on mobile.
-- Phase 1 uses Tailwind via pinned CDN only. A build step for Tailwind is needed before launch; recorded in decisions.
+- Tailwind is built, not fetched: the standalone CLI v3.4.17 turns `static/src/tailwind.css` and `tailwind.config.js` into `static/css/app.css`, which is committed to no repository and built on every deploy (Slice 52; D93).
 - HTMX and Alpine.js vendored into `static/` rather than loaded from a CDN.
 - i18n scaffolding from the start using Django's translation framework; Hindi added later.
 

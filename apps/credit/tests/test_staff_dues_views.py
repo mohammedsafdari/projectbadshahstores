@@ -221,5 +221,8 @@ def test_confirm_step_disables_the_button_on_submit() -> None:
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert 'onsubmit="this.querySelector' in html
-    assert "disabled = true" in html
+    # Slice 52 (D93) moved the behaviour out of an inline onsubmit, which the
+    # Content-Security-Policy blocks, into static/js/staff.js.
+    assert "data-submit-once" in html
+    assert 'src="/static/js/staff.js"' in html
+    assert "onsubmit=" not in html
