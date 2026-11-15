@@ -539,3 +539,24 @@ so one tuple can hold either a capability or a Django permission name (`apps/inv
   same for everybody (`apps/storefront/views.py`). Both wrap the response on the way out, so the
   decorator order matters only for which response they see. .NET comparison: setting the
   `Cache-Control` header in middleware versus on one endpoint with `[ResponseCache]`.
+
+## New in Slice 50
+- **`json.dumps` is the safe way to put a value inside JavaScript**: `json.dumps(value)` returns
+  the quotes as well as the text and escapes the quotes and backslashes inside it, so
+  `pwa.js_literal("badshah-")` gives `"badshah-"` and the template prints it with `|safe`
+  (`apps/storefront/pwa.py`, `templates/pwa/sw.js`). .NET comparison: `JsonSerializer.Serialize`
+  or `JsonConvert.ToString`, which is what a Razor view would use instead of hand-quoting.
+- **`"[" + ", ".join(items) + "]"` builds a JavaScript array from a Python list**: a generator
+  expression inside `join` needs no brackets of its own, so `js_array(pwa.NEVER_INTERCEPT_PREFIXES)`
+  renders `["/admin/", "/staff/", "/payments/"]` (`apps/storefront/pwa.py`). .NET comparison:
+  `string.Join(", ", items)` wrapped in brackets.
+- **`enumerate` gives the position and the value together**: `for position, character in
+  enumerate(phone.strip()):` is why only the first character may become the `+` of a `tel:` address
+  (`apps/storefront/pwa.py`). .NET comparison: a `for` loop with an index variable, or `Select((x, i) =>`.
+- **`require_GET` turns every other method into a 405 by itself**: `@require_GET` on the three new
+  views means a POST never reaches the body (`apps/storefront/pwa_views.py`). .NET comparison:
+  `[HttpGet]` on an action, except that Django answers 405 rather than routing elsewhere.
+- **`monkeypatch.setattr(module, "NAME", value)` changes a module's constant for one test**: the
+  view reads `pwa.CACHE_VERSION` at request time, so the cache names follow the patched value and
+  the worker's version rule is testable without editing the file (`test_pwa_service_worker.py`).
+  .NET comparison: swapping a static readonly field through reflection in a unit test.

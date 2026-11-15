@@ -1,0 +1,199 @@
+{
+  "tests": [
+    "apps/storefront/tests/test_pwa_manifest.py",
+    "apps/storefront/tests/test_pwa_service_worker.py",
+    "apps/storefront/tests/test_pwa_offline.py",
+    "apps/storefront/tests/test_pwa_head_tags.py"
+  ],
+  "mutations": [
+    {
+      "id": "50-01-short-name-limit-13",
+      "file": "apps/storefront/pwa.py",
+      "old": "SHORT_NAME_LIMIT = 12",
+      "new": "SHORT_NAME_LIMIT = 13",
+      "note": "a 13-character name keeps the whole name on the home screen"
+    },
+    {
+      "id": "50-02-short-name-returns-whole-name",
+      "file": "apps/storefront/pwa.py",
+      "old": "    return name.split()[0]",
+      "new": "    return name",
+      "note": "the first-word rule never fires"
+    },
+    {
+      "id": "50-03-fallback-name-changed",
+      "file": "apps/storefront/pwa.py",
+      "old": "FALLBACK_SHOP_NAME = \"Badshah Store\"",
+      "new": "FALLBACK_SHOP_NAME = \"Badshah\"",
+      "note": "a blank shop name shows a different name"
+    },
+    {
+      "id": "50-04-display-browser",
+      "file": "apps/storefront/pwa.py",
+      "old": "        \"display\": \"standalone\",",
+      "new": "        \"display\": \"browser\",",
+      "note": "the installed window gets an address bar again"
+    },
+    {
+      "id": "50-05-maskable-purpose-any",
+      "file": "apps/storefront/pwa.py",
+      "old": "    (\"img/pwa/icon-512-maskable.png\", \"512x512\", \"maskable\"),",
+      "new": "    (\"img/pwa/icon-512-maskable.png\", \"512x512\", \"any\"),",
+      "note": "the phone crops the maskable icon anyway"
+    },
+    {
+      "id": "50-06-never-intercept-drops-payments",
+      "file": "apps/storefront/pwa.py",
+      "old": "NEVER_INTERCEPT_PREFIXES = (\"/admin/\", \"/staff/\", \"/payments/\")",
+      "new": "NEVER_INTERCEPT_PREFIXES = (\"/admin/\", \"/staff/\")",
+      "note": "a payment page reaches the worker's navigation branch"
+    },
+    {
+      "id": "50-07-start-url-not-root",
+      "file": "apps/storefront/pwa.py",
+      "old": "        \"start_url\": \"/\",",
+      "new": "        \"start_url\": \"/home\",",
+      "note": "the installed app opens an address that does not exist"
+    },
+    {
+      "id": "50-08-manifest-lang-en-us",
+      "file": "apps/storefront/pwa.py",
+      "old": "MANIFEST_LANG = \"en-IN\"",
+      "new": "MANIFEST_LANG = \"en-US\"",
+      "note": "the manifest declares the wrong language"
+    },
+    {
+      "id": "50-09-cache-prefix-changed",
+      "file": "apps/storefront/pwa.py",
+      "old": "CACHE_PREFIX = \"badshah-\"",
+      "new": "CACHE_PREFIX = \"badshahstore-\"",
+      "note": "the cache names stop matching the agreed prefix"
+    },
+    {
+      "id": "50-10-phone-cleaner-keeps-spaces",
+      "file": "apps/storefront/pwa.py",
+      "old": "        is_digit = character in DIGITS",
+      "new": "        is_digit = character in DIGITS or character == \" \"",
+      "note": "the tel: address keeps the spaces the owner typed"
+    },
+    {
+      "id": "50-11-phone-plus-not-first",
+      "file": "apps/storefront/pwa.py",
+      "old": "        is_leading_plus = character == \"+\" and position == 0",
+      "new": "        is_leading_plus = character == \"+\" and position == 1",
+      "note": "the leading plus is dropped, so the country code is read as a local number"
+    },
+    {
+      "id": "50-12-sw-view-public",
+      "file": "apps/storefront/pwa_views.py",
+      "old": "@require_GET\n@cache_control(no_cache=True)\ndef pwa_service_worker(",
+      "new": "@require_GET\n@cache_control(public=True, max_age=3600)\ndef pwa_service_worker(",
+      "note": "a proxy may keep the worker for an hour"
+    },
+    {
+      "id": "50-13-offline-view-public",
+      "file": "apps/storefront/pwa_views.py",
+      "old": "@require_GET\n@cache_control(no_cache=True)\ndef pwa_offline(",
+      "new": "@require_GET\n@cache_control(public=True, max_age=3600)\ndef pwa_offline(",
+      "note": "a proxy may serve the offline page from its own cache"
+    },
+    {
+      "id": "50-14-sw-allowed-header-removed",
+      "file": "apps/storefront/pwa_views.py",
+      "old": "    response[\"Service-Worker-Allowed\"] = \"/\"\n    return response",
+      "new": "    return response",
+      "note": "the worker may no longer answer the whole site"
+    },
+    {
+      "id": "50-15-static-prefix-ignores-the-setting",
+      "file": "apps/storefront/pwa_views.py",
+      "old": "        \"static_prefix\": pwa.js_literal(static_prefix),",
+      "new": "        \"static_prefix\": pwa.js_literal(\"/static/\"),",
+      "note": "the worker's static rule ignores a changed STATIC_URL"
+    },
+    {
+      "id": "50-16-no-skip-waiting",
+      "file": "templates/pwa/sw.js",
+      "old": "      .then(() => self.skipWaiting())",
+      "new": "      .then(() => undefined)",
+      "note": "a new worker waits for every tab to close"
+    },
+    {
+      "id": "50-17-no-offline-fallback",
+      "file": "templates/pwa/sw.js",
+      "old": "    return stored || Response.error();",
+      "new": "    return Response.error();",
+      "note": "a failed navigation shows the browser's error page, not ours"
+    },
+    {
+      "id": "50-18-ok-check-always-true",
+      "file": "templates/pwa/sw.js",
+      "old": "      if (!response.ok || response.type !== \"basic\") {",
+      "new": "      if (!true || response.type !== \"basic\") {",
+      "note": "an error reply replaces the stored stylesheet"
+    },
+    {
+      "id": "50-19-basic-check-removed",
+      "file": "templates/pwa/sw.js",
+      "old": "      if (!response.ok || response.type !== \"basic\") {",
+      "new": "      if (!response.ok) {",
+      "note": "an opaque cross-origin reply is stored as if it were a real file"
+    },
+    {
+      "id": "50-20-non-get-not-skipped",
+      "file": "templates/pwa/sw.js",
+      "old": "  if (request.method !== \"GET\") {",
+      "new": "  if (false) {",
+      "note": "a form post is answered by the worker"
+    },
+    {
+      "id": "50-21-current-cache-deleted",
+      "file": "templates/pwa/sw.js",
+      "old": "            .filter((name) => name.startsWith(CACHE_PREFIX) && !CURRENT_CACHES.includes(name))",
+      "new": "            .filter((name) => name.startsWith(CACHE_PREFIX))",
+      "note": "activate throws away the caches it just filled"
+    },
+    {
+      "id": "50-22-one-cache-write-removed",
+      "file": "templates/pwa/sw.js",
+      "old": "      return caches.open(OFFLINE_CACHE).then((cache) => cache.put(OFFLINE_URL, response));",
+      "new": "      return undefined;",
+      "note": "the offline page is never refreshed after install"
+    },
+    {
+      "id": "50-23-phone-condition-inverted",
+      "file": "templates/pwa/offline.html",
+      "old": "  {% if phone %}",
+      "new": "  {% if not phone %}",
+      "note": "the call line shows only when there is no phone number"
+    },
+    {
+      "id": "50-24-try-again-href-root",
+      "file": "templates/pwa/offline.html",
+      "old": "  <a class=\"button\" href=\"\">Try again</a>",
+      "new": "  <a class=\"button\" href=\"/\">Try again</a>",
+      "note": "Try again drops the address and the query the visitor asked for"
+    },
+    {
+      "id": "50-25-noindex-removed",
+      "file": "templates/pwa/offline.html",
+      "old": "  <meta name=\"robots\" content=\"noindex\">",
+      "new": "  <meta name=\"robots\" content=\"all\">",
+      "note": "the offline page may reach a search result"
+    },
+    {
+      "id": "50-26-manifest-link-changed",
+      "file": "templates/base.html",
+      "old": "  <link rel=\"manifest\" href=\"{% url \"pwa_manifest\" %}\">",
+      "new": "  <link rel=\"manifest\" href=\"/manifest.json\">",
+      "note": "the manifest link points at an address that does not exist"
+    },
+    {
+      "id": "50-27-theme-color-changed",
+      "file": "templates/base.html",
+      "old": "  <meta name=\"theme-color\" content=\"#ea580c\">",
+      "new": "  <meta name=\"theme-color\" content=\"#c2410c\">",
+      "note": "the phone window colour no longer matches the icon"
+    }
+  ]
+}

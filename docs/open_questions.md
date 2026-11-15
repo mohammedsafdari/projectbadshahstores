@@ -203,7 +203,10 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Banner image clean-up and a click count are not built (developer, later) — developer; a replaced or removed image leaves its old file on disk, and no banner counts its clicks (D84)
 
 ## Deferred (not blockers, tracked for later)
-- [ ] PWA — deferred
+- [x] PWA — closed (Slice 50, 15 November 2026, D91): the manifest, the service worker, the offline page, the head tags and the register script are live, and the worker stores the offline page and static files only, never a page.
+- [ ] How the payment return behaves inside the installed standalone window (Razorpay's return page, the back button and the session) — owner; test on a real phone and ask again at the Phase 7 soft launch; default in use: `standalone`, with `minimal-ui` as the fallback (D91)
+- [ ] Replace the five placeholder icons in `static/img/pwa/` with the real logo under the same file names — owner; before launch; default in use: the letter "B" on orange, and each icon stays under the 100 KiB the icon test allows, a guard against a huge file and not a size target (D91, raised in 50f1)
+- [ ] The Content-Security-Policy arrives in Phase 7 and needs `worker-src 'self'` and `manifest-src 'self'` — developer; Phase 7 (D91)
 - [ ] Full Hindi i18n content — scaffolding now, content later
 - [ ] Pan-India shipping for own-brand products — later business phase (Phase 8 in PROJECT_INSTRUCTIONS.md, not the current catalogue and inventory phase)
 - [ ] Subscriptions / monthly basket — deferred

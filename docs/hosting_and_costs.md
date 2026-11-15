@@ -98,3 +98,11 @@ is a new address.
 - **Cloudflare:** cache by file extension (CSS, JS, the image types, fonts) and not HTML. Its
   "Cache Everything" rule must not be switched on for the site, because that would cache pages,
   which the private-page audit of Slice 49 exists to prevent.
+- **The installable web app (D91):** `/sw.js`, `/manifest.webmanifest` and `/offline/` must reach
+  Django and must not be cached by nginx or by Cloudflare. Both answer `Cache-Control: no-cache`
+  themselves. The `.js` extension rule above would cache `/sw.js` for a year, so it needs its own
+  bypass rule (`location = /sw.js` with `proxy_pass` and no cache header, or the Cloudflare
+  "Bypass Cache" rule for that exact path): a worker kept for a year can never be replaced.
+- **`collectstatic` carries the new files:** the five icons in `static/img/pwa/` and
+  `static/js/pwa-register.js` are static files like any other, so the deploy step of every release
+  must copy them, and the hashed names mean the manifest and the page must be rebuilt together.
