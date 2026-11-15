@@ -2,12 +2,14 @@
 
 Text is drawn with reportlab's two built-in Helvetica faces, which have no
 Devanagari and no rupee sign. ``pdf_text`` is the one helper that makes a value
-safe for them: a character they cannot draw becomes "?". A run of Devanagari
-is the one exception: it switches to the bundled Noto Sans Devanagari face
-through reportlab's ``<font>`` markup, and a page with no Devanagari embeds no
-font file at all. Prices still print as ``Rs. 123.45`` for the same reason.
-reportlab joins the letters of a Devanagari word only when uharfbuzz is
-installed.
+safe for them: a character they cannot draw becomes "?". A paragraph or a
+table cell that holds Devanagari is the one exception: it is drawn with a copy
+of its style that names the bundled Noto Sans Devanagari face and turns
+reportlab's shaping on, and its Latin runs are tagged back to the original
+face. reportlab reads that switch from the style and never from a ``<font>``
+tag, so the whole paragraph has to use the bundled face before the letters
+join; joining needs uharfbuzz. A page with no Devanagari embeds no font file at
+all. Prices still print as ``Rs. 123.45`` for the same reason.
 
 Nothing here says anything about how a payment is made, so no page claims that
 UPI is free.
@@ -87,6 +89,14 @@ ZERO_WIDTH_JOINERS = ("\u200c", "\u200d")
 # The small style a Devanagari cell uses, made on first use and then reused.
 _CELL_STYLE: Any = None
 
+# The face a Latin run is tagged with when its paragraph draws Devanagari. It is
+# the reportlab default, kept in one name so the call reads clearly.
+DEFAULT_LATIN_FONT = "Helvetica"
+
+# One Noto copy of each paragraph style that has drawn Devanagari, made on first
+# use and reused after that, keyed by the style's name and whether it is bold.
+_NOTO_STYLES: dict[tuple[str, bool], Any] = {}
+
 
 class InvoiceFontError(RuntimeError):
     """A bundled font file is missing, so a Hindi invoice cannot be drawn."""
@@ -159,20 +169,50 @@ def _split_runs(text: str) -> list[tuple[str, bool]]:
     return runs
 
 
-def _markup(text: str) -> str:
-    """Escape safe text and wrap each Devanagari run in its font tag (D92).
+def _markup(text: str, latin_font: str = DEFAULT_LATIN_FONT) -> str:
+    """Escape safe text and tag its Latin runs with the drawing font (D92).
 
     reportlab reads a little XML inside a paragraph, so every piece is escaped
-    first: a name holding ``&``, ``<`` or ``>`` cannot break the page. Text
-    with no Devanagari comes out exactly as it did before.
+    first: a name holding ``&``, ``<`` or ``>`` cannot break the page. A
+    paragraph that holds Devanagari is drawn in the bundled face, so the runs
+    that are **not** Devanagari carry the original face in a ``<font>`` tag and
+    the Devanagari runs stay bare. Text with no Devanagari comes out as plain
+    escaped text, exactly as it did before.
     """
+    if not _has_devanagari(text):
+        return escape(text)
     pieces: list[str] = []
     for piece, in_devanagari in _split_runs(text):
         if in_devanagari:
-            pieces.append(f'<font name="{DEVANAGARI_FONT}">{escape(piece)}</font>')
-        else:
             pieces.append(escape(piece))
+        else:
+            pieces.append(f'<font name="{latin_font}">{escape(piece)}</font>')
     return "".join(pieces)
+
+
+def _noto_style(style: Any) -> Any:
+    """A copy of the style that draws Devanagari with shaping on (D92).
+
+    reportlab decides shaping from the paragraph style's own ``fontName``, not
+    from the ``<font>`` tags inside the text, so a Devanagari paragraph has to
+    name the bundled face itself; otherwise the vowel sign ि prints on the
+    wrong side of its letter and a conjunct such as क्ष stays unjoined. The
+    style passed in is never changed: it belongs to the shared sample style
+    sheet, and one Hindi invoice must not turn the next English one Hindi. The
+    copy keeps the original size, leading and colour.
+    """
+    bold = str(style.fontName).endswith("Bold")
+    # A tuple key, and the copy is made once per style name and weight.
+    key = (str(style.name), bold)
+    replacement: Any = _NOTO_STYLES.get(key)
+    if replacement is None:
+        name = "InvoiceNoto" + ("Bold" if bold else "Regular")
+        replacement = style.clone(name)
+        replacement.fontName = DEVANAGARI_BOLD_FONT if bold else DEVANAGARI_FONT
+        # The switch reportlab reads before it shapes a paragraph.
+        replacement.shaping = 1
+        _NOTO_STYLES[key] = replacement
+    return replacement
 
 
 def _cell_style() -> Any:
@@ -202,31 +242,33 @@ def quantity_text(value: Decimal) -> str:
 
 
 def _paragraph(text: object, style: Any) -> Paragraph:
-    """One paragraph of text, with its Devanagari runs in the bundled face.
+    """One paragraph of text, drawn in the bundled face when it is Hindi.
 
     reportlab reads a little XML in a paragraph, so the text is escaped after
     it has been made safe: a shop name holding ``&`` would break the page.
     """
     safe = pdf_text(text)
-    if _has_devanagari(safe):
-        # Registering here is what keeps an English invoice working even when
-        # the font files are missing (D92).
-        register_devanagari_fonts()
-    return Paragraph(_markup(safe), style)
+    if not _has_devanagari(safe):
+        return Paragraph(_markup(safe), style)
+    # Registering here is what keeps an English invoice working even when the
+    # font files are missing (D92).
+    register_devanagari_fonts()
+    return Paragraph(_markup(safe, style.fontName), _noto_style(style))
 
 
 def _cell(value: object) -> str | Paragraph:
     """One table cell.
 
     A plain string cell cannot switch font, so a cell holding Devanagari is a
-    Paragraph; a cell of only ASCII stays a plain string, which leaves an
-    English invoice exactly as it was (D92).
+    Paragraph drawn in the bundled face; a cell of only ASCII stays a plain
+    string, which leaves an English invoice exactly as it was (D92).
     """
     text = pdf_text(value)
     if not _has_devanagari(text):
         return text
     register_devanagari_fonts()
-    return Paragraph(_markup(text), _cell_style())
+    style = _cell_style()
+    return Paragraph(_markup(text, style.fontName), _noto_style(style))
 
 
 def _line_rows(lines: list[InvoiceLine]) -> list[list[Any]]:

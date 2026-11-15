@@ -9,15 +9,25 @@ from __future__ import annotations
 
 import importlib.util
 from decimal import Decimal
+from io import BytesIO
 
 import pytest
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfgen.canvas import Canvas
+from reportlab.platypus import Paragraph
 
 from apps.orders import invoice_pdf
 from apps.orders.invoice_pdf import (
     DEVANAGARI_BOLD_FONT,
     DEVANAGARI_FONT,
     InvoiceFontError,
+    _cell,
+    _markup,
+    _noto_style,
+    _paragraph,
     build_invoice_pdf,
     money_text,
     pdf_text,
@@ -145,3 +155,106 @@ def test_money_still_prints_as_rs() -> None:
     assert money_text(Decimal("123.45")) == "Rs. 123.45"
     assert pdf_text(money_text(Decimal("123.45"))) == "Rs. 123.45"
     assert pdf_text("₹123.45") == "?123.45"
+
+
+# ---------------------------------------------------------------------------
+# The style a Devanagari paragraph is drawn with (51f1)
+# ---------------------------------------------------------------------------
+def test_a_devanagari_paragraph_uses_the_noto_style_with_shaping_on() -> None:
+    paragraph = _paragraph("किराना 500 g", getSampleStyleSheet()["Normal"])
+
+    assert paragraph.style.fontName == DEVANAGARI_FONT
+    # reportlab shapes a paragraph from its style's own fontName and this flag,
+    # never from a <font> tag inside the text.
+    assert paragraph.style.shaping
+    assert pdfmetrics.getFont(DEVANAGARI_FONT).shapable is True
+
+
+def test_a_bold_style_gets_the_bold_noto_face() -> None:
+    styles = getSampleStyleSheet()
+
+    paragraph = _paragraph("किराना", styles["Heading2"])
+
+    assert paragraph.style.fontName == DEVANAGARI_BOLD_FONT
+    # Only the face changes: the size and the leading are the original ones.
+    assert paragraph.style.fontSize == styles["Heading2"].fontSize
+    assert paragraph.style.leading == styles["Heading2"].leading
+
+
+def test_an_ascii_paragraph_keeps_its_helvetica_style_and_no_shaping() -> None:
+    style = getSampleStyleSheet()["Normal"]
+
+    paragraph = _paragraph("Badshah Store, Indore", style)
+
+    # The very same object, so nothing was cloned, registered or shaped.
+    assert paragraph.style is style
+    assert not getattr(style, "shaping", 0)
+
+
+def test_latin_runs_in_a_hindi_paragraph_are_tagged_with_the_original_font() -> None:
+    markup = _markup("Name: क्षत्रिय 500 g & Co", "Helvetica")
+
+    # The Devanagari word stays bare, because the paragraph's own style draws
+    # it; every Latin run is tagged back to Helvetica, escaped.
+    assert markup == (
+        '<font name="Helvetica">Name: </font>क्षत्रिय<font name="Helvetica"> 500 g &amp; Co</font>'
+    )
+
+
+def test_a_bold_paragraph_tags_its_latin_runs_with_helvetica_bold() -> None:
+    paragraph = _paragraph("Name: किराना", getSampleStyleSheet()["Heading2"])
+
+    assert '<font name="Helvetica-Bold">Name: </font>' in paragraph.text
+
+
+def test_a_devanagari_table_cell_uses_the_noto_style_with_shaping_on() -> None:
+    cell = _cell("किराना")
+
+    assert isinstance(cell, Paragraph)
+    assert cell.style.fontName == DEVANAGARI_FONT
+    assert cell.style.shaping
+
+
+def test_building_a_hindi_paragraph_leaves_the_shared_sample_styles_unchanged() -> None:
+    # An empty cache, so this test really runs the branch that makes the copy
+    # instead of reusing a copy an earlier test made.
+    invoice_pdf._NOTO_STYLES.clear()
+    styles = getSampleStyleSheet()
+
+    _paragraph("किराना", styles["Normal"])
+    _paragraph("किराना", styles["Heading2"])
+
+    # A clone, never the style sheet's own entry: every later paragraph on the
+    # same sheet (the address, the numbers) still prints in Helvetica.
+    assert styles["Normal"].fontName == "Helvetica"
+    assert styles["Heading2"].fontName == "Helvetica-Bold"
+    assert not getattr(styles["Normal"], "shaping", 0)
+    assert not getattr(styles["Heading2"], "shaping", 0)
+
+
+def _drawn_stream(flowable: Paragraph) -> bytes:
+    """The PDF bytes of one flowable drawn on a blank page."""
+    buffer = BytesIO()
+    # invariant=1 fixes the id and the date, so only the drawing can differ.
+    canvas = Canvas(buffer, invariant=1, pageCompression=0)
+    _width, height = A4
+    flowable.wrapOn(canvas, _width, height)
+    flowable.drawOn(canvas, 20 * mm, height - 40 * mm)
+    canvas.showPage()
+    canvas.save()
+    return buffer.getvalue()
+
+
+def test_shaping_changes_the_glyphs_drawn_for_a_vowel_sign_word() -> None:
+    word = "किराना"
+    style = getSampleStyleSheet()["Normal"]
+
+    shaped = _paragraph(word, style)
+
+    # The same clone with the switch off is what Slice 51 drew: the ि sign on
+    # the wrong side of its letter and no joined conjunct.
+    unshaped_style = _noto_style(style).clone("Unshaped")
+    unshaped_style.shaping = 0
+    unshaped = Paragraph(_markup(word, style.fontName), unshaped_style)
+
+    assert _drawn_stream(shaped) != _drawn_stream(unshaped)

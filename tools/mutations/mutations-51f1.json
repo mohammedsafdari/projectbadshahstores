@@ -1,0 +1,78 @@
+{
+  "tests": [
+    "apps/orders/tests/test_invoice_pdf.py",
+    "apps/orders/tests/test_invoice_pdf_fonts.py"
+  ],
+  "mutations": [
+    {
+      "id": "51f1-01-shaping-off",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "        replacement.shaping = 1",
+      "new": "        replacement.shaping = 0",
+      "note": "the Devanagari paragraph is never shaped, so the vowel sign sits on the wrong side"
+    },
+    {
+      "id": "51f1-02-clone-keeps-the-original-font",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "        replacement.fontName = DEVANAGARI_BOLD_FONT if bold else DEVANAGARI_FONT",
+      "new": "        replacement.fontName = style.fontName",
+      "note": "shaping is on but the paragraph is still drawn in Helvetica, which cannot draw it"
+    },
+    {
+      "id": "51f1-03-bold-check-inverted",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    bold = str(style.fontName).endswith(\"Bold\")",
+      "new": "    bold = not str(style.fontName).endswith(\"Bold\")",
+      "note": "the regular face is used for bold text and the bold face for body text"
+    },
+    {
+      "id": "51f1-04-latin-runs-untagged",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "            pieces.append(f'<font name=\"{latin_font}\">{escape(piece)}</font>')",
+      "new": "            pieces.append(escape(piece))",
+      "note": "the Latin runs are drawn in the Noto face, which has no Latin letters"
+    },
+    {
+      "id": "51f1-05-latin-runs-fixed-helvetica",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    return Paragraph(_markup(safe, style.fontName), _noto_style(style))",
+      "new": "    return Paragraph(_markup(safe, DEFAULT_LATIN_FONT), _noto_style(style))",
+      "note": "a bold Hindi paragraph prints its Latin words in the regular face"
+    },
+    {
+      "id": "51f1-06-shared-style-changed-in-place",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "        replacement = style.clone(name)",
+      "new": "        replacement = style",
+      "note": "the shared sample style is turned into a Noto style for every later paragraph"
+    },
+    {
+      "id": "51f1-07-escape-dropped-from-latin-runs",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "            pieces.append(f'<font name=\"{latin_font}\">{escape(piece)}</font>')",
+      "new": "            pieces.append(f'<font name=\"{latin_font}\">{piece}</font>')",
+      "note": "an ampersand or an angle bracket in a Hindi line breaks the page"
+    },
+    {
+      "id": "51f1-08-devanagari-runs-tagged-again",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "            pieces.append(escape(piece))",
+      "new": "            pieces.append(f'<font name=\"{DEVANAGARI_FONT}\">{escape(piece)}</font>')",
+      "note": "the Devanagari run carries a font tag the shaping rule ignores"
+    },
+    {
+      "id": "51f1-09-cell-keeps-the-plain-style",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    return Paragraph(_markup(text, style.fontName), _noto_style(style))",
+      "new": "    return Paragraph(_markup(text), _cell_style())",
+      "note": "a Hindi table cell is drawn unshaped in Helvetica"
+    },
+    {
+      "id": "51f1-10-no-devanagari-fast-path-removed",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    if not _has_devanagari(safe):\n        return Paragraph(_markup(safe), style)",
+      "new": "    if False:\n        return Paragraph(_markup(safe), style)",
+      "note": "an English invoice is drawn in the Noto face and embeds the font file"
+    }
+  ]
+}
