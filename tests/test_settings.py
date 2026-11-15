@@ -382,3 +382,54 @@ def test_settings_are_independent_of_local_dot_env(monkeypatch: pytest.MonkeyPat
     assert DOT_ENV_PATH.exists() if existed_before_probe else True, (
         "probe left repo .env missing when it existed before the probe"
     )
+
+
+def test_hindi_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = _import_settings_fresh(
+        settings_module="badshahstore.settings.base",
+        monkeypatch=monkeypatch,
+        HINDI_ENABLED=None,
+    )
+
+    assert settings.HINDI_ENABLED is False
+
+
+def test_languages_is_english_only_while_hindi_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _import_settings_fresh(
+        settings_module="badshahstore.settings.base",
+        monkeypatch=monkeypatch,
+        HINDI_ENABLED=None,
+    )
+
+    assert settings.LANGUAGES == [("en-IN", "English")]
+
+
+def test_languages_has_english_and_hindi_while_hindi_is_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _import_settings_fresh(
+        settings_module="badshahstore.settings.base",
+        monkeypatch=monkeypatch,
+        HINDI_ENABLED="1",
+    )
+
+    assert settings.LANGUAGES == [("en-IN", "English"), ("hi", "हिन्दी")]
+
+
+def test_the_locale_middleware_sits_after_sessions_and_before_common(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _import_settings_fresh(
+        settings_module="badshahstore.settings.base",
+        monkeypatch=monkeypatch,
+    )
+
+    middleware = list(settings.MIDDLEWARE)
+    shop_locale = middleware.index("apps.core.middleware.ShopLocaleMiddleware")
+    sessions = middleware.index("django.contrib.sessions.middleware.SessionMiddleware")
+    common = middleware.index("django.middleware.common.CommonMiddleware")
+
+    assert shop_locale == sessions + 1
+    assert shop_locale < common

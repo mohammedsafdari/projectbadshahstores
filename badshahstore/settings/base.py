@@ -130,6 +130,10 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    # The shop's language choice: Django's own cookie and header rule, except
+    # that the staff and admin pages always stay English (D92). It reads the
+    # session, so it sits after SessionMiddleware and before CommonMiddleware.
+    "apps.core.middleware.ShopLocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -151,6 +155,9 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.debug",
                 "apps.cart.context_processors.cart_line_count",
+                # Whether the Hindi switcher shows, and whether the page is
+                # already Hindi. It reads no database row (D92).
+                "apps.storefront.context_processors.language_switch",
             ],
         },
     },
@@ -239,6 +246,18 @@ TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 LANGUAGE_CODE = "en-IN"
+
+# The Hindi switch (D92). Off by default: while it is off the shop offers
+# English only, a Hindi cookie is ignored and the language form answers 404.
+# Turning it on adds Hindi to the list below; no string is translated until
+# the Hindi content slice wraps the customer text.
+HINDI_ENABLED = env.bool("HINDI_ENABLED", default=False)
+
+# English is the only language until the switch is on, so a cookie can never
+# select a language the shop has not offered.
+LANGUAGES = [("en-IN", "English")]
+if HINDI_ENABLED:
+    LANGUAGES.append(("hi", "हिन्दी"))
 
 # Celery reads its own clock setting, so a crontab hour means Indian time
 # rather than the server's own zone (D89). Interval jobs are not affected.

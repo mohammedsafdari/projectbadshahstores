@@ -8,6 +8,7 @@ import pytest
 
 from apps.orders.invoice_pdf import (
     SUMMARY_HEADINGS,
+    _markup,
     _summary_rows,
     build_invoice_pdf,
     money_text,
@@ -19,13 +20,18 @@ from apps.orders.tests.invoice_helpers import gst_variant, sent_out_order
 pytestmark = pytest.mark.django_db
 
 
-def test_the_helper_replaces_devanagari_with_a_question_mark() -> None:
+def test_the_helper_keeps_devanagari_and_replaces_the_rupee_sign() -> None:
     text = pdf_text("दूध 500 g")
 
-    # Three Devanagari letters, so three question marks before the ASCII part.
-    assert text.startswith("???")
-    assert text.endswith(" 500 g")
-    assert all(ord(char) < 128 for char in text)
+    # Devanagari is kept for the bundled face (D92); the rupee sign it cannot
+    # draw still becomes "?".
+    assert text == "दूध 500 g"
+    assert pdf_text("₹500") == "?500"
+    # The whole block is kept, joiners inside a word with it, and the first
+    # character outside the block is not.
+    assert pdf_text("\u0900\u097f") == "\u0900\u097f"
+    assert pdf_text("क्\u200dष") == "क्\u200dष"
+    assert pdf_text("\u0980") == "?"
 
 
 def test_the_helper_keeps_plain_ascii() -> None:
@@ -107,6 +113,14 @@ def test_the_gst_summary_adds_up_each_rate() -> None:
         list(SUMMARY_HEADINGS),
         ["5%", "Rs. 361.90", "Rs. 9.06", "Rs. 9.04"],
     ]
+
+
+def test_the_paragraph_markup_escapes_ampersands_and_angle_brackets() -> None:
+    # reportlab reads a little XML inside a paragraph, so a name holding ``&``,
+    # ``<`` or ``>`` is escaped before it reaches the page (D92).
+    markup = _markup("Milk & <b>250 g</b>")
+
+    assert markup == "Milk &amp; &lt;b&gt;250 g&lt;/b&gt;"
 
 
 def test_the_place_of_supply_is_printed() -> None:

@@ -8,7 +8,7 @@ This repository is a modular monolith. Business logic lives in per-app `services
 
 ## Repo status
 
-Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Phase 3 (cart and checkout) is next. For what is built right now and what comes next, see `docs/STATUS.md`.
+Phases 1 to 6 are complete (catalogue, cart and checkout, orders, staff screens, payments and the public site). Phase 7, the launch work, is next. For what is built right now and what comes next, see `docs/STATUS.md`.
 
 ## What works now
 
@@ -16,6 +16,8 @@ Phase 1 (scaffold) and Phase 2 (catalogue and inventory) are complete. Phase 3 (
 - Inventory: an append-only movement ledger and the Stock screens (receive, adjust, count, damage, history) plus Expiring lots.
 - Seed data: `docker compose exec web python manage.py seed_catalog` loads the real rows; add `--demo` for the demo rows, and `--demo-stock` to receive demo stock once.
 - Storefront: listing pages, filters, the product detail page, search and search-as-you-type.
+- Hindi: `HINDI_ENABLED` in `.env` (off by default) adds Hindi to the header language form and to the visible product name, and `/admin/` and `/staff/` always stay English (D92).
+- Fonts: the two Noto Sans Devanagari faces in `static/fonts/` print Hindi on the page (through `static/css/fonts.css`) and in the invoice PDF (D92).
 
 ## Python version
 

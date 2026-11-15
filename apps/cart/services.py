@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal
 
 from django.db import transaction
+from django.utils.translation import get_language
 
 from apps.accounts.models import User
 from apps.cart.models import Cart, CartItem
@@ -26,6 +27,7 @@ from apps.cart.rules import (
 )
 from apps.cart.stores import CartStore, StoredLine
 from apps.catalog.models import ProductVariant
+from apps.catalog.names import product_display_name
 from apps.catalog.purchasable import purchasable_variant_ids
 from apps.catalog.services import round_money
 from apps.core.services import get_shop_settings
@@ -130,6 +132,9 @@ class CartLine:
     savings: Decimal
     status: str
     available: Decimal
+    # The visible name: Hindi for a Hindi visitor when the product has one
+    # (D92). Order lines and the invoice keep the English name.
+    display_name: str
 
 
 @dataclass(frozen=True)
@@ -203,6 +208,13 @@ def build_cart(store: CartStore) -> CartSummary:
                 savings=round_money(mrp_total - line_total),
                 status=status,
                 available=available,
+                # The product row is already loaded by the store's join, so the
+                # name costs no extra query.
+                display_name=product_display_name(
+                    variant.product.name_en,
+                    variant.product.name_hi,
+                    get_language(),
+                ),
             )
         )
 

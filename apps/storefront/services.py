@@ -19,8 +19,10 @@ from django.db.models import (
     prefetch_related_objects,
 )
 from django.db.models.functions import Coalesce, Lower
+from django.utils.translation import get_language
 
 from apps.catalog.models import Brand, Category, Product, ProductImage, ProductVariant
+from apps.catalog.names import product_display_name
 from apps.catalog.services import savings_percent
 from apps.storefront.filters import ListingFilters, apply_filters
 
@@ -200,7 +202,9 @@ def build_cards(products: Iterable[Product]) -> list[ProductCard]:
             percent = int(savings_percent(lead.mrp, lead.selling_price))
         cards.append(
             ProductCard(
-                name=product.name_en,
+                # The visible name follows the visitor's language, while the
+                # alt text below keeps the English name (D92).
+                name=product_display_name(product.name_en, product.name_hi, get_language()),
                 slug=product.slug,
                 brand_name=product.brand.name,
                 lead_price=lead.selling_price,

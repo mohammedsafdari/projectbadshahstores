@@ -1,6 +1,6 @@
 {% load static %}
 <!doctype html>
-<html lang="{% block html_lang %}en-IN{% endblock html_lang %}">
+<html lang="{% block html_lang %}{% if hindi_active %}hi{% else %}en-IN{% endif %}{% endblock html_lang %}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,12 +24,23 @@
   <meta name="theme-color" content="#ea580c">
   <link rel="apple-touch-icon" href="{% static "img/pwa/apple-touch-icon-180.png" %}">
   <link rel="icon" type="image/png" sizes="32x32" href="{% static "img/pwa/favicon-32.png" %}">
+  {# The Devanagari faces, linked through {% static %} so the production manifest storage hashes their names inside the stylesheet (D92). #}
+  <link rel="stylesheet" href="{% static "css/fonts.css" %}">
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script>
     {# Phase 1 placeholder: Tailwind is loaded from the pinned CDN for development. A Tailwind build step is required before launch; the CDN must be removed then. Brand colours are defined in one place here so they can be changed later. #}
     tailwind.config = {
       theme: {
         extend: {
+          // Tailwind's own sans stack stays first, so Latin text is unchanged;
+          // the Devanagari face at the end draws Hindi (D92).
+          fontFamily: {
+            sans: [
+              "ui-sans-serif", "system-ui", "sans-serif",
+              '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"',
+              '"Noto Color Emoji"', '"Noto Sans Devanagari"',
+            ],
+          },
           colors: {
             brand: {
               50: "#fef7ed",
@@ -86,6 +97,18 @@
           </form>
           {% else %}
           <a href="{% url "account_login" %}">Login</a>
+          {% endif %}
+          {% if hindi_enabled %}
+          {# One button naming the language the visitor does not have yet. It is a POST with the CSRF token and the current path, so a switch keeps the page and query and no link or prefetch can change the shop's language (D92). #}
+          <form method="post" action="{% url "switch_language" %}" class="inline">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            {% if hindi_active %}
+            <button type="submit" name="language" value="en-IN" class="text-sm text-gray-700 hover:text-brand-600">English</button>
+            {% else %}
+            <button type="submit" name="language" value="hi" lang="hi" class="text-sm text-gray-700 hover:text-brand-600">हिन्दी</button>
+            {% endif %}
+          </form>
           {% endif %}
         </nav>
       </div>

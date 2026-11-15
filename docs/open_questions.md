@@ -63,7 +63,7 @@ Live list. Each item has an owner: **you** (shop owner), **CA/legal** (your advi
 - [x] Which staff may receive, adjust, damage and count stock before the Phase 5 roles exist? — answered (D75, 9 November 2026): the `STOCK_WRITE` capability alone decides, with owner and manager allowed by default; change it in the role capability matrix — owner
 - [x] Should a capability replace the old Django permission on the Stock, audit and credit screens, or add to it? — answered (D75 amendment, 9 November 2026): it replaces it; only the Stock list also opens for Django's Stock view permission, and the CSV export is unchanged — owner
 - [ ] How many days ahead should the expiry screen warn? — owner; default in use: filters for 7, 30 and 60 days plus "already expired" (D45)
-- [ ] Should low stock or near expiry also send a message (WhatsApp, SMS or email)? — owner; default in use: screens only, notifications wait for Phase 6 (D45)
+- [x] Should low stock or near expiry also send a message (WhatsApp, SMS or email)? — answered (Slice 48, 15 November 2026): yes, a daily email at 8 a.m. Indian time lists the low stock, the lots expiring within 7 days and the lots already expired, and the screens stay the place to act (D89) — owner
 - [ ] Should the Adjust page refuse to take stock below zero? — owner/developer; default in use: no, `adjust_stock` allows it and logs a warning (D43); Damage cannot go below zero
 - [ ] Do you need to know how much of each received lot is left (batch-level stock)? — owner; default in use: no, the Expiring lots screen shows the variant's total (D42, D45)
 - [ ] Should the CSV export hide `cost_price` from some staff (for example packers) or from everyone except the owner? — owner; ask again before launch (Phase 7); default in use: the `EXPORT_CSV` capability decides who may export (owner and manager by default, D75), and the file still includes `cost_price` (D46)
@@ -93,7 +93,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 26 (search, D53)
 - [ ] Who fills `search_keywords` with Hinglish spellings (for example "aata" for atta) for the real products? — owner; low priority; ask again before launch (Phase 7); default in use: blank except the demo rows (asked at Slice 28: the owner chose the default; confirmed at the start of Slice 38)
-- [ ] Should we log the search words customers type, so a missing product becomes visible to the owner? — owner/developer; ask again before Phase 6; default in use: no logging (D53)
+- [x] Should we log the search words customers type, so a missing product becomes visible to the owner? — answered (Slice 48, 15 November 2026): yes, every search that shows page 1 is counted in a private daily log with a staff page at `/staff/reports/search-words/`, kept 180 days (D89); the suggestion box is still not logged — owner/developer
   - Slice 27 default: suggestions are not logged either
 
 ### Added in Slice 29a (Phase 3 answers, D55)
@@ -101,7 +101,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 
 ### Added in Slice 30
 - [ ] OTP policy numbers: codes valid for 5 minutes, 5 wrong tries per challenge, 30 seconds between requests and 5 requests per phone per rolling hour — owner; ask again before launch; default in use: those numbers in `apps/accounts/otp.py` (D59)
-- [ ] Per-IP rate limit and SMS-abuse protection before a real SMS provider is connected — owner/developer; ask again before real SMS; default in use: none, only the per-phone limits (D59)
+- [x] Per-IP rate limit and SMS-abuse protection before a real SMS provider is connected — answered (Slice 48, 15 November 2026): 20 OTP requests an hour per address, counted in the cache, and `CLIENT_IP_HEADER` makes the address the real one behind Cloudflare (D89); default in use: that limit plus the per-phone ones — owner/developer
 - [ ] MSG91 account and DLT registration for the login SMS template — owner/provider; ask again before launch; default in use: the console SMS backend (D59)
 
 ### Added in Slice 31
@@ -133,7 +133,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Real SMTP provider and sender address for verification emails (D71) — owner; ask again before launch; default in use: console email in development
 
 ### Added in Slice 38f
-- [ ] Per-IP limit and bot protection for sign-up and login — owner; ask again before launch; default in use: none
+- [x] Per-IP limit and bot protection for sign-up and login — answered (Slice 48, 15 November 2026): 20 sign-ups and 30 password failures an hour per address (D89); bot protection stays the host's job — owner
 
 ### Added in Slice 38g
 - [x] Orders and verification state for staff in Phase 5 (see docs/phase5_minimum.md) — answered (Slice 42b, 11 November 2026): the staff order list, pick list, detail, delivery list and cash page exist, and the credit admin shows the verification state — owner
@@ -158,7 +158,7 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [ ] Is the shop a regular GST taxpayer or a composition dealer? A composition dealer issues a bill of supply, not a tax invoice, and the whole invoice page would change — CA; before the first real invoice; default in use: a regular taxpayer's tax invoice with CGST and SGST
 - [ ] How should a cancelled invoice be dealt with: a marked invoice as now, or a credit note with its own number? — CA; before the first real cancellation; default in use: the invoice is marked `Cancelled` and keeps its number, and no credit note is issued
 - [ ] How many HSN digits must the printed invoice show (4, 6 or 8) for each product? — CA; before the first real invoice; default in use: the code stored on the variant, 4 to 8 digits
-- [ ] Bundle a Devanagari font for the invoice and packing-slip PDFs, so a Hindi product name or address prints instead of `?` — developer; before Phase 6; default in use: `pdf_text` replaces every non-ASCII character with `?`
+- [x] Bundle a Devanagari font for the invoice and packing-slip PDFs, so a Hindi product name or address prints instead of `?` — done (Slice 51, 15 November 2026, D92): the two Noto Sans Devanagari faces are registered lazily and only a run of Devanagari switches to them, so an ASCII invoice prints exactly as before; the packing slip is an HTML page and needs no font — developer
 
 ### Added in Slice 44a (coupons, D81)
 - [x] The fifteen promotion questions (the three kinds, stacking, the minimum order, the usage limits, the validity times, first-order coupons, credit and cash-on-delivery orders, released redemptions, the code format, the capability and deletion) — answered (owner chose the defaults, 12 November 2026): a percentage with an optional maximum, a fixed amount and free delivery; one coupon per order and no stacking; the minimum is checked on the item total before the discount; an optional total cap and a per-customer limit of one; `starts_at`/`ends_at` plus an active switch; a first-order coupon was wanted; coupons are allowed on credit and cash-on-delivery orders; a released redemption counts against nothing; codes are 4 to 20 capitals, digits and hyphens; `MANAGE_PROMOTIONS` for the owner and manager; a coupon is never deleted (D81) — owner
@@ -206,8 +206,8 @@ Each item says when to ask again. At the start of every slice, Claude lists the 
 - [x] PWA — closed (Slice 50, 15 November 2026, D91): the manifest, the service worker, the offline page, the head tags and the register script are live, and the worker stores the offline page and static files only, never a page.
 - [ ] How the payment return behaves inside the installed standalone window (Razorpay's return page, the back button and the session) — owner; test on a real phone and ask again at the Phase 7 soft launch; default in use: `standalone`, with `minimal-ui` as the fallback (D91)
 - [ ] Replace the five placeholder icons in `static/img/pwa/` with the real logo under the same file names — owner; before launch; default in use: the letter "B" on orange, and each icon stays under the 100 KiB the icon test allows, a guard against a huge file and not a size target (D91, raised in 50f1)
-- [ ] The Content-Security-Policy arrives in Phase 7 and needs `worker-src 'self'` and `manifest-src 'self'` — developer; Phase 7 (D91)
-- [ ] Full Hindi i18n content — scaffolding now, content later
+- [ ] The Content-Security-Policy arrives in Phase 7 and needs `worker-src 'self'`, `manifest-src 'self'` and `font-src 'self'` for the two bundled Devanagari faces — developer; Phase 7 (D91, D92)
+- [ ] Full Hindi i18n content: the scaffolding is done (Slice 51, 15 November 2026, D92 — the switch, the cookie, the middleware, the header form and the Hindi product name), and no string is translated yet, so the content is still open; `docs/hindi.md` has the order — developer/owner; before `HINDI_ENABLED` is switched on in production
 - [ ] Pan-India shipping for own-brand products — later business phase (Phase 8 in PROJECT_INSTRUCTIONS.md, not the current catalogue and inventory phase)
 - [ ] Subscriptions / monthly basket — deferred
 - [ ] Loyalty program — deferred
@@ -247,3 +247,8 @@ Revisit these if the shop says otherwise.
 ### Added in Slice 49 (performance, D90)
 - [ ] Should the sitemap also skip categories with no visible products? — owner; ask again before Phase 7; default in use: no, a category is listed whenever it and all its ancestors are active (D90)
 - [ ] Measure Lighthouse (and the largest paint cost of the Tailwind CDN) — owner/developer; ask again before Phase 7, after the Tailwind build replaces the CDN; default in use: no number is recorded yet (D90)
+
+### Missing before Phase 7 (checked at Slice 51, D92)
+- [ ] Run the tests in parallel with pytest-xdist — developer; only as its own slice if the owner asks; default in use: the suite runs serially, one test process (recorded at Phase 6 close)
+- [ ] Packing that weighs again and fulfils part of a line — developer; after Phase 6 and not a launch blocker; default in use: a line is packed whole and the send-out refuses when the on-hand is short
+- [ ] The billing-software handoff (route B in D63) — developer/owner; after Phase 6; default in use: the website ledger is primary and the billing export is a one-way import

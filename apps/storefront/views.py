@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.http import Http404, HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils.cache import patch_vary_headers
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import get_language
 from django.views.decorators.cache import cache_control, never_cache
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import TemplateView
+from django.views.i18n import set_language
 
 from apps.catalog.models import Brand, Category, Product
+from apps.catalog.names import product_display_name
 from apps.catalog.search import get_search_backend, normalise_query
 from apps.core.services import get_shop_settings
 from apps.delivery.services import served_pincodes
@@ -67,6 +71,29 @@ PRODUCTS_PER_PAGE = 24
 # hidden products can drop out and the list still fills up.
 SUGGESTION_CANDIDATES = 50
 SUGGESTION_LIMIT = 6
+
+# The code Django's own set_language view can store for the shop's default
+# language. Django writes the language cookie only when it finds a message
+# catalogue for the exact code, and English has none of its own ("en" is
+# Django's built-in base catalogue), so the form posts "en-IN" and Django
+# stores "en", which every later request reads back as English (D92).
+ENGLISH_COOKIE_CODE = "en"
+
+
+def _posted_language(language: str) -> str:
+    """The code to hand Django for one of the shop's own languages (D92)."""
+    if language == settings.LANGUAGE_CODE:
+        return ENGLISH_COOKIE_CODE
+    return language
+
+
+def _offered_languages() -> set[str]:
+    """The language codes the shop offers right now (D92).
+
+    The setting is read at request time, so an override in a test reaches this
+    function and a cookie can never select a language that is switched off.
+    """
+    return set(dict(settings.LANGUAGES))
 
 
 def _querystring_without_page(request: HttpRequest) -> str:
@@ -361,6 +388,44 @@ def search_suggest(request: HttpRequest) -> HttpResponse:
     return response
 
 
+# require_POST answers a GET with 405, and never_cache adds no-store (D92).
+@require_POST
+@never_cache
+def switch_language(request: HttpRequest) -> HttpResponse:
+    """Change the shop's language and go back to the page the form came from.
+
+    Only a POST changes anything, so a link, a prefetch or a crawler can never
+    switch the shop. While the Hindi switch is off the view does not exist at
+    all. ``next`` is checked against this host, so the form can never send a
+    visitor to another site (D92).
+    """
+    if not getattr(settings, "HINDI_ENABLED", False):
+        raise Http404
+    next_url = request.POST.get("next") or "/"
+    if not url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        # Another host or a scheme change goes home instead.
+        next_url = "/"
+    language = request.POST.get("language", "")
+    if language not in _offered_languages():
+        # A language the shop does not offer changes nothing, but the visitor
+        # still goes back to the page the form came from (D92).
+        return HttpResponseRedirect(next_url)
+    # set_language reads request.POST["next"] and request.POST["language"]. A
+    # mutable copy replaces both with the checked values; the request object
+    # itself stays the one Django already built.
+    post = request.POST.copy()
+    post["next"] = next_url
+    post["language"] = _posted_language(language)
+    # django-stubs types the attribute as read-only, so the cast says the
+    # mutable copy is meant to go there; Django itself allows the assignment.
+    request.POST = cast("Any", post)
+    return set_language(request)
+
+
 def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     try:
         detail = get_product_detail(slug, build_url=request.build_absolute_uri)
@@ -395,6 +460,10 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     context = {
         "detail": detail,
         "product": product,
+        # Only the visible heading follows the visitor's language; the title,
+        # the alt text, the breadcrumb and the JSON-LD keep the English name
+        # (D92).
+        "display_name": product_display_name(product.name_en, product.name_hi, get_language()),
         "meta_description": meta_description,
         "page_title": f"{product.name_en} — {product.brand.name} — Badshah Store",
         "breadcrumbs": breadcrumbs,

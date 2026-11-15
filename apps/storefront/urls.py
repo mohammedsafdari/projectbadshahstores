@@ -13,6 +13,7 @@ from apps.storefront.views import (
     robots_txt,
     search_suggest,
     sitemap_xml,
+    switch_language,
 )
 
 urlpatterns = [
@@ -26,6 +27,9 @@ urlpatterns = [
     path("manifest.webmanifest", pwa_manifest, name="pwa_manifest"),
     path("sw.js", pwa_service_worker, name="pwa_service_worker"),
     path("offline/", pwa_offline, name="pwa_offline"),
+    # The language form posts here; a GET is a 405 and the switch is a 404 while
+    # Hindi is off (D92).
+    path("language/", switch_language, name="switch_language"),
     path("products/", product_list, name="product_list"),
     path("search/", product_search, name="product_search"),
     path("search/suggest/", search_suggest, name="search_suggest"),

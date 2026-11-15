@@ -1,9 +1,13 @@
-"""The printable PDF of one GST tax invoice (D80).
+"""The printable PDF of one GST tax invoice (D80, D92).
 
-reportlab draws the page with its two built-in Helvetica faces. Those faces
-have no Devanagari and no rupee sign, so ``pdf_text`` is the single helper that
-makes any value safe for them: a character they cannot draw becomes "?". Prices
-print as ``Rs. 123.45`` for the same reason.
+Text is drawn with reportlab's two built-in Helvetica faces, which have no
+Devanagari and no rupee sign. ``pdf_text`` is the one helper that makes a value
+safe for them: a character they cannot draw becomes "?". A run of Devanagari
+is the one exception: it switches to the bundled Noto Sans Devanagari face
+through reportlab's ``<font>`` markup, and a page with no Devanagari embeds no
+font file at all. Prices still print as ``Rs. 123.45`` for the same reason.
+reportlab joins the letters of a Devanagari word only when uharfbuzz is
+installed.
 
 Nothing here says anything about how a payment is made, so no page claims that
 UPI is free.
@@ -13,14 +17,18 @@ from __future__ import annotations
 
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
 
+from django.conf import settings
 from django.http import HttpResponse
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from apps.orders.models import Invoice, InvoiceLine
@@ -60,17 +68,122 @@ SUMMARY_WIDTHS = [30 * mm, 36 * mm, 36 * mm, 36 * mm]
 
 ZERO = Decimal("0.00")
 
+# The two bundled Devanagari faces and the files they come from (D92). The face
+# has no Latin letters, so it draws Devanagari runs only.
+DEVANAGARI_FONT = "NotoSansDevanagari"
+DEVANAGARI_BOLD_FONT = "NotoSansDevanagari-Bold"
+FONT_DIRECTORY = Path(settings.BASE_DIR) / "static" / "fonts"
+FONT_FILES = {
+    DEVANAGARI_FONT: "NotoSansDevanagari-Regular.ttf",
+    DEVANAGARI_BOLD_FONT: "NotoSansDevanagari-Bold.ttf",
+}
+
+# The Devanagari block, plus the two zero-width joiners that sit inside a
+# Devanagari word.
+DEVANAGARI_FIRST = 0x0900
+DEVANAGARI_LAST = 0x097F
+ZERO_WIDTH_JOINERS = ("\u200c", "\u200d")
+
+# The small style a Devanagari cell uses, made on first use and then reused.
+_CELL_STYLE: Any = None
+
+
+class InvoiceFontError(RuntimeError):
+    """A bundled font file is missing, so a Hindi invoice cannot be drawn."""
+
+
+def is_devanagari(character: str) -> bool:
+    """True for one character of the Devanagari block."""
+    return DEVANAGARI_FIRST <= ord(character) <= DEVANAGARI_LAST
+
+
+def register_devanagari_fonts() -> None:
+    """Register the two bundled faces with reportlab (D92).
+
+    Safe to call again: a face that is already registered is skipped. A missing
+    file raises an error that names its own path, so the fix is obvious.
+    """
+    for name, filename in FONT_FILES.items():
+        path = FONT_DIRECTORY / filename
+        if not path.is_file():
+            raise InvoiceFontError(f"The Devanagari font file is missing: {path}")
+        if name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(name, str(path)))
+
 
 def pdf_text(value: object) -> str:
-    """Return a value as printable ASCII, with "?" for anything else.
+    """Return a value as printable text, keeping Devanagari (D92).
 
-    This is the one place the project decides what a built-in PDF font can
-    draw. Devanagari product names and the rupee sign both come out as "?".
+    This is the one place the project decides what a PDF can print. Devanagari
+    characters and the two zero-width joiners inside a Devanagari word are
+    kept, because the bundled face can draw them. Everything else outside
+    printable ASCII becomes "?", so the rupee sign still prints as "Rs." and a
+    built-in face is never asked for a glyph it does not have.
     """
     text = "" if value is None else str(value)
-    # Only the printable ASCII range survives; every other character becomes
-    # "?" so the page never shows a missing-glyph box.
-    return "".join(char if 32 <= ord(char) < 127 else "?" for char in text)
+    kept: list[str] = []
+    for character in text:
+        if is_devanagari(character):
+            kept.append(character)
+        elif character in ZERO_WIDTH_JOINERS and kept and is_devanagari(kept[-1]):
+            # A joiner belongs to the word only when a Devanagari letter comes
+            # before it; anywhere else Helvetica cannot draw it either.
+            kept.append(character)
+        elif 32 <= ord(character) < 127:
+            kept.append(character)
+        else:
+            kept.append("?")
+    return "".join(kept)
+
+
+def _has_devanagari(text: str) -> bool:
+    """True when the text holds at least one Devanagari character."""
+    return any(is_devanagari(character) for character in text)
+
+
+def _split_runs(text: str) -> list[tuple[str, bool]]:
+    """Split safe text into (piece, is_devanagari) runs, in order.
+
+    Neighbouring characters of the same kind form one run, so a single
+    ``<font>`` tag wraps each Devanagari word.
+    """
+    runs: list[tuple[str, bool]] = []
+    for character in text:
+        in_run = is_devanagari(character) or character in ZERO_WIDTH_JOINERS
+        if runs and runs[-1][1] == in_run:
+            # A tuple cannot be changed in place, so the last run is replaced
+            # by a new, longer one.
+            runs[-1] = (runs[-1][0] + character, in_run)
+        else:
+            runs.append((character, in_run))
+    return runs
+
+
+def _markup(text: str) -> str:
+    """Escape safe text and wrap each Devanagari run in its font tag (D92).
+
+    reportlab reads a little XML inside a paragraph, so every piece is escaped
+    first: a name holding ``&``, ``<`` or ``>`` cannot break the page. Text
+    with no Devanagari comes out exactly as it did before.
+    """
+    pieces: list[str] = []
+    for piece, in_devanagari in _split_runs(text):
+        if in_devanagari:
+            pieces.append(f'<font name="{DEVANAGARI_FONT}">{escape(piece)}</font>')
+        else:
+            pieces.append(escape(piece))
+    return "".join(pieces)
+
+
+def _cell_style() -> Any:
+    """The small style a Devanagari table cell uses, made once."""
+    global _CELL_STYLE
+    if _CELL_STYLE is None:
+        style = getSampleStyleSheet()["Normal"].clone("InvoiceCell")
+        style.fontSize = 8
+        style.leading = 10
+        _CELL_STYLE = style
+    return _CELL_STYLE
 
 
 def money_text(value: Decimal) -> str:
@@ -89,21 +202,40 @@ def quantity_text(value: Decimal) -> str:
 
 
 def _paragraph(text: object, style: Any) -> Paragraph:
-    """One paragraph of plain text.
+    """One paragraph of text, with its Devanagari runs in the bundled face.
 
     reportlab reads a little XML in a paragraph, so the text is escaped after
     it has been made safe: a shop name holding ``&`` would break the page.
     """
-    return Paragraph(escape(pdf_text(text)), style)
+    safe = pdf_text(text)
+    if _has_devanagari(safe):
+        # Registering here is what keeps an English invoice working even when
+        # the font files are missing (D92).
+        register_devanagari_fonts()
+    return Paragraph(_markup(safe), style)
 
 
-def _line_rows(lines: list[InvoiceLine]) -> list[list[str]]:
+def _cell(value: object) -> str | Paragraph:
+    """One table cell.
+
+    A plain string cell cannot switch font, so a cell holding Devanagari is a
+    Paragraph; a cell of only ASCII stays a plain string, which leaves an
+    English invoice exactly as it was (D92).
+    """
+    text = pdf_text(value)
+    if not _has_devanagari(text):
+        return text
+    register_devanagari_fonts()
+    return Paragraph(_markup(text), _cell_style())
+
+
+def _line_rows(lines: list[InvoiceLine]) -> list[list[Any]]:
     """The goods table: one row per line, its headings first."""
-    rows = [list(LINE_HEADINGS)]
+    rows: list[list[Any]] = [list(LINE_HEADINGS)]
     for line in lines:
         rows.append(
             [
-                pdf_text(line.description),
+                _cell(line.description),
                 pdf_text(line.hsn_code),
                 quantity_text(line.quantity),
                 money_text(line.rate),
@@ -141,7 +273,7 @@ def _summary_rows(lines: list[InvoiceLine]) -> list[list[str]]:
     return rows
 
 
-def _styled_table(data: list[list[str]], widths: list[float]) -> Table:
+def _styled_table(data: list[list[Any]], widths: list[float]) -> Table:
     """A bordered table with a darker heading row and small type."""
     table = Table(data, colWidths=widths)
     table.setStyle(

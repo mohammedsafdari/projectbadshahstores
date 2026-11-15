@@ -11,6 +11,7 @@ dependencies = [
     # Pillow is required by Django's ImageField (ProductImage, Slice 14).
     "Pillow>=11.0,<13",
     "reportlab>=4.2,<5",
+    "uharfbuzz>=0.50,<1",
 ]
 
 [dependency-groups]

@@ -1,0 +1,250 @@
+{
+  "tests": [
+    "apps/storefront/tests/test_hindi_switch.py",
+    "apps/storefront/tests/test_hindi_plumbing.py",
+    "apps/storefront/tests/test_hindi_names.py",
+    "apps/catalog/tests/test_product_names.py",
+    "tests/test_settings.py",
+    "apps/orders/tests/test_invoice_pdf.py"
+  ],
+  "mutations": [
+    {
+      "id": "51-01-hindi-on-by-default",
+      "file": "badshahstore/settings/base.py",
+      "old": "HINDI_ENABLED = env.bool(\"HINDI_ENABLED\", default=False)",
+      "new": "HINDI_ENABLED = env.bool(\"HINDI_ENABLED\", default=True)",
+      "note": "the switch is on without the owner setting it"
+    },
+    {
+      "id": "51-02-languages-always-hindi",
+      "file": "badshahstore/settings/base.py",
+      "old": "LANGUAGES = [(\"en-IN\", \"English\")]",
+      "new": "LANGUAGES = [(\"en-IN\", \"English\"), (\"hi\", \"हिन्दी\")]",
+      "note": "Hindi is offered even while the switch is off"
+    },
+    {
+      "id": "51-03-locale-middleware-moved-before-sessions",
+      "file": "badshahstore/settings/base.py",
+      "old": "    \"django.contrib.sessions.middleware.SessionMiddleware\",\n    # The shop's language choice: Django's own cookie and header rule, except\n    # that the staff and admin pages always stay English (D92). It reads the\n    # session, so it sits after SessionMiddleware and before CommonMiddleware.\n    \"apps.core.middleware.ShopLocaleMiddleware\",",
+      "new": "    # The shop's language choice: Django's own cookie and header rule, except\n    # that the staff and admin pages always stay English (D92). It reads the\n    # session, so it sits after SessionMiddleware and before CommonMiddleware.\n    \"apps.core.middleware.ShopLocaleMiddleware\",\n    \"django.contrib.sessions.middleware.SessionMiddleware\",",
+      "note": "the language middleware reads the session before it exists"
+    },
+    {
+      "id": "51-04-staff-prefix-rule-dropped",
+      "file": "apps/core/middleware.py",
+      "old": "        if request.path_info.startswith(STAFF_PREFIXES):",
+      "new": "        if False:",
+      "note": "the staff area follows the visitor's Hindi cookie"
+    },
+    {
+      "id": "51-05-staff-prefix-only-admin",
+      "file": "apps/core/middleware.py",
+      "old": "STAFF_PREFIXES = (\"/admin/\", \"/staff/\")",
+      "new": "STAFF_PREFIXES = (\"/admin/\",)",
+      "note": "the staff screens follow the visitor's Hindi cookie"
+    },
+    {
+      "id": "51-06-hindi-off-404-removed",
+      "file": "apps/storefront/views.py",
+      "old": "    if not getattr(settings, \"HINDI_ENABLED\", False):\n        raise Http404",
+      "new": "    if False:\n        raise Http404",
+      "note": "the language form answers while Hindi is switched off"
+    },
+    {
+      "id": "51-07-switch-allows-get",
+      "file": "apps/storefront/views.py",
+      "old": "@require_POST\n@never_cache\ndef switch_language",
+      "new": "@require_GET\n@never_cache\ndef switch_language",
+      "note": "a GET may change the language"
+    },
+    {
+      "id": "51-08-unsafe-next-not-checked",
+      "file": "apps/storefront/views.py",
+      "old": "    if not url_has_allowed_host_and_scheme(\n        url=next_url,\n        allowed_hosts={request.get_host()},\n        require_https=request.is_secure(),\n    ):\n        # Another host or a scheme change goes home instead.\n        next_url = \"/\"",
+      "new": "    if False:\n        # Another host or a scheme change goes home instead.\n        next_url = \"/\"",
+      "note": "the form can send a visitor to another site"
+    },
+    {
+      "id": "51-09-unknown-language-guard-removed",
+      "file": "apps/storefront/views.py",
+      "old": "    if language not in _offered_languages():",
+      "new": "    if False:",
+      "note": "a language the shop does not offer is stored anyway"
+    },
+    {
+      "id": "51-10-english-code-not-mapped",
+      "file": "apps/storefront/views.py",
+      "old": "        return ENGLISH_COOKIE_CODE",
+      "new": "        return language",
+      "note": "the English button stores no cookie, so the shop stays Hindi"
+    },
+    {
+      "id": "51-11-switcher-condition-inverted",
+      "file": "templates/base.html",
+      "old": "          {% if hindi_enabled %}",
+      "new": "          {% if not hindi_enabled %}",
+      "note": "the switcher shows while Hindi is off and hides while it is on"
+    },
+    {
+      "id": "51-12-switcher-loses-next",
+      "file": "templates/base.html",
+      "old": "            <input type=\"hidden\" name=\"next\" value=\"{{ request.get_full_path }}\">",
+      "new": "            <input type=\"hidden\" name=\"next\" value=\"/\">",
+      "note": "a switch always goes home instead of back to the page"
+    },
+    {
+      "id": "51-13-switcher-loses-csrf",
+      "file": "templates/base.html",
+      "old": "          <form method=\"post\" action=\"{% url \"switch_language\" %}\" class=\"inline\">\n            {% csrf_token %}\n",
+      "new": "          <form method=\"post\" action=\"{% url \"switch_language\" %}\" class=\"inline\">\n",
+      "note": "the language form posts without a CSRF token"
+    },
+    {
+      "id": "51-14-html-lang-always-en-in",
+      "file": "templates/base.html",
+      "old": "<html lang=\"{% block html_lang %}{% if hindi_active %}hi{% else %}en-IN{% endif %}{% endblock html_lang %}\">",
+      "new": "<html lang=\"{% block html_lang %}en-IN{% endblock html_lang %}\">",
+      "note": "a Hindi page still declares English"
+    },
+    {
+      "id": "51-15-name-helper-strip-removed",
+      "file": "apps/catalog/names.py",
+      "old": "    if is_hindi(language_code) and (name_hi or \"\").strip():",
+      "new": "    if is_hindi(language_code) and (name_hi or \"\"):",
+      "note": "a Hindi name of only spaces blanks the heading"
+    },
+    {
+      "id": "51-16-name-helper-returns-english-for-hindi",
+      "file": "apps/catalog/names.py",
+      "old": "    if is_hindi(language_code) and (name_hi or \"\").strip():\n        return name_hi\n    return name_en",
+      "new": "    if is_hindi(language_code) and (name_hi or \"\").strip():\n        return name_en\n    return name_hi",
+      "note": "the two names are swapped"
+    },
+    {
+      "id": "51-17-hi-prefix-rule-removed",
+      "file": "apps/catalog/names.py",
+      "old": "    return language_code == HINDI or language_code.startswith(HINDI + \"-\")",
+      "new": "    return language_code == HINDI",
+      "note": "a regional Hindi code such as hi-IN is not Hindi"
+    },
+    {
+      "id": "51-18-card-name-left-english",
+      "file": "apps/storefront/services.py",
+      "old": "                name=product_display_name(product.name_en, product.name_hi, get_language()),",
+      "new": "                name=product.name_en,",
+      "note": "the card and the suggestion box ignore the Hindi name"
+    },
+    {
+      "id": "51-19-detail-heading-left-english",
+      "file": "templates/storefront/product_detail.html",
+      "old": "<h1 class=\"text-2xl font-bold text-gray-900\">{{ display_name }}</h1>",
+      "new": "<h1 class=\"text-2xl font-bold text-gray-900\">{{ product.name_en }}</h1>",
+      "note": "the detail heading ignores the Hindi name"
+    },
+    {
+      "id": "51-20-cart-line-left-english",
+      "file": "templates/cart/_cart_line.html",
+      "old": ">{{ line.display_name }}</a>",
+      "new": ">{{ line.variant.product.name_en }}</a>",
+      "note": "the cart line ignores the Hindi name"
+    },
+    {
+      "id": "51-21-title-uses-hindi-name",
+      "file": "apps/storefront/views.py",
+      "old": "        \"page_title\": f\"{product.name_en} — {product.brand.name} — Badshah Store\",",
+      "new": "        \"page_title\": f\"{product.name_hi or product.name_en} — {product.brand.name} — Badshah Store\",",
+      "note": "the browser title follows the visitor's language"
+    },
+    {
+      "id": "51-22-json-ld-uses-hindi-name",
+      "file": "apps/storefront/product_detail.py",
+      "old": "        \"name\": product.name_en,",
+      "new": "        \"name\": product.name_hi or product.name_en,",
+      "note": "the structured data follows the visitor's language"
+    },
+    {
+      "id": "51-23-unicode-range-shortened-start",
+      "file": "static/css/fonts.css",
+      "old": "  src: url(\"../fonts/NotoSansDevanagari-Regular.ttf\") format(\"truetype\");\n  font-weight: 400;\n  font-style: normal;\n  font-display: swap;\n  unicode-range: U+0900-097F, U+200C-200D, U+20B9;",
+      "new": "  src: url(\"../fonts/NotoSansDevanagari-Regular.ttf\") format(\"truetype\");\n  font-weight: 400;\n  font-style: normal;\n  font-display: swap;\n  unicode-range: U+0901-097F, U+200C-200D, U+20B9;",
+      "note": "the first Devanagari code point no longer downloads the font"
+    },
+    {
+      "id": "51-24-unicode-range-shortened-end",
+      "file": "static/css/fonts.css",
+      "old": "  src: url(\"../fonts/NotoSansDevanagari-Bold.ttf\") format(\"truetype\");\n  font-weight: 700;\n  font-style: normal;\n  font-display: swap;\n  unicode-range: U+0900-097F, U+200C-200D, U+20B9;",
+      "new": "  src: url(\"../fonts/NotoSansDevanagari-Bold.ttf\") format(\"truetype\");\n  font-weight: 700;\n  font-style: normal;\n  font-display: swap;\n  unicode-range: U+0900-097E, U+200C-200D, U+20B9;",
+      "note": "the last Devanagari code point no longer downloads the bold font"
+    },
+    {
+      "id": "51-25-font-display-changed",
+      "file": "static/css/fonts.css",
+      "old": "  src: url(\"../fonts/NotoSansDevanagari-Regular.ttf\") format(\"truetype\");\n  font-weight: 400;\n  font-style: normal;\n  font-display: swap;",
+      "new": "  src: url(\"../fonts/NotoSansDevanagari-Regular.ttf\") format(\"truetype\");\n  font-weight: 400;\n  font-style: normal;\n  font-display: block;",
+      "note": "a Hindi page shows no text until the font has arrived"
+    },
+    {
+      "id": "51-26-bold-face-removed",
+      "file": "static/css/fonts.css",
+      "old": "\n@font-face {\n  font-family: \"Noto Sans Devanagari\";\n  src: url(\"../fonts/NotoSansDevanagari-Bold.ttf\") format(\"truetype\");\n  font-weight: 700;\n  font-style: normal;\n  font-display: swap;\n  unicode-range: U+0900-097F, U+200C-200D, U+20B9;\n}\n",
+      "new": "\n",
+      "note": "bold Devanagari falls back to the browser's own face"
+    },
+    {
+      "id": "51-27-pdf-range-start-off-by-one",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "DEVANAGARI_FIRST = 0x0900",
+      "new": "DEVANAGARI_FIRST = 0x0901",
+      "note": "the first Devanagari character becomes a question mark"
+    },
+    {
+      "id": "51-28-pdf-range-end-off-by-one",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "DEVANAGARI_LAST = 0x097F",
+      "new": "DEVANAGARI_LAST = 0x097E",
+      "note": "the last Devanagari character becomes a question mark"
+    },
+    {
+      "id": "51-29-pdf-joiner-rule-removed",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "        elif character in ZERO_WIDTH_JOINERS and kept and is_devanagari(kept[-1]):",
+      "new": "        elif False:",
+      "note": "a joined conjunct loses its zero-width joiner"
+    },
+    {
+      "id": "51-30-pdf-rupee-kept",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "        elif 32 <= ord(character) < 127:",
+      "new": "        elif 32 <= ord(character) < 127 or character == \"₹\":",
+      "note": "the rupee sign reaches a face that cannot draw it"
+    },
+    {
+      "id": "51-31-pdf-font-registered-wrong-name",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    DEVANAGARI_FONT: \"NotoSansDevanagari-Regular.ttf\",",
+      "new": "    \"NotoDevanagari\": \"NotoSansDevanagari-Regular.ttf\",",
+      "note": "the font tag names a face that was never registered"
+    },
+    {
+      "id": "51-32-pdf-bold-font-not-registered",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    DEVANAGARI_BOLD_FONT: \"NotoSansDevanagari-Bold.ttf\",\n",
+      "new": "",
+      "note": "only the regular face is registered"
+    },
+    {
+      "id": "51-33-pdf-cell-left-plain-string",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "    if not _has_devanagari(text):\n        return text",
+      "new": "    if True:\n        return text",
+      "note": "a Hindi table cell keeps a face that cannot draw it"
+    },
+    {
+      "id": "51-34-pdf-escape-removed",
+      "file": "apps/orders/invoice_pdf.py",
+      "old": "            pieces.append(escape(piece))",
+      "new": "            pieces.append(piece)",
+      "note": "a name holding an ampersand breaks the page"
+    }
+  ]
+}

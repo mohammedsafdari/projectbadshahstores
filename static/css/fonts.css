@@ -1,0 +1,21 @@
+/* The bundled Devanagari faces (D92). A browser downloads a file only when the
+   page holds a character inside the unicode range, so an English page downloads
+   nothing. The files sit in static/fonts/, and the production manifest storage
+   hashes their names through this stylesheet. */
+@font-face {
+  font-family: "Noto Sans Devanagari";
+  src: url("../fonts/NotoSansDevanagari-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+200C-200D, U+20B9;
+}
+
+@font-face {
+  font-family: "Noto Sans Devanagari";
+  src: url("../fonts/NotoSansDevanagari-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+200C-200D, U+20B9;
+}

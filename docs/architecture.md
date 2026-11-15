@@ -214,7 +214,9 @@ The "Import CSV" page on the variant list uploads a file, parses it (`csv_import
 ## 8. Deferred (not built in MVP)
 
 - PWA (manifest + service worker).
-- Full Hindi i18n content (scaffolding now, content later).
+- Full Hindi i18n content: the scaffolding is D92; the content is still deferred (`docs/hindi.md`).
+- Hindi scaffolding (D92): `HINDI_ENABLED` in `.env`, off by default, adds Hindi to `LANGUAGES` and shows the header language form; the choice lives in Django's language cookie, never in the URL, `apps/core/middleware.py` keeps `/admin/` and `/staff/` English, and no shop string is translated yet.
+- Devanagari font (D92): `static/fonts/` holds two TrueType Noto Sans Devanagari faces, served to the browser by `static/css/fonts.css` behind a `unicode-range` and registered lazily by `apps/orders/invoice_pdf.py` for the Devanagari runs of an invoice PDF.
 - Pan-India shipping for own-brand products (Shiprocket/Delhivery).
 - Subscriptions / monthly basket.
 - Loyalty program.
