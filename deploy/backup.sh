@@ -11,7 +11,8 @@
 #   3. check that it is not suspiciously small,
 #   4. encrypt it with the age PUBLIC key,
 #   5. pipe the encrypted file into `upload_backup`, which stores it in the
-#      private R2 bucket and deletes what the retention rule no longer keeps.
+#      private R2 bucket and deletes what the retention rule no longer keeps,
+#   6. ping the missed-backup alarm, so a night that never runs is noticed too.
 #
 # The PRIVATE age key is not on the server: this script can lock a backup but
 # can never open one, so a stolen server still gives no readable database.
@@ -49,6 +50,27 @@ env_value() {
 POSTGRES_USER="$(env_value POSTGRES_USER)"
 POSTGRES_DB="$(env_value POSTGRES_DB)"
 AGE_RECIPIENT="$(env_value AGE_RECIPIENT)"
+# The optional healthchecks.io ping address (D97, amended in 54f1). Empty means
+# no ping at all, so a first run and a developer's run work without it.
+BACKUP_PING_URL="$(env_value BACKUP_PING_URL)"
+
+# ping tells the missed-backup alarm that this run happened. The address is a
+# healthchecks.io check set up for a period of one day with a grace time of a few
+# hours: the check expects one ping a day, and healthchecks.io emails the owner
+# when the ping is missing. That is the one failure Sentry cannot report, because
+# a run that never started (cron removed, Docker down, the server off) has no
+# process left to send anything: only a message that does not arrive can say it.
+# The address is a secret — anyone holding it can silence the alarm — so this
+# script never prints it and no message names it. `|| true` because the alarm is
+# a monitor: it must never turn a good backup into a failed one. The "/fail"
+# suffix is healthchecks.io's address for an explicit failure, which alerts at
+# once instead of waiting a day for a ping that is not coming.
+ping() {
+  if [ -z "$BACKUP_PING_URL" ]; then
+    return 0
+  fi
+  curl -fsS -m 10 --retry 3 -o /dev/null "$BACKUP_PING_URL$1" || true
+}
 
 # fail says what went wrong in one line, tells Sentry through the web
 # container, and stops with a non-zero status so cron records a failure.
@@ -57,6 +79,8 @@ AGE_RECIPIENT="$(env_value AGE_RECIPIENT)"
 fail() {
   echo "ERROR: $1"
   $COMPOSE exec -T web python manage.py report_backup_failure "$1" || true
+  # The alarm is told this run failed, so it emails now rather than a day later.
+  ping "/fail"
   exit 1
 }
 
@@ -80,7 +104,15 @@ fi
 # mktemp -d makes a new folder that only this user can read, and the trap
 # removes it however the script ends: a half-written dump is never left behind
 # and is never uploaded (a failed step exits before the upload).
-TMP="$(mktemp -d)"
+# The plain dump is customer data, so it lives in memory: /dev/shm is a
+# memory-backed folder on Ubuntu and the folder is deleted on every exit, so the
+# dump vanishes with it and never touches the disk. The fallback is for a system
+# where /dev/shm is missing or not writable; the dump is still deleted either way.
+if [ -d /dev/shm ] && [ -w /dev/shm ]; then
+  TMP="$(mktemp -d -p /dev/shm badshahstore-backup.XXXXXX)"
+else
+  TMP="$(mktemp -d)"
+fi
 chmod 700 "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -115,5 +147,10 @@ age -r "$AGE_RECIPIENT" -o "$TMP/dump.age" "$TMP/dump" \
 echo "backup: uploading the encrypted backup"
 $COMPOSE exec -T web python manage.py upload_backup < "$TMP/dump.age" \
   || fail "upload_backup failed"
+
+# The last step of the dead-man's switch: this run happened. It is the last thing
+# the script does, so a run that dies before this line stays unpinged and the
+# alarm fires — which is the whole point of putting it here rather than early.
+ping ""
 
 echo "backup ok"

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import sys
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -48,12 +49,25 @@ class FakeS3Client:
     a test can ask what was uploaded, what was deleted and in which order.
     """
 
-    def __init__(self, objects: list[str] | None = None, *, fail_upload: bool = False) -> None:
+    def __init__(
+        self,
+        objects: list[str] | None = None,
+        *,
+        fail_upload: bool = False,
+        undeletable: Iterable[str] = (),
+        blank_delete_answers: bool = False,
+    ) -> None:
         self.objects = list(objects or [])
         self.fail_upload = fail_upload
+        # Keys R2 keeps, because someone else owns them or a rule refuses.
+        self.undeletable = set(undeletable)
+        # An answer with neither a ``Deleted`` list nor an ``Errors`` list, the
+        # shape a stand-in with nothing to say returns.
+        self.blank_delete_answers = blank_delete_answers
         self.uploads: list[tuple[str, str, bytes]] = []
         self.downloads: list[tuple[str, str]] = []
         self.delete_batches: list[list[str]] = []
+        self.delete_answers: list[dict[str, Any]] = []
 
     def upload_fileobj(self, fileobj: Any, bucket: str, key: str) -> None:
         if self.fail_upload:
@@ -70,11 +84,26 @@ class FakeS3Client:
         assert name == "list_objects_v2"
         return _FakePaginator(self)
 
-    def delete_objects(self, *, Bucket: str, Delete: dict[str, Any]) -> None:
+    def delete_objects(self, *, Bucket: str, Delete: dict[str, Any]) -> dict[str, Any]:
+        """Answer like R2: the call succeeds, and refused files are listed."""
         keys = [row["Key"] for row in Delete["Objects"]]
         self.delete_batches.append(keys)
+        if self.blank_delete_answers:
+            self.delete_answers.append({})
+            return {}
+        deleted: list[dict[str, str]] = []
+        errors: list[dict[str, str]] = []
         for key in keys:
+            if key in self.undeletable:
+                errors.append({"Key": key, "Code": "AccessDenied", "Message": "refused"})
+                continue
             self.objects.remove(key)
+            deleted.append({"Key": key})
+        answer: dict[str, Any] = {"Deleted": deleted}
+        if errors:
+            answer["Errors"] = errors
+        self.delete_answers.append(answer)
+        return answer
 
     @property
     def deleted(self) -> list[str]:
@@ -251,6 +280,92 @@ def test_upload_prints_key_bytes_and_removed_count(monkeypatch: pytest.MonkeyPat
     assert uploaded_key in line
     assert f"({len(payload)} bytes)" in line
     assert "removed 2 old backup(s)" in line
+
+
+def test_upload_counts_only_the_backups_r2_says_it_deleted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refused = _key(2020, 1, 1)
+    client = FakeS3Client(objects=_past_keys(), undeletable=(refused,))
+    monkeypatch.setattr(backups, "make_client", lambda: client)
+
+    fake_stdout, _errors = _run(
+        monkeypatch, "upload_backup", payload=b"d" * (backups.MIN_BACKUP_BYTES + 1)
+    )
+
+    # The rule named two old backups, and the answer admits only one was removed.
+    assert client.delete_batches == [[_key(2020, 1, 1), _key(2020, 1, 2)]]
+    assert "removed 1 old backup(s)" in fake_stdout.text.getvalue()
+
+
+def test_upload_counts_the_whole_batch_when_the_answer_lists_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeS3Client(objects=_past_keys(), blank_delete_answers=True)
+    monkeypatch.setattr(backups, "make_client", lambda: client)
+
+    fake_stdout, _errors = _run(
+        monkeypatch, "upload_backup", payload=b"d" * (backups.MIN_BACKUP_BYTES + 1)
+    )
+
+    # An answer with no lists and no errors is read as the whole batch.
+    assert "removed 2 old backup(s)" in fake_stdout.text.getvalue()
+
+
+def test_upload_reports_old_backups_that_could_not_be_deleted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refused = _key(2020, 1, 1)
+    client = FakeS3Client(objects=_past_keys(), undeletable=(refused,))
+    monkeypatch.setattr(backups, "make_client", lambda: client)
+
+    _fake_stdout, errors = _run(
+        monkeypatch, "upload_backup", payload=b"d" * (backups.MIN_BACKUP_BYTES + 1)
+    )
+
+    # One line on standard error, with the number and the keys that were refused.
+    assert errors.count("\n") == 1
+    assert "could not delete 1 old backup(s)" in errors
+    assert refused in errors
+
+
+def test_upload_sends_a_warning_to_sentry_when_a_delete_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages: list[tuple[str, dict[str, Any]]] = []
+    flushed: list[dict[str, Any]] = []
+
+    def _record(message: str, **options: Any) -> None:
+        messages.append((message, options))
+
+    monkeypatch.setattr(sentry_sdk, "capture_message", _record)
+    monkeypatch.setattr(sentry_sdk, "flush", lambda **options: flushed.append(options))
+    client = FakeS3Client(objects=_past_keys(), undeletable=(_key(2020, 1, 1),))
+    monkeypatch.setattr(backups, "make_client", lambda: client)
+
+    _run(monkeypatch, "upload_backup", payload=b"d" * (backups.MIN_BACKUP_BYTES + 1))
+
+    assert len(messages) == 1
+    message, options = messages[0]
+    # A warning, not an error: the backup itself worked.
+    assert options == {"level": "warning"}
+    assert "1 old backup(s)" in message
+    assert flushed == [{"timeout": 5}]
+
+
+def test_upload_still_succeeds_when_a_delete_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeS3Client(objects=_past_keys(), undeletable=(_key(2020, 1, 1),))
+    monkeypatch.setattr(backups, "make_client", lambda: client)
+
+    # No CommandError: the new backup is safe, so the run is a success.
+    fake_stdout, errors = _run(
+        monkeypatch, "upload_backup", payload=b"d" * (backups.MIN_BACKUP_BYTES + 1)
+    )
+
+    assert len(client.uploads) == 1
+    assert client.uploads[0][1] in fake_stdout.text.getvalue()
+    assert "Uploaded" in fake_stdout.text.getvalue()
+    assert "could not delete" in errors
 
 
 # ---------------------------------------------------------------------------

@@ -45,7 +45,15 @@ fi
 # dump. The trap stops the throwaway container (which also removes it, because
 # it was started with --rm) and deletes the folder, however the script ends.
 # The container's name is quoted so the trap reads it at the time it runs.
-TMP="$(mktemp -d)"
+# The decrypted dump is customer data, so it lives in memory: /dev/shm is a
+# memory-backed folder on Ubuntu and the folder is deleted on every exit, so the
+# dump vanishes with it and never touches the disk. The fallback is for a system
+# where /dev/shm is missing or not writable; the dump is still deleted either way.
+if [ -d /dev/shm ] && [ -w /dev/shm ]; then
+  TMP="$(mktemp -d -p /dev/shm badshahstore-restore.XXXXXX)"
+else
+  TMP="$(mktemp -d)"
+fi
 chmod 700 "$TMP"
 trap 'docker stop "$CONTAINER" > /dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
 

@@ -56,21 +56,53 @@ class Command(BaseCommand):
             keys = backups.list_backup_keys(client, bucket)
             old_keys = backups.select_keys_to_delete(keys)
             removed = 0
+            undeleted: list[str] = []
             # ``range(0, len, size)`` walks the list in steps, so each turn
             # hands one batch to the API.
             for start in range(0, len(old_keys), DELETE_BATCH_SIZE):
                 batch = old_keys[start : start + DELETE_BATCH_SIZE]
-                client.delete_objects(
+                answer = client.delete_objects(
                     Bucket=bucket,
                     Delete={"Objects": [{"Key": name} for name in batch]},
                 )
-                removed += len(batch)
+                # A batch delete answers success even when single files could
+                # not be removed, and names those under ``Errors``. So a key
+                # counts as removed only when the answer lists it under
+                # ``Deleted``; an answer with no such list (a stand-in may send
+                # none) is read as the whole batch, but only when it reports no
+                # errors either. ``answer`` is a mapping, and ``.get`` is how a
+                # mapping is read without knowing whether the key is there.
+                deleted = (answer or {}).get("Deleted")
+                errors = (answer or {}).get("Errors") or []
+                if deleted is not None:
+                    removed += len(deleted)
+                elif not errors:
+                    removed += len(batch)
+                # An error entry names its key; one without a key is still a
+                # failure, and "?" keeps it counted rather than dropped.
+                undeleted.extend(str(entry.get("Key", "?")) for entry in errors)
         except Exception as exc:
             # ``capture_exception`` is a no-op when Sentry was never started,
             # so a development run with no DSN simply sends nothing.
             sentry_sdk.capture_exception(exc)
             sentry_sdk.flush(timeout=5)
             raise CommandError(f"The backup upload failed: {exc}") from exc
+
+        # A clean-up that could not delete every old backup is a warning, never a
+        # failed backup: the new backup is safe in the bucket, and reporting this
+        # as a failure would say the opposite. It still goes to Sentry, at the
+        # level that does not page anyone, because it is what a bucket filling up
+        # starts with (D97, amended in 54f1).
+        if undeleted:
+            shown = ", ".join(undeleted[:3]) + (", ..." if len(undeleted) > 3 else "")
+            # Standard error, so the success line on standard output stays one
+            # clean line for the person reading the system log.
+            self.stderr.write(f"Warning: could not delete {len(undeleted)} old backup(s): {shown}")
+            sentry_sdk.capture_message(
+                f"The backup clean-up could not delete {len(undeleted)} old backup(s).",
+                level="warning",
+            )
+            sentry_sdk.flush(timeout=5)
 
         self.stdout.write(
             f"Uploaded {key} ({len(payload)} bytes); removed {removed} old backup(s)."

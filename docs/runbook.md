@@ -105,9 +105,17 @@ Once a week, open the R2 dashboard and look at the bucket: there should be a new
 file every day, and its size should be close to last week's. A backup that
 suddenly halves is worth a look even when nothing failed.
 
-If a night fails, the script calls `report_backup_failure`, which files one
-Sentry message that begins `Backup failed:` and names the step that broke. That
-message is the signal; the system log has the same line.
+There are three signals, and they catch three different failures:
+
+- the Sentry message (a night **failed**): the script calls
+  `report_backup_failure`, which files one message that begins `Backup failed:`
+  and names the step that broke; the system log has the same line;
+- the healthchecks.io email (a night **did not happen**): a run that never
+  started — cron removed, Docker down, the server off — has no process left to
+  report anything, so the alarm is the message that does **not** arrive
+  (section 9);
+- the bucket (a night was **too small**): a backup that arrives and is half the
+  size of last week's is a failure no message would ever name.
 
 To run one backup by hand, for example after fixing a problem.
 
@@ -278,6 +286,39 @@ docker compose -f docker-compose.prod.yml exec -T web python manage.py shell -c 
 The message should appear in the project within a minute, under the release the
 deploy passed in (`SENTRY_RELEASE`, the short commit hash). If it does not, the
 DSN is wrong or the settings module is not the production one.
+
+### The missed-backup alarm
+
+Sentry reports a night that **failed**. It cannot report a night that never
+happened, because a run that never started has no process to send anything. A
+free healthchecks.io check covers that gap: the check expects one ping a day,
+and healthchecks.io emails you when the ping is missing.
+
+1. Create a free healthchecks.io account and one check named for the shop's
+   backup, with a **period of 1 day** and a **grace time of 3 hours**. The
+   backup runs at 02:30, so a night that has not reported by about 05:30 is
+   late, and healthchecks.io writes to you then.
+2. Set the check's notification to email to your own address, and confirm the
+   address with the link healthchecks.io sends.
+3. Copy the check's ping address into `.env` as `BACKUP_PING_URL`. It is a
+   secret: anyone holding it can silence the alarm, so it stays in `.env` and
+   never goes into a chat, an issue or this page.
+4. Run one backup by hand and watch the check turn green in the dashboard.
+
+On the server (Ubuntu, bash):
+
+```
+cd /srv/badshahstore
+bash deploy/backup.sh
+```
+
+5. Prove the alarm works before you rely on it: pause the check and resume it,
+   or leave it unpinned for a day. An email has to arrive either way; if none
+   does, step 2 is not finished and the alarm is a decoration.
+
+No service needs restarting after step 3: the script reads `.env` on every run.
+An empty `BACKUP_PING_URL` means no ping at all, so a developer's run and a
+first run work without an account.
 
 ## 10. Rotate a secret
 

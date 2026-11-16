@@ -56,7 +56,9 @@ def test_backup_script_stops_on_error_and_cleans_its_temp_directory() -> None:
     # A failure anywhere stops the run, and an unset variable is an error
     # rather than an empty string quietly used as a password or a database.
     assert "set -euo pipefail" in script
-    # One private temporary folder, removed however the script ends.
+    # One private temporary folder, removed however the script ends. It is made
+    # in memory (see the separate test) and falls back to an ordinary one.
+    assert 'TMP="$(mktemp -d -p /dev/shm badshahstore-backup.XXXXXX)"' in script
     assert 'TMP="$(mktemp -d)"' in script
     assert 'chmod 700 "$TMP"' in script
     assert "trap 'rm -rf \"$TMP\"' EXIT" in script
@@ -169,9 +171,15 @@ def test_restore_script_uses_a_throwaway_container_and_publishes_no_port() -> No
     assert 'docker run -d --rm --name "$CONTAINER"' in script
     assert "pg_isready" in script
     # Nothing outside the server may reach the throwaway database, and it must
-    # not join the Compose network either.
+    # not join the Compose network either. The port check reads the run command
+    # itself, because "/dev/shm -p" in the temp-folder line is a different `-p`
+    # (mktemp's --directory-prefix).
+    run_at = script.index("docker run")
+    run_command = script[run_at : script.index("> /dev/null", run_at)]
+    assert " -p " not in run_command
+    assert "--publish" not in run_command
+    assert "--network" not in run_command
     assert "--publish" not in script
-    assert " -p " not in script
     assert "--network host" not in script
 
 
@@ -334,6 +342,108 @@ def test_runbook_says_where_every_command_block_runs() -> None:
     assert not in_block, "a code fence is never closed"
     # Every section that shows a command uses this rule, so a few blocks exist.
     assert checked >= 12
+
+
+# ---------------------------------------------------------------------------
+# The missed-backup alarm and the memory-backed folder (54f1)
+# ---------------------------------------------------------------------------
+def test_backup_script_pings_the_check_after_the_last_step() -> None:
+    script = _read(BACKUP_SCRIPT)
+
+    ping_at = script.index('ping ""')
+    # The ping comes after the upload, which is the last step of the backup...
+    assert script.index("manage.py upload_backup") < ping_at
+    # ...and before the success line, so `backup ok` means the alarm was told.
+    assert ping_at < script.index('echo "backup ok"')
+
+
+def test_backup_script_pings_the_fail_address_in_the_failure_path() -> None:
+    script = _read(BACKUP_SCRIPT)
+
+    start = script.index("fail() {")
+    body = script[start : script.index("\n}\n", start)]
+    # healthchecks.io's /fail address alerts at once instead of after the grace
+    # time, so a failed night is reported the way a missed one is.
+    assert 'ping "/fail"' in body
+    # It has to come before the exit, or it would never be attempted.
+    assert body.index('ping "/fail"') < body.index("exit 1")
+
+
+def test_backup_ping_never_fails_the_backup() -> None:
+    script = _read(BACKUP_SCRIPT)
+
+    # No address means no ping at all, so the check is skipped, not failed.
+    assert 'if [ -z "$BACKUP_PING_URL" ]' in script
+    # A bounded request, and a failure that is thrown away.
+    curls = [line for line in script.splitlines() if "curl " in line]
+    assert len(curls) == 1
+    assert "-m 10" in curls[0]
+    assert "--retry 3" in curls[0]
+    assert curls[0].rstrip().endswith("|| true")
+
+
+def test_backup_script_never_prints_the_ping_url() -> None:
+    script = _read(BACKUP_SCRIPT)
+
+    # The address is a secret: anyone holding it can silence the alarm.
+    for line in script.splitlines():
+        if "BACKUP_PING_URL" not in line:
+            continue
+        assert not line.lstrip().startswith(("echo", "printf")), line
+    assert "ERROR: $BACKUP_PING_URL" not in script
+    assert 'report_backup_failure "$BACKUP_PING_URL' not in script
+    # The one command that does use it throws its output away.
+    assert 'curl -fsS -m 10 --retry 3 -o /dev/null "$BACKUP_PING_URL$1"' in script
+
+
+def test_backup_ping_url_is_optional() -> None:
+    script = _read(BACKUP_SCRIPT)
+
+    assert 'BACKUP_PING_URL="$(env_value BACKUP_PING_URL)"' in script
+    # Unlike the three values below, a missing ping address is not a failure.
+    assert 'fail "BACKUP_PING_URL' not in script
+    assert '[ -n "$BACKUP_PING_URL" ]' not in script
+    required = [line for line in script.splitlines() if line.startswith('[ -n "$')]
+    assert len(required) == 3
+
+
+def test_backup_and_restore_scripts_use_a_memory_backed_temp_folder() -> None:
+    for script, template in (
+        (_read(BACKUP_SCRIPT), "badshahstore-backup.XXXXXX"),
+        (_read(RESTORE_SCRIPT), "badshahstore-restore.XXXXXX"),
+    ):
+        # /dev/shm is memory-backed on Ubuntu, and the dump is customer data.
+        assert "[ -d /dev/shm ] && [ -w /dev/shm ]" in script
+        assert f'TMP="$(mktemp -d -p /dev/shm {template})"' in script
+        # A system without a writable /dev/shm still gets a private folder.
+        assert 'TMP="$(mktemp -d)"' in script
+        assert 'chmod 700 "$TMP"' in script
+        assert 'rm -rf "$TMP"' in script
+
+
+def test_production_env_example_names_the_ping_variable() -> None:
+    example = _read(PROD_ENV_EXAMPLE)
+
+    assert "\nBACKUP_PING_URL=\n" in example
+    assert "optional healthchecks.io ping address" in example
+    # Empty is the default, so nothing is pinged until the owner fills it in.
+    assert "BACKUP_PING_URL=http" not in example
+
+
+def test_runbook_explains_the_missed_backup_alarm() -> None:
+    runbook = _read(RUNBOOK)
+
+    # Section 5 names the three signals and what each one catches.
+    section_five = runbook[runbook.index("## 5. Backups") : runbook.index("## 6. The restore test")]
+    for signal in ("Sentry", "healthchecks.io", "bucket"):
+        assert signal in section_five, signal
+    # Section 9 is where the check itself is set up, with its period and grace.
+    section_nine = runbook[
+        runbook.index("## 9. Uptime and Sentry set-up") : runbook.index("## 10. Rotate a secret")
+    ]
+    assert "### The missed-backup alarm" in section_nine
+    for word in ("healthchecks.io", "BACKUP_PING_URL", "period", "grace"):
+        assert word in section_nine, word
 
 
 # ---------------------------------------------------------------------------

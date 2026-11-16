@@ -1,0 +1,36 @@
+{
+  "tests": [
+    "apps/core/tests/test_backup_commands.py",
+    "apps/core/tests/test_backups.py"
+  ],
+  "mutations": [
+    {
+      "id": "54f1-01",
+      "file": "apps/core/management/commands/upload_backup.py",
+      "old": "                errors = (answer or {}).get(\"Errors\") or []",
+      "new": "                errors = []",
+      "note": "the Errors list of a batch delete is ignored, so a refused delete looks clean"
+    },
+    {
+      "id": "54f1-02",
+      "file": "apps/core/management/commands/upload_backup.py",
+      "old": "                    removed += len(deleted)",
+      "new": "                    removed += len(batch)",
+      "note": "the whole batch is counted as removed instead of the Deleted list"
+    },
+    {
+      "id": "54f1-03",
+      "file": "apps/core/management/commands/upload_backup.py",
+      "old": "                level=\"warning\",",
+      "new": "                level=\"info\",",
+      "note": "the clean-up warning is filed at the level that does not stand out"
+    },
+    {
+      "id": "54f1-04",
+      "file": "apps/core/management/commands/upload_backup.py",
+      "old": "        if undeleted:\n            shown = ",
+      "new": "        if undeleted:\n            raise CommandError(\"The clean-up could not delete old backups.\")\n            shown = ",
+      "note": "a failed clean-up fails the whole command, so a good backup exits non-zero"
+    }
+  ]
+}
