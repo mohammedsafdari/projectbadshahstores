@@ -10,6 +10,13 @@
 #
 # Rollback:  bash deploy/deploy.sh "$(cat .deploy-previous)"
 #
+# The markers are written only at the very end of a deploy that passed its health
+# check: `.deploy-good` is the commit now running and `.deploy-previous` is the
+# one before it, so a failed deploy, or a repeat of the same commit, never
+# becomes the rollback target. A rollback is itself a deploy, so after one
+# `.deploy-previous` holds the version that was rolled back FROM, and a second
+# rollback goes forward again.
+#
 # There is NO automatic rollback. A deploy runs migrations, and a migration is
 # not undone by checking out the old code, so going back is a decision a person
 # makes after reading what went wrong.
@@ -38,12 +45,10 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   exit 1
 fi
 
-# 2. Fetch, remember where we came from, check out the requested ref.
+# 2. Fetch and check out the requested ref. Nothing is written to the rollback
+# markers here: they may only ever name a deploy that passed its health check.
 git fetch --prune origin
 echo "fetched origin"
-
-git rev-parse HEAD > .deploy-previous
-echo "previous commit saved to .deploy-previous: $(cat .deploy-previous)"
 
 git checkout --detach "$REF"
 echo "checked out $REF at $(git rev-parse HEAD)"
@@ -96,7 +101,10 @@ $COMPOSE up -d --remove-orphans
 # Django refuses a Host it does not know, so the probe sends the first
 # ALLOWED_HOSTS entry. The value is read with grep and cut, never by sourcing
 # .env: a file of shell-looking lines must never be executed by a deploy script.
-HOST="$(grep -E '^ALLOWED_HOSTS=' .env | head -n 1 | cut -d '=' -f 2- | cut -d ',' -f 1 | tr -d '[:space:]' || true)"
+# Compose strips the quotes around a value in .env and this reads the file
+# itself, so it strips them too: a quoted list would otherwise send
+# `"shop.example.com` as the Host and fail a check that should have passed.
+HOST="$(grep -E '^ALLOWED_HOSTS=' .env | head -n 1 | cut -d '=' -f 2- | cut -d ',' -f 1 | tr -d '[:space:]' | tr -d "\"'" || true)"
 if [ -z "$HOST" ]; then
   echo "ERROR: ALLOWED_HOSTS in .env is empty; the health check has no Host to send."
   exit 1
@@ -116,6 +124,18 @@ for _attempt in $(seq 1 45); do
   sleep 2
 done
 
+# nginx looks the name `web` up once, when it starts. A deploy that changes only
+# Python code rebuilds the app image but leaves the nginx image identical, so
+# Compose recreates `web` (possibly with a new address) and never touches nginx;
+# without this reload it would proxy to the old address and every page would
+# answer 502.
+echo "reloading nginx so it resolves web again"
+if ! $COMPOSE exec -T nginx nginx -s reload; then
+  echo "ERROR: nginx could not be reloaded. The last log lines of nginx:"
+  $COMPOSE logs --tail=40 nginx || true
+  exit 1
+fi
+
 # /health/ is exempt from the HTTPS redirect, so this asks nginx over plain HTTP
 # and needs no certificate (D94).
 if [ "$web_healthy" = "1" ] && curl -fsS -H "Host: $HOST" http://127.0.0.1/health/; then
@@ -127,8 +147,17 @@ else
   exit 1
 fi
 
-# 6. Tidy up the images this deploy replaced, and say what is running.
+# 6. Tidy up the images this deploy replaced.
 echo "pruning the unused images"
 docker image prune -f
 
-echo "deployed commit $(git rev-parse HEAD)"
+# 7. Record the deploy, now that the site has answered. `.deploy-good` is this
+# commit and `.deploy-previous` keeps the last good one, copied only when it
+# differs, so a failed deploy or a repeat of the same commit leaves both alone.
+DEPLOYED="$(git rev-parse HEAD)"
+if [ -f .deploy-good ] && [ "$(cat .deploy-good)" != "$DEPLOYED" ]; then
+  cp .deploy-good .deploy-previous
+fi
+echo "$DEPLOYED" > .deploy-good
+
+echo "deployed commit $DEPLOYED"

@@ -42,8 +42,11 @@ Thumbs.db
 # Docker/dev transient
 *.log
 
-# The commit the last deploy left behind, written by deploy/deploy.sh, so a
-# rollback is `bash deploy/deploy.sh "$(cat .deploy-previous)"` (D95).
+# The rollback markers deploy/deploy.sh writes on the server, only after a health
+# check has passed: `.deploy-good` is the commit now running and `.deploy-previous`
+# the one before it, so a rollback is `bash deploy/deploy.sh "$(cat .deploy-previous)"`
+# (D95).
+.deploy-good
 .deploy-previous
 
 # Coverage

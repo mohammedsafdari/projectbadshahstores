@@ -144,7 +144,7 @@ first real deploy is on staging in Slice 55.
 | `docker/Dockerfile.prod` | The production image: gunicorn in the `app` stage, and the static files in the `nginx` stage. Builds the CSS and runs `collectstatic` inside the image. | developer, with a slice |
 | `docker-compose.prod.yml` | The stack: `db`, `redis`, `web`, `worker`, `beat`, `nginx`. Only nginx publishes ports. Project name `badshahstore-prod`, no `container_name`. | developer, with a slice |
 | `deploy/nginx/default.conf` | The vhost: port 80 health plus redirect, port 443 with TLS, the static and media cache rules, the three never-cached PWA paths, and the proxy headers. | developer, with a slice |
-| `deploy/deploy.sh` | One deploy, in one order: build, migrate, check, up, health, prune. Rollback is the same script with the saved commit. | developer, with a slice |
+| `deploy/deploy.sh` | One deploy, in one order: build, migrate, check, up, wait for `web`, reload nginx, health, prune, then the two rollback markers. Rollback is the same script with the saved commit. | developer, with a slice |
 | `deploy/production.env.example` | Every variable the settings read, one comment line each, with placeholder values only. Copy it to `.env` on the server. | owner (values), developer (names) |
 | `.env` | The server's real values, including every secret. Never committed. | owner only |
 | `/etc/badshahstore/certs/origin.pem` and `origin.key` | The Cloudflare Origin Certificate, mounted read-only into nginx. Never in the repository. | owner, on the server |
@@ -157,11 +157,20 @@ bash deploy/deploy.sh <git-ref>        # deploy a branch, tag or commit
 bash deploy/deploy.sh "$(cat .deploy-previous)"   # roll back one deploy
 ```
 
-The script refuses to run without a `.env` or with a changed tracked file, writes the commit it is
-leaving to `.deploy-previous` (git-ignored), builds the images, waits for `db` and `redis`, runs
-`migrate --noinput` and `check --deploy`, brings the stack up, waits for `web` to be healthy and
-asks nginx for `/health/`. On any failure it prints the last 40 log lines of `web` and `nginx` and
-exits non-zero.
+The script refuses to run without a `.env` or with a changed tracked file, builds the images, waits
+for `db` and `redis`, runs `migrate --noinput` and `check --deploy`, brings the stack up, waits for
+`web` to be healthy, reloads nginx and asks nginx for `/health/`. On any failure it prints the last
+40 log lines of `web` and `nginx` and exits non-zero.
+
+The reload is what makes a code-only deploy safe: nginx looks the name `web` up once, when it
+starts, so a deploy that rebuilds only the app image leaves the nginx container in place while
+Compose recreates `web`, possibly at a new address, and the old one would answer 502 on every page.
+
+Two git-ignored markers record the deploy, both written only at the end of a deploy that passed its
+health check: `.deploy-good` is the commit now running, and `.deploy-previous` takes the previous
+`.deploy-good` when the two differ. So a failed deploy, and a repeat of the same commit, leave the
+rollback target alone. A rollback is itself a deploy, so after one `.deploy-previous` holds the
+version that was rolled back from, and a second rollback goes forward again.
 
 **The migration caveat for a rollback.** A deploy may already have run a migration, and checking
 out the earlier commit does not undo it: the old code then runs against a newer schema. So the
@@ -177,6 +186,12 @@ database volume is the shop's only copy of its orders, and backups are Slice 54.
 - A Razorpay test payment from the checkout to the confirmation page.
 - An R2 upload and the photo displaying from the media host.
 - `deploy.sh` end to end, and one rollback with the saved commit.
-- The firewall allowing 80 and 443 only from Cloudflare's published ranges (the `CF-Connecting-IP`
-  header is otherwise forgeable by anyone who reaches the origin directly).
+- The firewall: ports 80 and 443 reachable **only from Cloudflare's published ranges**, restricted
+  in the **provider's own firewall** (the DigitalOcean Cloud Firewall, or the Oracle security list
+  for staging), which filters outside the server. Plain `ufw` is not enough: Docker publishes a
+  container's ports by writing its own `iptables` rules, which are evaluated *before* `ufw`'s, so a
+  `ufw` rule naming 80 and 443 does not restrict `nginx`'s published ports at all (a rule on the
+  host would have to go into the `DOCKER-USER` chain). Port 22 stays closed to everything except
+  the owner's address, also in the provider's firewall. A Slice 55 server task, and until it is done
+  the `CF-Connecting-IP` header is forgeable by anyone who reaches the origin directly.
 - The memory test of section 5: does the whole stack fit in 2 GB?

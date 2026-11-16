@@ -27,6 +27,7 @@ NGINX_CONF = ROOT / "deploy" / "nginx" / "default.conf"
 DEPLOY_SCRIPT = ROOT / "deploy" / "deploy.sh"
 PROD_ENV_EXAMPLE = ROOT / "deploy" / "production.env.example"
 DOCKERIGNORE = ROOT / ".dockerignore"
+GITIGNORE = ROOT / ".gitignore"
 
 SETTINGS_FILES = (
     ROOT / "badshahstore" / "settings" / "base.py",
@@ -335,8 +336,9 @@ def test_deploy_script_stops_on_error_and_never_deletes_volumes() -> None:
     ]
     for forbidden in ("down -v", "volume rm", "prune --volumes", "--volumes"):
         assert not [line for line in commands if forbidden in line], forbidden
-    # No automatic rollback either: a migration may already have run.
-    assert "deploy-previous" in script
+    # No automatic rollback either: a migration may already have run, so the
+    # script records the deploy and stops there.
+    assert ".deploy-previous" in script
 
 
 def test_deploy_script_runs_build_migrate_up_and_health_in_that_order() -> None:
@@ -362,6 +364,77 @@ def test_deploy_script_does_not_source_the_env_file() -> None:
     assert ". .env" not in script
     # The one value it needs is read with plain shell.
     assert "grep -E '^ALLOWED_HOSTS='" in script
+
+
+def test_deploy_script_reloads_nginx_after_up_and_before_the_health_probe() -> None:
+    script = _read(DEPLOY_SCRIPT)
+
+    # nginx resolves the name `web` once, at start-up, and a code-only deploy
+    # recreates `web` without touching the unchanged nginx image, so without this
+    # reload the old address answers 502 on every page.
+    reload = "$COMPOSE exec -T nginx nginx -s reload"
+    assert script.count(reload) == 1
+    assert script.index("up -d --remove-orphans") < script.index(reload)
+    assert script.index("waiting for web to become healthy") < script.index(reload)
+    assert script.index(reload) < script.index("curl -fsS")
+
+    # A failed reload stops the deploy and says why, like a failed health check.
+    block = script[script.index(reload) :].split("\nfi\n", 1)[0]
+    assert "logs --tail=40 nginx" in block
+    assert "exit 1" in block
+
+
+def test_deploy_script_writes_the_rollback_markers_only_after_the_health_check() -> None:
+    script = _read(DEPLOY_SCRIPT)
+    passed = script.index("health check passed")
+    commands = [
+        line
+        for line in script[:passed].splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+    # A deploy that failed must never become the rollback target, so nothing
+    # touches a marker before the site has answered.
+    assert commands
+    for line in commands:
+        assert "deploy-good" not in line, line
+        assert "deploy-previous" not in line, line
+    assert 'echo "$DEPLOYED" > .deploy-good' in script[passed:]
+
+
+def test_deploy_script_keeps_the_previous_good_commit_for_rollback() -> None:
+    script = _read(DEPLOY_SCRIPT)
+    passed = script[script.index("health check passed") :]
+    copy_at = passed.index("cp .deploy-good .deploy-previous")
+    write_at = passed.index('echo "$DEPLOYED" > .deploy-good')
+
+    guard = next(line for line in passed.splitlines() if "-f .deploy-good" in line)
+    assert guard.strip().startswith("if ")
+    assert '!= "$DEPLOYED"' in guard
+    # The copy comes first, so `.deploy-previous` is the last good commit and
+    # never the one this deploy just wrote; the guard makes a repeat of the same
+    # commit leave the rollback target alone.
+    assert passed.index(guard) < copy_at < write_at
+
+
+def test_deploy_script_strips_quotes_from_the_allowed_hosts_value() -> None:
+    script = _read(DEPLOY_SCRIPT)
+    host_line = next(line for line in script.splitlines() if "grep -E '^ALLOWED_HOSTS='" in line)
+
+    # Compose strips the quotes around a value in .env, and this reads the file
+    # itself, so it has to strip them too, or a quoted list sends
+    # `"shop.example.com` as the Host header.
+    assert host_line.split('tr -d "', 1)[1].startswith("\\\"'")
+    assert "tr -d '[:space:]'" in host_line
+    # Still read with grep and cut, never by sourcing the file.
+    assert "cut -d ',' -f 1" in host_line
+
+
+def test_gitignore_lists_both_rollback_marker_files() -> None:
+    entries = [line.strip() for line in _read(GITIGNORE).splitlines() if line.strip()]
+
+    assert ".deploy-good" in entries
+    assert ".deploy-previous" in entries
 
 
 # ---------------------------------------------------------------------------
