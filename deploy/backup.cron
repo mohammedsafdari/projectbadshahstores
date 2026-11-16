@@ -1,0 +1,25 @@
+# The nightly backup, once a night at 02:30 (D96, D97).
+#
+# Install it ON THE SERVER, as the user who owns the repository, by opening your
+# own crontab and adding the one line below at the end:
+#
+#     crontab -e
+#
+# Do NOT run `crontab deploy/backup.cron`: that REPLACES every entry you already
+# have, including any job the server already runs. Adding the line by hand is
+# the only safe way.
+#
+# Change /srv/badshahstore below to the folder the repository is checked out in
+# on your server; that path is an example, not a fact about your machine.
+#
+# The whole output goes to the system log through logger, so it appears in
+# `journalctl -t badshahstore-backup`. The system log rotates itself (logrotate),
+# which is why nothing here writes a log file of its own and why nothing here
+# needs cleaning up.
+#
+# 02:30 is the server's own clock. The retention rule inside the upload counts
+# UTC days, so the backup that runs after midnight UTC is the one a "daily"
+# backup means.
+#
+# One line, no continuation:
+30 2 * * * cd /srv/badshahstore && /usr/bin/bash deploy/backup.sh 2>&1 | /usr/bin/logger -t badshahstore-backup

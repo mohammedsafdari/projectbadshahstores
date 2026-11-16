@@ -30,6 +30,10 @@ x-common-env: &common-env
   # Celery tuning, read by the worker.
   CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-2}
 
+  # The commit this stack was deployed from; deploy/deploy.sh exports it, and
+  # every Sentry event names it (D97). Empty when the stack is started by hand.
+  SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+
 # One logging rule for every container: an unbounded Docker log is the classic
 # way a small VPS fills its disk.
 x-logging: &logging

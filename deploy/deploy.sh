@@ -53,6 +53,10 @@ echo "fetched origin"
 git checkout --detach "$REF"
 echo "checked out $REF at $(git rev-parse HEAD)"
 
+# Sentry files every error under this release, so an error names the commit it
+# came from (D97). Compose passes it to web, worker and beat from the shell.
+export SENTRY_RELEASE="$(git rev-parse --short HEAD)"
+
 COMPOSE="docker compose -f docker-compose.prod.yml"
 
 # 3. Build. This builds the stylesheet and runs collectstatic INSIDE the image,

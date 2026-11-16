@@ -19,8 +19,9 @@ The owner reviewed hosting and running costs on 10 November 2026. The decisions 
 | Payment gateway | Charged only on prepaid orders | See section 3 | About 2% plus 18% GST platform fee, plus UPI MDR above ₹2,000. |
 | Staging | Oracle Cloud Always Free | ₹0 | Staging only. Do not use for production until the risks in D76 item 2 are verified. |
 
-Error tracking and monitoring (Sentry and uptime checks) are planned for Phase 7 and are **not**
-included in these figures: their cost is unverified.
+Error tracking and monitoring (Sentry and uptime checks) run on free plans since Phase 7 and are
+**not** included in these figures: see section 9. Their cost, and the point at which a free plan
+stops being enough, is unverified.
 
 ## 2. Monthly cost estimate
 
@@ -176,7 +177,8 @@ version that was rolled back from, and a second rollback goes forward again.
 out the earlier commit does not undo it: the old code then runs against a newer schema. So the
 script never rolls back by itself, and a rollback is a person's decision, made after reading what
 failed. Nothing in the script deletes a volume (`down -v`, `volume rm`, `prune --volumes`): the
-database volume is the shop's only copy of its orders, and backups are Slice 54.
+database volume is the shop's only copy of its orders, and the nightly backup is the code of
+Slice 54 (D96) run by the scripts of Slice 54b (D97), which section 9 lists.
 
 ### What must be verified on staging (Slice 55)
 
@@ -195,3 +197,23 @@ database volume is the shop's only copy of its orders, and backups are Slice 54.
   the owner's address, also in the provider's firewall. A Slice 55 server task, and until it is done
   the `CF-Connecting-IP` header is forgeable by anyone who reaches the origin directly.
 - The memory test of section 5: does the whole stack fit in 2 GB?
+## 9. Backups, monitoring and the runbook
+
+D96 is the code that names, keeps and uploads a backup; D97 is what runs it. Nothing in the table
+below has been executed yet: the first real run of every row is the staging server in Slice 55.
+
+| File | What it does | Who runs it | How often |
+| --- | --- | --- | --- |
+| `deploy/backup.sh` | dumps the database inside the `db` container, checks the dump with `pg_restore --list`, refuses anything under 1 KiB, encrypts it with the age **public** key, and pipes it into `upload_backup`, which stores it in the private R2 bucket and prunes what the retention rule no longer keeps | cron, on the server | every night at 02:30 |
+| `deploy/backup.cron` | the one line to add with `crontab -e`, and the notes beside it | the owner, once | when the server is set up |
+| `deploy/restore_test.sh` | downloads the newest backup, decrypts it with the **private** key, and loads it into a throwaway `postgres:16` container that publishes no port; then prints the row counts of the orders, invoices and customers tables | the owner, on the server, by hand | monthly, and once before launch |
+| `deploy/deploy.sh` | unchanged except that it exports `SENTRY_RELEASE`, so every Sentry event names the commit | the owner, on the server | every deploy |
+| `docker-compose.prod.yml` | passes `SENTRY_RELEASE` to `web`, `worker` and `beat` through the shared environment block | — | every start |
+| `docs/runbook.md` | what to do when something is wrong: where things are, deploy, roll back, logs, backups, the restore test, a real restore, a down site, uptime and Sentry, rotating a secret, housekeeping | the owner | when needed |
+| UptimeRobot | an HTTPS monitor on the shop's `/health/` address, every 5 minutes, alerting by email | the owner sets it up | always |
+| Sentry | production errors, and one message for any backup that failed | the three processes read `SENTRY_DSN` from `.env` | always |
+
+Both free plans (Sentry and UptimeRobot) cover a shop this size, and the backup bucket sits inside
+the R2 free tier already counted in section 1. A backup is only proven by a restore test, which is
+a person's job once a month: the weekly look at the bucket and the Sentry message are what catch a
+backup that stopped happening in between.
