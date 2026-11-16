@@ -14,6 +14,7 @@ dependencies = [
     "uharfbuzz>=0.50,<1",
     "gunicorn>=27,<28",
     "django-storages[s3]>=1.14,<2",
+    "sentry-sdk[celery,django]>=2,<3",
 ]
 
 [dependency-groups]
