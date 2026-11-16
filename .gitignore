@@ -42,6 +42,10 @@ Thumbs.db
 # Docker/dev transient
 *.log
 
+# The commit the last deploy left behind, written by deploy/deploy.sh, so a
+# rollback is `bash deploy/deploy.sh "$(cat .deploy-previous)"` (D95).
+.deploy-previous
+
 # Coverage
 htmlcov/
 .coverage

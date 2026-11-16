@@ -1,0 +1,193 @@
+# The production stack (D95). Run it with -f so the development file is never
+# picked up by accident:
+#   docker compose -f docker-compose.prod.yml ...
+#
+# Differences from docker-compose.yml, on purpose:
+#   - its own project name, so it can never collide with the dev stack
+#   - no container_name anywhere, for the same reason
+#   - no bind mount of the source, no dev dependency group, no dev server
+#   - only nginx publishes a port; the database and Redis stay on the network
+#   - DJANGO_SETTINGS_MODULE is written here literally, so a wrong .env can
+#     never start the development settings in production
+name: badshahstore-prod
+
+# The same container-side values as the dev file. The names on the left are the
+# container's own environment and the values come from .env, read by Compose.
+x-common-env: &common-env
+  # Required secrets — no weak fallbacks.
+  POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+
+  # Built here so the containers use the service names (db, redis) instead of
+  # the 127.0.0.1 values a host-style .env holds. `environment` wins over
+  # `env_file`, which is why the two lines below replace whatever .env says.
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+
+  # Celery tuning, read by the worker.
+  CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-2}
+
+# One logging rule for every container: an unbounded Docker log is the classic
+# way a small VPS fills its disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    logging: *logging
+    stop_grace_period: 5s
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    # No published port: nothing outside the Compose network may reach the
+    # database, and the backup job runs inside it.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    stop_grace_period: 5s
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    healthcheck:
+      # AUTH is mirrored by the client URL (redis://:password@redis:6379/0), so
+      # the healthcheck must authenticate the same way.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      # The first stage of the production file; the nginx service builds the
+      # third one from the same file.
+      target: app
+    image: badshahstore-app:prod
+    restart: unless-stopped
+    logging: *logging
+    stop_grace_period: 30s
+    # No command line here on purpose: the image's own CMD is gunicorn, so a
+    # worker count or a bind address is a change in one place only.
+    env_file: .env
+    environment:
+      <<: *common-env
+      # Written literally: `environment` wins over `env_file`, so even a .env
+      # that still says "dev" cannot make production run the dev settings.
+      DJANGO_SETTINGS_MODULE: badshahstore.settings.prod
+    volumes:
+      # Used only while R2_BUCKET_NAME is empty (a staging run without R2).
+      - media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Django answers 400 to a Host it does not know, so the probe sends the
+      # first ALLOWED_HOSTS entry as its Host header; without that the check
+      # would fail on a healthy container. urlopen raises on any non-2xx status,
+      # which is what makes the healthcheck fail.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import os, urllib.request; host = os.environ['ALLOWED_HOSTS'].split(',')[0].strip(); urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/health/', headers={'Host': host}), timeout=5)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  worker:
+    image: badshahstore-app:prod
+    restart: unless-stopped
+    logging: *logging
+    stop_grace_period: 30s
+    command: >
+      celery -A badshahstore worker
+      --loglevel=info
+      --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
+    env_file: .env
+    environment:
+      <<: *common-env
+      DJANGO_SETTINGS_MODULE: badshahstore.settings.prod
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    image: badshahstore-app:prod
+    restart: unless-stopped
+    logging: *logging
+    stop_grace_period: 30s
+    # The schedule and pid files stay in /tmp: the image is read-only for this
+    # user and /tmp is the one place a process may write.
+    command: >
+      celery -A badshahstore beat
+      --loglevel=info
+      --schedule=/tmp/celerybeat-schedule
+      --pidfile=/tmp/celerybeat.pid
+    env_file: .env
+    environment:
+      <<: *common-env
+      DJANGO_SETTINGS_MODULE: badshahstore.settings.prod
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      target: nginx
+    image: badshahstore-nginx:prod
+    restart: unless-stopped
+    logging: *logging
+    stop_grace_period: 10s
+    # The only ports the outside world may reach.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # The same files the web container writes, read-only here.
+      - media:/srv/media:ro
+      # The Cloudflare Origin Certificate (origin.pem and origin.key) lives on
+      # the server, never in the repository.
+      - /etc/badshahstore/certs:/etc/nginx/certs:ro
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  # Media is a named volume, so the dev folder and the server's folder can never
+  # be confused and a container restart loses no uploaded photo.
+  media:

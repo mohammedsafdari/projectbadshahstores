@@ -10,3 +10,16 @@ ENV
 .ruff_cache
 *.log
 docker-compose.override.yml
+
+# Production build context (D95). The image builds the stylesheet and runs
+# collectstatic itself, so a locally built or collected copy must never travel
+# into it, and the tests, tools, docs and uploaded media are not part of a
+# runtime image at all.
+media
+staticfiles
+static/css/app.css
+node_modules
+docs
+tools
+tests
+**/tests

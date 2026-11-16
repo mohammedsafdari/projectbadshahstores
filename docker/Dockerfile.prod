@@ -1,0 +1,108 @@
+# The production image (D95). It is a separate file from docker/Dockerfile on
+# purpose: the development image copies no source and runs the dev server, and
+# nothing in this slice may change how a developer builds or runs the shop.
+#
+# Three stages:
+#   uv     the pinned uv binary, copied from the official image
+#   app    Django + gunicorn, with the stylesheet and the static files built in
+#   nginx  nginx carrying those static files, so no volume can go stale
+
+ARG UV_VERSION=0.9.21
+
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+# ---------------------------------------------------------------------------
+# app: the one image that web, worker and beat all run
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim AS app
+
+# The virtual environment lives outside /app, exactly as in the dev image, so a
+# mounted folder can never shadow it.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+# The same pinned uv version as docker/Dockerfile; a test compares the two.
+ARG UV_VERSION=0.9.21
+
+COPY --from=uv /uv /uvx /usr/local/bin/
+
+RUN uv --version
+
+WORKDIR /app
+
+# Dependencies on their own layer, so a source change never reinstalls them.
+# --frozen refuses a uv.lock that disagrees, and --no-dev keeps pytest, ruff,
+# mypy and the rest of the development group out of production.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
+
+# ---------------------------------------------------------------------------
+# The Tailwind CLI (D93, D95)
+# ---------------------------------------------------------------------------
+# The same pinned version and the same checksum as the development image. A test
+# compares both values, so the two builds can never drift. x64 only: the
+# development PC and the VPS are both x64.
+ADD --checksum=sha256:7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4 \
+    https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64 \
+    /usr/local/bin/tailwindcss
+RUN chmod 755 /usr/local/bin/tailwindcss
+
+# The source. .dockerignore keeps .env, .git, media, staticfiles, the tests, the
+# docs and the tools out of the build context.
+COPY . /app
+
+# ---------------------------------------------------------------------------
+# The stylesheet and the collected static files are built INTO the image
+# ---------------------------------------------------------------------------
+# In this order, and inside the image, so a deploy cannot forget either: the
+# manifest storage hashes the bytes of static/css/app.css, so the file must
+# exist before collectstatic reads it (D90, D93).
+RUN tailwindcss -c tailwind.config.js -i static/src/tailwind.css -o static/css/app.css --minify
+
+# collectstatic imports the production settings, which refuse to start without a
+# SECRET_KEY, ALLOWED_HOSTS, a database URL and a Redis URL. The values below
+# are dummy build-time values: none of them is a real secret, they live on this
+# one RUN line, and no ENV line keeps them in the image.
+RUN SECRET_KEY=build-time-only-not-a-real-secret \
+    ALLOWED_HOSTS=localhost \
+    DATABASE_URL=postgres://build:build@127.0.0.1:5432/build \
+    REDIS_URL=redis://127.0.0.1:6379/0 \
+    DJANGO_SETTINGS_MODULE=badshahstore.settings.prod \
+    python manage.py collectstatic --noinput
+
+# ---------------------------------------------------------------------------
+# Non-root runtime
+# ---------------------------------------------------------------------------
+RUN useradd --system --create-home --home-dir /home/app app && \
+    mkdir -p /app/media && \
+    chown -R app:app /app
+
+USER app
+
+EXPOSE 8000
+
+# Gunicorn, two workers (D95): one worker per vCPU on the 1 vCPU / 2 GB VPS and
+# a second one so a slow request never blocks the shop. --worker-tmp-dir
+# /dev/shm keeps the worker heartbeat file in memory instead of on disk, which a
+# container's slow overlay filesystem can make look like a hung worker.
+# One line on purpose: a JSON-form CMD split over several lines with trailing
+# backslashes is legal but easy to break with a stray space, and this file cannot
+# be built or tested here.
+CMD ["gunicorn", "badshahstore.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "30", "--graceful-timeout", "20", "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-"]
+
+# ---------------------------------------------------------------------------
+# nginx: the static files travel inside this image
+# ---------------------------------------------------------------------------
+FROM nginx:1.28-alpine AS nginx
+
+# The vhost rules live in the repository and are copied over the image's default
+# one. Certificates are NOT in here: the host folder is mounted at run time.
+COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
+
+# The collected static files, taken straight from the app stage above. A volume
+# would have to be filled on every deploy and could go stale; a copy inside the
+# image is built and shipped as one unit with the code that names them.
+COPY --from=app /app/staticfiles /srv/static

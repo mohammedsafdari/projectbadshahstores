@@ -264,3 +264,15 @@ Revisit these if the shop says otherwise.
 - [ ] Raise HSTS from one hour to a year once the site is proven — owner/deployment; after the Slice 55 soft launch; default in use: `SECURE_HSTS_SECONDS = 3600` in `prod.py`, raised by setting `SECURE_HSTS_SECONDS` in production's `.env`, with no `includeSubDomains` and no preload (D94)
 - [ ] The R2 media settings have not touched a real bucket yet: they are proved by the settings tests only, and the first real upload happens on staging in Slice 55 — owner/deployment; before the soft launch; default in use: `R2_BUCKET_NAME` empty, so the local media folder is used (D94)
 - [ ] Photo files are still left behind when an image row or a product is deleted: the two Slice 53 jobs delete expired sessions and stale saved carts, never the picture files, so the photo-file item above stays open — developer; before production; default in use: files are left in place (D94)
+
+### Added in Slice 53b (the production stack, deployment files, D95)
+The production stack is written but **none of it has been run**: the list below is what must be
+verified on staging in Slice 55 before anything is called working.
+- [ ] `nginx -t` with the real Cloudflare Origin Certificate in `/etc/badshahstore/certs` — owner/deployment; Slice 55; default in use: nothing has been checked by a parser, the vhost is verified by reading it and by 28 text tests (D95)
+- [ ] The `Content-Security-Policy` header reaching the browser unchanged, and the payment page's one inline script still running — owner/deployment; Slice 55; default in use: nginx is not told to touch the header, which is checked in the file only (D93, D95)
+- [ ] One Razorpay test payment from the checkout to the confirmation page, through the real proxy — owner/deployment; Slice 55; default in use: unverified through nginx
+- [ ] One R2 upload with the photo displayed from the media host, with the CSP allowing that origin — owner/deployment; Slice 55; default in use: the R2 settings are proved by tests only (D94)
+- [ ] `deploy.sh` end to end, and one rollback with the commit saved in `.deploy-previous` — owner/deployment; Slice 55; default in use: the script is verified by reading it and by its text tests only (D95)
+- [ ] The VPS firewall allowing ports 80 and 443 **only from Cloudflare's published address ranges** — owner/deployment; before the site is public; default in use: not configured, so anyone who reaches the origin address directly can forge the `CF-Connecting-IP` header and bypass a per-IP limit (D89, D95)
+- [ ] The memory test of `docs/hosting_and_costs.md` section 5: does the whole stack (Postgres, Redis, two gunicorn workers, Celery worker and beat, nginx) fit in the 1 vCPU / 2 GB VPS? — owner/deployment; Slice 55; default in use: 2 vCPU / 4 GB only if the test says so (D76, D95)
+- [ ] A real Lighthouse measurement through nginx and Cloudflare, following `docs/lighthouse.md` — developer/owner; Slice 55; default in use: no number yet (D90, D93)
