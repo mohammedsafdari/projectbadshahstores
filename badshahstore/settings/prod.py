@@ -165,3 +165,44 @@ if R2_BUCKET_NAME:
     media_origin = f"https://{R2_MEDIA_HOST}"
     if media_origin not in base.CSP_EXTRA_IMG_SOURCES:
         CSP_EXTRA_IMG_SOURCES = [*base.CSP_EXTRA_IMG_SOURCES, media_origin]
+
+
+# ---------------------------------------------------------------------------
+# Sentry: error tracking for the site, the worker and the beat (D96)
+# ---------------------------------------------------------------------------
+
+SENTRY_DSN = env("SENTRY_DSN", default="")
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="production")
+SENTRY_RELEASE = env("SENTRY_RELEASE", default="")
+# ``env.float`` reads the value as a decimal number, so 0.5 means half the
+# requests are traced rather than the text "0.5".
+SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1)
+
+# With no DSN nothing below runs and the SDK is never even imported, so a
+# development run, the test suite and a first staging run send nothing at all.
+if SENTRY_DSN:
+    # An import inside an ``if`` runs only when that block runs, which is the
+    # point here: no DSN, no SDK in memory.
+    import sentry_sdk
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    # The shop handles phone numbers and delivery addresses, so no cookie, no
+    # IP address, no request body and no local variable may leave the server
+    # (D96). ``send_default_pii=False`` is Sentry's own switch for the cookies
+    # and the address; the other two options cover the body and the variables.
+    #
+    # gunicorn, the Celery worker and the beat process all load these settings,
+    # so this one call covers all three processes.
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        # ``or None`` turns the empty string into None, which is how the SDK
+        # says "no release".
+        release=SENTRY_RELEASE or None,
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=False,
+        max_request_body_size="never",
+        include_local_variables=False,
+        integrations=[DjangoIntegration(), CeleryIntegration()],
+    )

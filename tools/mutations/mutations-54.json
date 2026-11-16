@@ -1,0 +1,92 @@
+{
+  "tests": [
+    "apps/core/tests/test_backups.py",
+    "apps/core/tests/test_backup_commands.py"
+  ],
+  "mutations": [
+    {
+      "id": "54-01",
+      "file": "apps/core/backups.py",
+      "old": "KEEP_DAILY = 7",
+      "new": "KEEP_DAILY = 6",
+      "note": "the daily window keeps six days instead of seven"
+    },
+    {
+      "id": "54-02",
+      "file": "apps/core/backups.py",
+      "old": "    keep |= _newest_per_group(parsed, _iso_week, keep_weekly)",
+      "new": "    keep |= _newest_per_group(parsed, _utc_month, keep_weekly)",
+      "note": "the weekly window groups by month instead of ISO week"
+    },
+    {
+      "id": "54-03",
+      "file": "apps/core/backups.py",
+      "old": "    return {newest[label][0] for label in labels[:keep]}",
+      "new": "    return {newest[label][0] for label in labels[1:keep]}",
+      "note": "the newest group is dropped, so the newest key is not protected"
+    },
+    {
+      "id": "54-04",
+      "file": "apps/core/backups.py",
+      "old": "        moment = parse_backup_time(key)\n        if moment is None:\n            continue",
+      "new": "        moment = parse_backup_time(key)\n        if moment is None:\n            parsed.append((key, datetime(1970, 1, 1, tzinfo=UTC)))\n            continue",
+      "note": "a key that does not parse is treated as an old backup and returned"
+    },
+    {
+      "id": "54-05",
+      "file": "apps/core/backups.py",
+      "old": "    doomed.sort(key=lambda pair: (pair[1], pair[0]))",
+      "new": "    doomed.sort(key=lambda pair: (pair[1], pair[0]), reverse=True)",
+      "note": "the result is sorted newest first"
+    },
+    {
+      "id": "54-06",
+      "file": "apps/core/management/commands/upload_backup.py",
+      "old": "            client.upload_fileobj(io.BytesIO(payload), bucket, key)\n\n            # Only now, after a successful upload, does anything get deleted:\n            # an upload that fails leaves every old backup where it is.\n            keys = backups.list_backup_keys(client, bucket)\n            old_keys = backups.select_keys_to_delete(keys)\n            removed = 0\n            # ``range(0, len, size)`` walks the list in steps, so each turn\n            # hands one batch to the API.\n            for start in range(0, len(old_keys), DELETE_BATCH_SIZE):\n                batch = old_keys[start : start + DELETE_BATCH_SIZE]\n                client.delete_objects(\n                    Bucket=bucket,\n                    Delete={\"Objects\": [{\"Key\": name} for name in batch]},\n                )\n                removed += len(batch)",
+      "new": "            keys = backups.list_backup_keys(client, bucket)\n            old_keys = backups.select_keys_to_delete(keys)\n            removed = 0\n            # ``range(0, len, size)`` walks the list in steps, so each turn\n            # hands one batch to the API.\n            for start in range(0, len(old_keys), DELETE_BATCH_SIZE):\n                batch = old_keys[start : start + DELETE_BATCH_SIZE]\n                client.delete_objects(\n                    Bucket=bucket,\n                    Delete={\"Objects\": [{\"Key\": name} for name in batch]},\n                )\n                removed += len(batch)\n\n            client.upload_fileobj(io.BytesIO(payload), bucket, key)",
+      "note": "the old backups are deleted before the upload is tried"
+    },
+    {
+      "id": "54-07",
+      "file": "apps/core/management/commands/upload_backup.py",
+      "old": "        if len(payload) < backups.MIN_BACKUP_BYTES:",
+      "new": "        if False:  # noqa: SIM223 - mutation",
+      "note": "the minimum-size check never refuses"
+    },
+    {
+      "id": "54-08",
+      "file": "apps/core/management/commands/upload_backup.py",
+      "old": "        if len(payload) < backups.MIN_BACKUP_BYTES:",
+      "new": "        if len(payload) <= backups.MIN_BACKUP_BYTES:",
+      "note": "a dump of exactly the minimum size is refused"
+    },
+    {
+      "id": "54-09",
+      "file": "apps/core/backups.py",
+      "old": "    if bucket == media_bucket:",
+      "new": "    if False:  # noqa: SIM223 - mutation",
+      "note": "the media-bucket equality refusal is removed"
+    },
+    {
+      "id": "54-10",
+      "file": "apps/core/backups.py",
+      "old": "        aws_secret_access_key=secret,",
+      "new": "        aws_secret_access_key=key_id,",
+      "note": "the backup client is built with the wrong credential"
+    },
+    {
+      "id": "54-11",
+      "file": "apps/core/management/commands/latest_backup.py",
+      "old": "            if newest is None or moment > newest[0]:",
+      "new": "            if newest is None or moment < newest[0]:",
+      "note": "latest_backup picks the oldest key"
+    },
+    {
+      "id": "54-12",
+      "file": "apps/core/management/commands/report_backup_failure.py",
+      "old": "level=\"error\"",
+      "new": "level=\"info\"",
+      "note": "a backup failure is filed at the info level"
+    }
+  ]
+}

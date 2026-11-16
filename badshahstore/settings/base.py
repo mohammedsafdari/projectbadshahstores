@@ -303,6 +303,20 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 
 # ---------------------------------------------------------------------------
+# Backups to a private Cloudflare R2 bucket (D96)
+# ---------------------------------------------------------------------------
+# The nightly pg_dump is encrypted on the server and uploaded by the
+# ``upload_backup`` command (D96). These four are the BACKUP bucket's own
+# values: a separate bucket and a separate token from the public photos (D94),
+# so one leaked token can never reach both. Every one defaults to empty, which
+# means the backup commands refuse to run instead of guessing.
+BACKUP_R2_ACCOUNT_ID = env("R2_ACCOUNT_ID", default="")
+BACKUP_R2_BUCKET = env("R2_BACKUP_BUCKET", default="")
+BACKUP_R2_ACCESS_KEY_ID = env("R2_BACKUP_ACCESS_KEY_ID", default="")
+BACKUP_R2_SECRET_ACCESS_KEY = env("R2_BACKUP_SECRET_ACCESS_KEY", default="")
+
+
+# ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
 
